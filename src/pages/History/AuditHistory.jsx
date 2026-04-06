@@ -553,28 +553,22 @@ const AuditHistory = () => {
                       </span>
                     </td>
                     <td data-label="Trace" className="text-right">
-                      <div className="flex items-center justify-end gap-3">
-                          <div className="score-badge" style={{ 
-                            background: 'var(--background)', 
-                            padding: '2px 10px', 
-                            borderRadius: '4px', 
-                            border: '1px solid var(--border)',
-                            fontSize: '11px',
-                            fontWeight: '900',
-                            color: parseInt(score) > 80 ? 'var(--success)' : 'var(--warning)'
+                      <div className="flex items-center justify-end">
+                        <div className="unified-trace-btn" onClick={(e) => {
+                          e.stopPropagation();
+                          setInitialModalView('universal');
+                          setSelectedAudit(record);
+                        }}>
+                          <div className="trace-score" style={{ 
+                            color: score === 'N/A' ? 'var(--text-muted)' : (parseInt(score) > 80 ? 'var(--success)' : (parseInt(score) > 40 ? 'var(--warning)' : 'var(--error)'))
                           }}>
-                            {score}
+                            {score}{score !== 'N/A' && '%'}
                           </div>
-                          <div className="action-buttons flex justify-end gap-1">
-                            <button
-                              className="universal-btn"
-                              title="Universal Document Ledger"
-                              onClick={e => { e.stopPropagation(); setInitialModalView('universal'); setSelectedAudit(record); }}
-                            >
-                              <Eye size={14} />
-                              <span>Universal Ledger</span>
-                            </button>
+                          <div className="trace-action">
+                            <Eye size={12} />
+                            <span>LEDGER</span>
                           </div>
+                        </div>
                       </div>
                     </td>
                   </tr>
