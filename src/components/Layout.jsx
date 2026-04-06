@@ -38,6 +38,7 @@ const Layout = () => {
   const navigate = useNavigate()
   const [theme, setTheme] = useState(localStorage.getItem('theme') || 'light')
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
+  const [isSearchVisible, setIsSearchVisible] = useState(false)
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme)
@@ -101,14 +102,20 @@ const Layout = () => {
 
       <main className="main-content">
         <header className="topbar">
-          <button className="mobile-menu-toggle" onClick={toggleMobileMenu}>
-            {isMobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
-          </button>
-          <div className="topbar-search">
-            <Search size={18} className="search-icon" />
-            <input type="text" placeholder="Search for audits, suppliers..." />
+          <div className="topbar-left">
+            <button className="mobile-menu-toggle" onClick={toggleMobileMenu}>
+              {isMobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
+            </button>
+            <div className={`topbar-search ${isSearchVisible ? 'mobile-visible' : ''}`}>
+              <Search size={18} className="search-icon" />
+              <input type="text" placeholder="Search audits..." />
+              <button className="search-close" onClick={() => setIsSearchVisible(false)}><X size={18} /></button>
+            </div>
           </div>
           <div className="topbar-actions">
+            <button className="action-btn mobile-only" onClick={() => setIsSearchVisible(true)}>
+              <Search size={20} />
+            </button>
             <button className="action-btn" onClick={toggleTheme}>
               {theme === 'light' ? <Moon size={20} /> : <Sun size={20} />}
             </button>

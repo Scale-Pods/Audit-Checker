@@ -247,15 +247,15 @@ const Analytics = () => {
                   
                   return (
                     <tr key={audit.id} className="hover:bg-slate-800/40 transition-colors border-slate-800 cursor-pointer group">
-                      <td className="px-10 py-8">
+                      <td data-label="Invoice Identity" className="px-10 py-8">
                          <div className="flex flex-col">
                             <span className="font-black text-white group-hover:text-primary transition-colors">{audit.Invoice_Number_Invoice || 'N/A'}</span>
                             <span className="text-[10px] text-slate-500 font-bold mt-1 tracking-tight">REF: {audit.id}</span>
                          </div>
                       </td>
-                      <td className="px-10 py-8 font-bold text-slate-300">{audit.Supplier_Name_Invoice || 'Unknown'}</td>
-                      <td className="px-10 py-8 font-black text-primary text-lg">₹{(parseFloat(audit.Total_Amount_Invoice) / 100000).toFixed(2)} L</td>
-                      <td className="px-10 py-8">
+                      <td data-label="Supplier Asset" className="px-10 py-8 font-bold text-slate-300">{audit.Supplier_Name_Invoice || 'Unknown'}</td>
+                      <td data-label="Transactional Value" className="px-10 py-8 font-black text-primary text-lg">₹{(parseFloat(audit.Total_Amount_Invoice) / 100000).toFixed(2)} L</td>
+                      <td data-label="Discrepancy Detail" className="px-10 py-8">
                          <div className="flex items-center gap-3 text-error/80">
                             <AlertTriangle size={16} />
                             <span className="text-[11px] font-black uppercase tracking-tight">
@@ -263,7 +263,7 @@ const Analytics = () => {
                             </span>
                          </div>
                       </td>
-                      <td className="px-10 py-8 text-center">
+                      <td data-label="Score" className="px-10 py-8 text-center">
                          <div className="inline-block px-5 py-2 rounded-xl bg-error/5 text-error font-black text-lg border border-error/10">
                             {score}
                          </div>

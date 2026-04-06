@@ -78,11 +78,11 @@ const DocumentUpload = ({ title, accepted, onUpload, files, isSubmitted, multipl
 
 const MatchResultRow = ({ label, invVal, ewVal, lrVal, isMatch }) => (
   <tr>
-    <td className="font-medium text-muted">{label}</td>
-    <td>{invVal || '-'}</td>
-    <td className={ewVal && (invVal !== ewVal) ? 'text-error font-medium' : ''}>{ewVal || '-'}</td>
-    <td className={lrVal && (invVal !== lrVal) ? 'text-error font-medium' : ''}>{lrVal || '-'}</td>
-    <td>
+    <td data-label="Field Identity" className="font-medium text-muted">{label}</td>
+    <td data-label="Supplier Invoice">{invVal || '-'}</td>
+    <td data-label="E-Way Bill" className={ewVal && (invVal !== ewVal) ? 'text-error font-medium' : ''}>{ewVal || '-'}</td>
+    <td data-label="LR Copy" className={lrVal && (invVal !== lrVal) ? 'text-error font-medium' : ''}>{lrVal || '-'}</td>
+    <td data-label="Verification Status">
       {isMatch ? 
         <span className="status-badge success"><CheckCircle size={14}/> Match</span> : 
         <span className="status-badge error"><AlertTriangle size={14}/> Mismatch</span>

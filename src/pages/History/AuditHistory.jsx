@@ -514,33 +514,33 @@ const AuditHistory = () => {
                 
                 return (
                   <tr key={record.id} onClick={() => setSelectedAudit(record)} style={{ cursor: 'pointer', backgroundColor: rowBg }} className="audit-row">
-                    <td className="font-bold text-primary">
+                    <td data-label="Audit Identity" className="font-bold text-primary">
                       <div className="flex flex-col">
                         <span>{record.Invoice_Number_Invoice || 'N/A'}</span>
                         <span className="text-[10px] text-muted opacity-60">REF: {record.id}</span>
                       </div>
                     </td>
-                    <td>
+                    <td data-label="Supplier / Logistics Asset">
                       <div className="flex flex-col">
                         <span className="font-semibold text-gray-800">{record.Supplier_Name_Invoice || 'Unknown'}</span>
                         <span className="text-xs text-muted flex items-center gap-1"><Truck size={10}/> {record.Vehicle_No_Eway || 'NO_VEHICLE'}</span>
                       </div>
                     </td>
-                    <td>
+                    <td data-label="Reference Tracking">
                       <div className="flex flex-col text-xs">
                           <span className="flex items-center gap-1"><Hash size={10}/> BATCH: {record.Batch_Code_Invoice || 'N/A'}</span>
                           <span className="text-muted font-mono">EWB: {record.EWB_Number_EWay || 'NONE'}</span>
                       </div>
                     </td>
-                    <td className="text-muted font-medium">
+                    <td data-label="Operational Metrics" className="text-muted font-medium">
                       <span className="text-primary font-bold">₹{(parseFloat(record.Total_Amount_Invoice) / 100000).toFixed(2)} L</span>
                       <br/>
                       <span className="text-[10px] uppercase tracking-tighter">Gross (in Lakhs)</span>
                     </td>
-                    <td className="text-muted text-xs font-semibold">
+                    <td data-label="Time of Audit" className="text-muted text-xs font-semibold">
                       {new Date(record.created_at).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })}
                     </td>
-                    <td>
+                    <td data-label="Integrity Status">
                       <span 
                         className={`badge-status ${status?.toLowerCase().replace(/_/g, '')}`}
                         style={
@@ -552,7 +552,7 @@ const AuditHistory = () => {
                         {(status?.replace(/_/g, ' ') || 'Pending').toUpperCase()}
                       </span>
                     </td>
-                    <td className="text-right">
+                    <td data-label="Trace" className="text-right">
                       <div className="flex items-center justify-end gap-3">
                           <div className="score-badge" style={{ 
                             background: 'var(--background)', 

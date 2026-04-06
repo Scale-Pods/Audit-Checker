@@ -85,8 +85,78 @@
 .bg-success { background-color: #10b981; }
 
 @media (max-width: 1024px) {
-  .charts-grid-half, .analytics-metrics-grid, .lg\:grid-cols-5 {
+  .analytics-page {
+    padding-left: 1rem;
+    padding-right: 1rem;
+  }
+
+  .analytics-metrics-grid {
     grid-template-columns: 1fr;
+    gap: 1.5rem;
+  }
+
+  .charts-grid-half {
+    grid-template-columns: 1fr;
+    gap: 1.5rem;
+  }
+
+  .page-header {
+    flex-direction: column;
+    gap: 1.5rem;
+    align-items: stretch;
+  }
+
+  .header-actions {
+    width: 100%;
+  }
+
+  .header-actions .btn {
+    width: 100%;
+    justify-content: center;
+  }
+
+  /* Table to Card Transition for Analytics */
+  .data-table, .data-table thead, .data-table tbody, .data-table th, .data-table td, .data-table tr {
+    display: block;
+    width: 100% !important;
+  }
+
+  .data-table thead {
+    display: none;
+  }
+
+  .data-table tbody tr {
+    margin-bottom: 1.5rem !important;
+    background: #1e293b !important;
+    border: 1px solid rgba(255, 255, 255, 0.05) !important;
+    border-radius: 16px;
+    padding: 1.5rem !important;
+    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3) !important;
+  }
+
+  .data-table td {
+    border: none;
+    padding: 1rem 0 !important;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.03) !important;
+    width: 100% !important;
+    text-align: right;
+  }
+
+  .data-table td:last-child {
+    border-bottom: none !important;
+  }
+
+  .data-table td::before {
+    content: attr(data-label);
+    font-weight: 800;
+    text-transform: uppercase;
+    font-size: 0.65rem;
+    color: #94a3b8;
+    text-align: left;
+    margin-right: 1rem;
   }
 }
 
@@ -97,6 +167,10 @@
   
   .page-header {
     margin-bottom: 1rem;
+  }
+  
+  .analytics-metric {
+    padding: 1.5rem !important;
   }
 }
 

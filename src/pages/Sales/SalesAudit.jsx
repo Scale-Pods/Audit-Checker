@@ -53,10 +53,10 @@ const DocumentUpload = ({ title, accepted, onUpload, files, icon: IconComponent 
 
 const MatchResultRow = ({ label, soVal, invVal, isMatch }) => (
   <tr>
-    <td className="font-medium text-muted">{label}</td>
-    <td>{soVal || '-'}</td>
-    <td className={invVal && (soVal !== invVal) ? 'text-error font-medium' : ''}>{invVal || '-'}</td>
-    <td>
+    <td data-label="Field Identity" className="font-medium text-muted">{label}</td>
+    <td data-label="Master Sheet (SO)">{soVal || '-'}</td>
+    <td data-label="Invoice Data" className={invVal && (soVal !== invVal) ? 'text-error font-medium' : ''}>{invVal || '-'}</td>
+    <td data-label="Verification Status">
       {isMatch ? 
         <span className="status-badge success"><CheckCircle size={14}/> Match</span> : 
         <span className="status-badge error"><AlertTriangle size={14}/> Mismatch</span>
@@ -335,17 +335,17 @@ const SalesAudit = () => {
 
                     return (
                       <tr key={idx}>
-                        <td className="field-label-cell">
+                        <td data-label="Field Identity" className="field-label-cell">
                           <FileText size={14} style={{ color: 'var(--primary)', opacity: 0.7 }}/>
                           {(row.field || row.label || '').replace(/_/g, ' ')}
                         </td>
-                        <td className="data-cell" style={{ fontFamily: 'monospace' }}>
+                        <td data-label="Master Sheet (SO)" className="data-cell" style={{ fontFamily: 'monospace' }}>
                           {row.sheet_value || row.expected || '—'}
                         </td>
-                        <td className={`data-cell ${isMatch ? 'val-match' : 'val-mismatch'}`} style={{ fontFamily: 'monospace' }}>
+                        <td data-label="Invoice Data" className={`data-cell ${isMatch ? 'val-match' : 'val-mismatch'}`} style={{ fontFamily: 'monospace' }}>
                           {row.invoice_value || row.actual || '—'}
                         </td>
-                        <td className="status-cell" style={{ textAlign: 'right' }}>
+                        <td data-label="Verification" className="status-cell" style={{ textAlign: 'right' }}>
                           <span className={`match-badge ${isMatch ? 'success' : 'danger'}`}>
                              {isMatch ? <CheckCircle size={14}/> : <AlertTriangle size={14}/>}
                              {isMatch ? 'Match' : 'Mismatch'}
