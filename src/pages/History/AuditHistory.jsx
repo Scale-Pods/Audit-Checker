@@ -207,54 +207,70 @@ const UnifiedAuditModal = ({ audit, onClose, initialView = 'intelligence', onDec
               </div>
             ) : (
               <div className="intelligence-grid animate-fade-in">
-                <div className="score-main-card">
-                   <span className="card-label">Overall Compliance Index</span>
-                   <h1 className="main-score">{result.overall?.final_score || 'N/A'}</h1>
-                   <span className={`badge-status ${result.overall?.status?.toLowerCase().replace(/_/g, '')}`}>
-                     {result.overall?.status?.replace(/_/g, ' ')}
-                   </span>
-                </div>
+                  <div className="score-main-card">
+                    <span className="card-label">Overall Compliance Index</span>
+                    <h1 className="main-score" style={{ 
+                      color: parseInt(result.overall?.final_score) > 80 ? 'var(--success)' : (parseInt(result.overall?.final_score) > 40 ? 'var(--warning)' : 'var(--error)')
+                    }}>
+                      {result.overall?.final_score || '0%'}
+                    </h1>
+                    <span className={`badge-status ${result.overall?.status?.toLowerCase().replace(/_/g, '')}`} style={{ padding: '0.4rem 1.2rem', fontSize: '0.8rem' }}>
+                      {result.overall?.status?.replace(/_/g, ' ') || 'UNVERIFIED'}
+                    </span>
+                  </div>
 
-                <div className="match-metrics-list">
-                   <div className="metric-item">
-                     <span className="metric-label">Invoice Match Score</span>
-                     <span className="metric-value">{result.invoice_number_match?.invoice_vs_eway || '100%'}</span>
-                   </div>
-                   <div className="metric-item">
-                     <span className="metric-label">Vehicle identity Match</span>
-                     <span className="metric-value">{result.vehicle_match?.score || '100%'}</span>
-                   </div>
-                   
-                   <div className="metric-item has-tooltip">
-                     <span className="metric-label">Amount Match Accuracy</span>
-                     <span className="metric-value">{result.amount_match?.score || '100%'}</span>
-                     <div className="tooltip-content animate-fade-in">
-                        <div className="tooltip-row"><span>Inv Amount:</span> <strong>₹{result.amount_match?.invoice_amount?.toLocaleString()}</strong></div>
-                        <div className="tooltip-row"><span>EWB Amount:</span> <strong>₹{result.amount_match?.eway_amount?.toLocaleString()}</strong></div>
-                        <div className="tooltip-divider"></div>
-                        <div className="tooltip-row highlights"><span>Difference:</span> <strong>₹{Math.abs(result.amount_match?.difference || 0).toLocaleString()}</strong></div>
-                     </div>
-                   </div>
+                  <div className="match-metrics-list">
+                    <div className="metric-item">
+                      <span className="metric-label">Invoice Identity Ledger</span>
+                      <span className={`metric-value ${result.invoice_number_match?.invoice_vs_eway === 'MATCH' ? 'text-success' : (result.invoice_number_match?.invoice_vs_eway ? 'text-error' : '')}`}>
+                        {result.invoice_number_match?.invoice_vs_eway || 'N/A'}
+                      </span>
+                    </div>
+                    <div className="metric-item">
+                      <span className="metric-label">Vehicle Positioning Match</span>
+                      <span className={`metric-value ${parseInt(result.vehicle_match?.score) > 80 ? 'text-success' : (result.vehicle_match?.score ? 'text-error' : '')}`}>
+                        {result.vehicle_match?.score || 'Check Pending'}
+                      </span>
+                    </div>
+                    
+                    <div className="metric-item has-tooltip">
+                      <span className="metric-label">Financial Value Accuracy</span>
+                      <span className={`metric-value ${parseInt(result.amount_match?.score) === 100 ? 'text-success' : (result.amount_match?.score ? 'text-error' : '')}`}>
+                        {result.amount_match?.score || 'Processing...'}
+                      </span>
+                      {result.amount_match && (
+                        <div className="tooltip-content animate-fade-in">
+                           <div className="tooltip-row"><span>Inv Amount:</span> <strong>₹{result.amount_match?.invoice_amount?.toLocaleString()}</strong></div>
+                           <div className="tooltip-row"><span>EWB Amount:</span> <strong>₹{result.amount_match?.eway_amount?.toLocaleString()}</strong></div>
+                           <div className="tooltip-divider"></div>
+                           <div className="tooltip-row highlights"><span>Difference:</span> <strong>₹{Math.abs(result.amount_match?.difference || 0).toLocaleString()}</strong></div>
+                        </div>
+                      )}
+                    </div>
 
-                   <div className="metric-item has-tooltip">
-                     <span className="metric-label">Weight Matches</span>
-                     <span className="metric-value">{result.weight_match?.score || '100%'}</span>
-                     <div className="tooltip-content animate-fade-in">
-                        <div className="tooltip-row"><span>Inv Weight:</span> <strong>{result.weight_match?.invoice_weight_mt} MT</strong></div>
-                        <div className="tooltip-row"><span>EWB Weight:</span> <strong>{result.weight_match?.eway_weight_mt} MT</strong></div>
-                        <div className="tooltip-row"><span>LR Weight:</span> <strong>{result.weight_match?.lr_weight_mt} MT</strong></div>
-                        <div className="tooltip-divider"></div>
-                        <div className="tooltip-row highlights"><span>Max Diff:</span> <strong>{result.weight_match?.max_difference_kg} KG</strong></div>
-                     </div>
-                   </div>
+                    <div className="metric-item has-tooltip">
+                      <span className="metric-label">Logistics Weight Verification</span>
+                      <span className={`metric-value ${result.weight_match?.score === 'MATCH' || parseInt(result.weight_match?.score) > 80 ? 'text-success' : (result.weight_match?.score ? 'text-error font-bold' : '')}`}>
+                        {result.weight_match?.score || 'Metric Missing'}
+                      </span>
+                      {result.weight_match && (
+                        <div className="tooltip-content animate-fade-in">
+                           <div className="tooltip-row"><span>Inv Weight:</span> <strong>{result.weight_match?.invoice_weight_mt} MT</strong></div>
+                           <div className="tooltip-row"><span>EWB Weight:</span> <strong>{result.weight_match?.eway_weight_mt} MT</strong></div>
+                           <div className="tooltip-row"><span>LR Weight:</span> <strong>{result.weight_match?.lr_weight_mt} MT</strong></div>
+                           <div className="tooltip-divider"></div>
+                           <div className="tooltip-row highlights"><span>Max Diff:</span> <strong>{result.weight_match?.max_difference_kg} KG</strong></div>
+                        </div>
+                      )}
+                    </div>
 
-                    {result.issues?.length > 0 && (
-                      <div className="metric-item" style={{ background: '#fff1f2', padding: '0.75rem', borderRadius: '8px', borderBottom: 'none', marginTop: '4px' }}>
-                        <span className="metric-label" style={{ color: '#be123c', fontWeight: '700' }}>Compliance Exceptions</span>
-                        <span className="metric-value" style={{ color: '#be123c' }}>-{100 - parseInt(result.overall?.final_score || 100)}%</span>
+                    {result.overall?.final_score && parseInt(result.overall.final_score) < 100 && (
+                      <div className="metric-item" style={{ background: 'rgba(239, 68, 68, 0.05)', padding: '0.85rem', borderRadius: '12px', borderBottom: 'none', marginTop: '12px', border: '1px solid rgba(239, 68, 68, 0.1)' }}>
+                        <span className="metric-label" style={{ color: '#ef4444', fontWeight: '800', fontSize: '0.7rem' }}>Integrity Deduction</span>
+                        <span className="metric-value" style={{ color: '#ef4444', fontWeight: '900' }}>{100 - parseInt(result.overall.final_score)}% Impact</span>
                       </div>
                     )}
-                 </div>
+                  </div>
 
                 <div className="issues-feedback-card">
                    <h4 className="feedback-title">Intelligence Feedback & Issues</h4>
