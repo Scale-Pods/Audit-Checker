@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react'
-import { FileText, Filter, CheckCircle, AlertTriangle, Eye, Download, RefreshCw, Loader2, Search, Truck, Hash, X, Info } from 'lucide-react'
+import { FileText, Filter, CheckCircle, AlertTriangle, Eye, Download, RefreshCw, Loader2, Search, Truck, Hash, X, Info, IndianRupee, Activity } from 'lucide-react'
 import './AuditHistory.css'
 
 const AUDITS_WEBHOOK_URL = import.meta.env.VITE_AUDITS_HISTORY_URL || 'https://n8n.srv1010832.hstgr.cloud/webhook/40a6351a-d510-492f-918b-7ec9bae2bd2a'
@@ -202,98 +202,124 @@ const UnifiedAuditModal = ({ audit, onClose, initialView = 'intelligence', onDec
           {view === 'intelligence' ? (
             !result ? (
               <div className="empty-state">
-                 <AlertTriangle size={40} className="empty-icon" />
-                 <p>No granular intelligence packet available.</p>
+                <AlertTriangle size={40} className="empty-icon" />
+                <p>No granular intelligence packet available.</p>
               </div>
             ) : (
-              <div className="intelligence-grid animate-fade-in">
-                  <div className="score-main-card">
-                    <span className="card-label">Overall Compliance Index</span>
-                    <h1 className="main-score" style={{ 
-                      color: parseInt(result.overall?.final_score) > 80 ? 'var(--success)' : (parseInt(result.overall?.final_score) > 40 ? 'var(--warning)' : 'var(--error)')
-                    }}>
-                      {result.overall?.final_score || '0%'}
-                    </h1>
-                    <span className={`badge-status ${result.overall?.status?.toLowerCase().replace(/_/g, '')}`} style={{ padding: '0.4rem 1.2rem', fontSize: '0.8rem' }}>
-                      {result.overall?.status?.replace(/_/g, ' ') || 'UNVERIFIED'}
-                    </span>
+              <div className="intelligence-grid animate-fade-in premium">
+                {/* Left Column: Core Integrity */}
+                <div className="intelligence-main">
+                  <div className="integrity-card glass">
+                    <div className="integrity-viz">
+                      <div className="viz-circle" style={{ 
+                        borderColor: parseInt(result.overall?.final_score) > 80 ? 'var(--success)' : (parseInt(result.overall?.final_score) > 40 ? 'var(--warning)' : 'var(--error)')
+                      }}>
+                        <span className="viz-value">{result.overall?.final_score || '0%'}</span>
+                        <span className="viz-label">COMPLIANCE</span>
+                      </div>
+                    </div>
+                    <div className="integrity-info">
+                      <div className={`status-badge-premium ${result.overall?.status?.toLowerCase().replace(/_/g, '')}`}>
+                        {result.overall?.status?.replace(/_/g, ' ') || 'UNVERIFIED'}
+                      </div>
+                      <p className="integrity-desc">Aggregate document lifecycle analysis & discrepancy mapping.</p>
+                    </div>
                   </div>
 
-                  <div className="match-metrics-list">
-                    <div className="metric-item">
-                      <span className="metric-label">Invoice Identity Ledger</span>
-                      <span className={`metric-value ${result.invoice_number_match?.invoice_vs_eway === 'MATCH' ? 'text-success' : (result.invoice_number_match?.invoice_vs_eway ? 'text-error' : '')}`}>
+                  <div className="issues-list-minimal">
+                    <h4 className="section-label">Intelligence Observations</h4>
+                    <div className="issues-stack-minimal">
+                      {result.issues?.length > 0 ? (
+                        result.issues.map((issue, idx) => (
+                          <div key={idx} className="issue-item-minimal">
+                            <AlertTriangle size={14} />
+                            <span>{issue.replace(/_/g, ' ')}</span>
+                          </div>
+                        ))
+                      ) : (
+                        <div className="issue-item-minimal success">
+                          <CheckCircle size={14} />
+                          <span>Zero discrepancies found. Integrity verified.</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Right Column: Match Verticals */}
+                <div className="intelligence-metrics">
+                  <h4 className="section-label">Verification Verticals</h4>
+                  
+                  <div className="metric-group-premium">
+                    <div className="metric-row-premium">
+                      <div className="metric-meta">
+                        <FileText size={16} />
+                        <span>Invoice Identity</span>
+                      </div>
+                      <span className={`metric-status ${result.invoice_number_match?.invoice_vs_eway === 'MATCH' ? 'pass' : 'fail'}`}>
                         {result.invoice_number_match?.invoice_vs_eway || 'N/A'}
                       </span>
                     </div>
-                    <div className="metric-item">
-                      <span className="metric-label">Vehicle Positioning Match</span>
-                      <span className={`metric-value ${parseInt(result.vehicle_match?.score) > 80 ? 'text-success' : (result.vehicle_match?.score ? 'text-error' : '')}`}>
-                        {result.vehicle_match?.score || 'Check Pending'}
-                      </span>
-                    </div>
-                    
-                    <div className="metric-item has-tooltip">
-                      <span className="metric-label">Financial Value Accuracy</span>
-                      <span className={`metric-value ${parseInt(result.amount_match?.score) === 100 ? 'text-success' : (result.amount_match?.score ? 'text-error' : '')}`}>
-                        {result.amount_match?.score || 'Processing...'}
-                      </span>
-                      {result.amount_match && (
-                        <div className="tooltip-content animate-fade-in">
-                           <div className="tooltip-row"><span>Inv Amount:</span> <strong>₹{result.amount_match?.invoice_amount?.toLocaleString()}</strong></div>
-                           <div className="tooltip-row"><span>EWB Amount:</span> <strong>₹{result.amount_match?.eway_amount?.toLocaleString()}</strong></div>
-                           <div className="tooltip-divider"></div>
-                           <div className="tooltip-row highlights"><span>Difference:</span> <strong>₹{Math.abs(result.amount_match?.difference || 0).toLocaleString()}</strong></div>
-                        </div>
-                      )}
-                    </div>
 
-                    <div className="metric-item has-tooltip">
-                      <span className="metric-label">Logistics Weight Verification</span>
-                      <span className={`metric-value ${result.weight_match?.score === 'MATCH' || parseInt(result.weight_match?.score) > 80 ? 'text-success' : (result.weight_match?.score ? 'text-error font-bold' : '')}`}>
-                        {result.weight_match?.score || 'Metric Missing'}
-                      </span>
-                      {result.weight_match && (
-                        <div className="tooltip-content animate-fade-in">
-                           <div className="tooltip-row"><span>Inv Weight:</span> <strong>{result.weight_match?.invoice_weight_mt} MT</strong></div>
-                           <div className="tooltip-row"><span>EWB Weight:</span> <strong>{result.weight_match?.eway_weight_mt} MT</strong></div>
-                           <div className="tooltip-row"><span>LR Weight:</span> <strong>{result.weight_match?.lr_weight_mt} MT</strong></div>
-                           <div className="tooltip-divider"></div>
-                           <div className="tooltip-row highlights"><span>Max Diff:</span> <strong>{result.weight_match?.max_difference_kg} KG</strong></div>
-                        </div>
-                      )}
-                    </div>
-
-                    {result.overall?.final_score && parseInt(result.overall.final_score) < 100 && (
-                      <div className="metric-item" style={{ background: 'rgba(239, 68, 68, 0.05)', padding: '0.85rem', borderRadius: '12px', borderBottom: 'none', marginTop: '12px', border: '1px solid rgba(239, 68, 68, 0.1)' }}>
-                        <span className="metric-label" style={{ color: '#ef4444', fontWeight: '800', fontSize: '0.7rem' }}>Integrity Deduction</span>
-                        <span className="metric-value" style={{ color: '#ef4444', fontWeight: '900' }}>{100 - parseInt(result.overall.final_score)}% Impact</span>
+                    <div className="metric-row-premium has-tooltip">
+                      <div className="metric-meta">
+                        <Truck size={16} />
+                        <span>Vehicle Positioning</span>
                       </div>
-                    )}
+                      <span className={`metric-status ${parseInt(result.vehicle_match?.score) > 80 ? 'pass' : 'fail'}`}>
+                        {result.vehicle_match?.score || 'Pending'}
+                      </span>
+                      <div className="tooltip-mini">
+                        <div className="tooltip-row"><span>EWB No:</span> <strong>{audit.Vehicle_No_EWay || audit['Vehicle_No_EWay'] || audit['Vehicle No (EWay)'] || '—'}</strong></div>
+                        <div className="tooltip-row"><span>LR No:</span> <strong>{audit.Vehicle_No_LR || audit['Vehicle_No_LR'] || audit['Vehicle No (LR)'] || '—'}</strong></div>
+                      </div>
+                    </div>
+
+                    <div className="metric-row-premium has-tooltip">
+                      <div className="metric-meta">
+                        <IndianRupee size={16} />
+                        <span>Financial Value</span>
+                      </div>
+                      <span className={`metric-status ${parseInt(result.amount_match?.score) === 100 ? 'pass' : 'fail'}`}>
+                        {result.amount_match?.score || '—'}
+                      </span>
+                      <div className="tooltip-mini">
+                        <div className="tooltip-row"><span>INV AMT:</span> <strong>₹{parseFloat((audit.Total_Amount_Invoice || '0').toString().replace(/[^0-9.-]/g, ''))?.toLocaleString('en-IN') || '0'}</strong></div>
+                        <div className="tooltip-row"><span>EWB AMT:</span> <strong>₹{parseFloat((audit.Total_Amount_EWay || '0').toString().replace(/[^0-9.-]/g, ''))?.toLocaleString('en-IN') || '0'}</strong></div>
+                        <div className="tooltip-divider"></div>
+                        <div className="tooltip-row"><span>DIFF:</span> <strong>₹{Math.abs(parseFloat(result.amount_match?.difference || 0)).toLocaleString('en-IN')}</strong></div>
+                      </div>
+                    </div>
+
+                    <div className="metric-row-premium has-tooltip">
+                      <div className="metric-meta">
+                        <Activity size={16} />
+                        <span>Weight Verification</span>
+                      </div>
+                      <span className={`metric-status ${result.weight_match?.score === 'MATCH' || parseInt(result.weight_match?.score) > 80 ? 'pass' : 'fail'}`}>
+                        {result.weight_match?.score || '—'}
+                      </span>
+                      <div className="tooltip-mini">
+                        <div className="tooltip-row"><span>INV Weight:</span> <strong>{audit['Invoice_Weight_(Invoice)'] || audit.Invoice_Weight_Invoice || '—'} MT</strong></div>
+                        <div className="tooltip-row"><span>EWB Weight:</span> <strong>{audit['EWB_Weight_(EWay)'] || audit.EWB_Weight_EWay || '—'} MT</strong></div>
+                        <div className="tooltip-row"><span>LR Weight:</span> <strong>{audit.Weight_LR || '—'} MT</strong></div>
+                      </div>
+                    </div>
                   </div>
 
-                <div className="issues-feedback-card">
-                   <h4 className="feedback-title">Intelligence Feedback & Issues</h4>
-                   <div className="issues-stack">
-                     {result.issues?.length > 0 ? (
-                       result.issues.map((issue, idx) => (
-                         <div key={idx} className="issue-row">
-                            <AlertTriangle size={18} className="text-error" />
-                            <span className="issue-text">{issue.replace(/_/g, ' ')}</span>
-                         </div>
-                       ))
-                     ) : (
-                       <div className="success-row">
-                          <CheckCircle size={18} />
-                          <span className="success-text">Zero discrepancies found. Operational integrity verified.</span>
-                       </div>
-                     )}
-                     {result.invoice_number_match?.remarks && (
-                       <div className="remarks-box">
-                         <strong>Technical Note:</strong> {result.invoice_number_match.remarks}
-                       </div>
-                     )}
-                   </div>
+                  {result.invoice_number_match?.remarks && (
+                    <div className="technical-summary-minimal" style={{ marginTop: '3.3rem' }}>
+                      <Info size={12} />
+                      <span>{result.invoice_number_match.remarks}</span>
+                    </div>
+                  )}
+
+                  {parseInt(result.overall?.final_score) < 100 && (
+                     <div className="metric-row-premium" style={{ background: 'rgba(239, 68, 68, 0.05)', borderColor: 'rgba(239, 68, 68, 0.1)', marginTop: '0.75rem' }}>
+                        <span className="section-label" style={{ margin: 0, color: '#ef4444' }}>Integrity Deduction</span>
+                        <span style={{ color: '#ef4444', fontWeight: 950, fontSize: '0.8rem' }}>-{100 - parseInt(result.overall?.final_score)}% Impact</span>
+                     </div>
+                  )}
                 </div>
               </div>
             )
@@ -329,26 +355,27 @@ const UnifiedAuditModal = ({ audit, onClose, initialView = 'intelligence', onDec
           )}
         </div>
 
-        <div className="modal-footer flex-between">
-            <p className="text-[10px] text-muted italic">Field-by-field cross-doc validation active.</p>
-            <div className="flex gap-2">
-                <button className="btn btn-outline" onClick={onClose}>Close</button>
-                <button 
-                  className="btn" 
-                  style={{ background: '#ef4444', color: 'white', border: 'none' }}
-                  onClick={() => onDecision(audit.id, 'Reject')}
-                  disabled={isProcessing}
-                >
-                  {isProcessing ? 'Sending...' : 'Reject'}
-                </button>
-                <button 
-                  className="btn" 
-                  style={{ background: '#10b981', color: 'white', border: 'none' }}
-                  onClick={() => onDecision(audit.id, 'Approve')}
-                  disabled={isProcessing}
-                >
-                  {isProcessing ? 'Sending...' : 'Approve'}
-                </button>
+        <div className="modal-footer flex-between" style={{ padding: '2rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <p className="text-[10px] text-muted italic font-bold uppercase tracking-widest opacity-60">Field-by-field cross-doc validation active</p>
+            <div className="flex" style={{ gap: '2.5rem', display: 'flex', alignItems: 'center' }}>
+                <button className="btn btn-outline px-8 py-2 rounded-xl font-bold uppercase text-[10px] tracking-widest hover:bg-slate-800 transition-all" onClick={onClose}>Close</button>
+                <div className="flex" style={{ gap: '1rem', display: 'flex', alignItems: 'center' }}>
+                  <button 
+                    className="btn px-8 py-2 rounded-xl font-black uppercase text-[11px] tracking-widest shadow-xl transition-all hover:scale-105 active:scale-95" 
+                    style={{ background: '#ef4444', color: 'white', border: 'none' }}
+                    onClick={() => onDecision(audit.id, 'Reject')}
+                    disabled={isProcessing}
+                  >
+                    Reject Match
+                  </button>
+                  <button 
+                    className="btn px-8 py-2 rounded-xl font-black uppercase text-[11px] tracking-widest shadow-xl shadow-success/20 transition-all hover:scale-105 bg-emerald-500 hover:bg-emerald-600 active:scale-95 text-white" 
+                    onClick={() => onDecision(audit.id, 'Approve')}
+                    disabled={isProcessing}
+                  >
+                    Approve Match
+                  </button>
+                </div>
             </div>
         </div>
       </div>
