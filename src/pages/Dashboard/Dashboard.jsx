@@ -168,7 +168,7 @@ const DetailModal = ({ audit, onClose, onDecision, isProcessing }) => {
     if (status === 'fail') color = '#ef4444';
 
     return (
-      <td key={docType} style={{ padding: '0.75rem', borderBottom: '1px solid var(--border)', wordBreak: 'break-word', fontWeight: 600, color }}>
+      <td key={docType} data-label={docType} style={{ padding: '0.75rem', borderBottom: '1px solid var(--border)', wordBreak: 'break-word', fontWeight: 600, color }}>
         {value}
         {status && (
           <span style={{ marginLeft: '4px', fontSize: '0.7rem' }}>
@@ -307,7 +307,7 @@ const DetailModal = ({ audit, onClose, onDecision, isProcessing }) => {
                     const mismatch = !isAddressField(fieldBase) && hasMismatch(vals, fieldBase);
                     return (
                       <tr key={fieldBase}>
-                        <td className="font-bold tracking-tight" style={{ color: 'var(--text-muted)', padding: '0.75rem', borderBottom: '1px solid var(--border)' }}>
+                        <td data-label="Field Identity" className="font-bold tracking-tight" style={{ color: 'var(--text-muted)', padding: '0.75rem', borderBottom: '1px solid var(--border)' }}>
                           {fieldBase.replace(/_/g, ' ')}
                           {mismatch && <span style={{ color: '#ef4444', marginLeft: '6px', fontSize: '10px' }}>⚠ Mismatch</span>}
                         </td>

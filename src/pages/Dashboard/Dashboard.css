@@ -644,12 +644,119 @@
 }
 
 .modal-footer {
-  padding: 1.5rem 2rem;
+  padding: 1.25rem 1.5rem;
   border-top: 1px solid rgba(255, 255, 255, 0.05);
   display: flex;
   justify-content: flex-end;
   gap: 1rem;
   background: rgba(0, 0, 0, 0.1);
+}
+
+@media (max-width: 1024px) {
+  .intelligence-grid {
+    grid-template-columns: 1fr;
+    gap: 1.5rem;
+  }
+  
+  .issues-feedback-card {
+    grid-column: span 1;
+  }
+}
+
+@media (max-width: 768px) {
+  .modal-content {
+    max-width: 100vw;
+    height: 100dvh;
+    max-height: 100dvh;
+    border-radius: 0;
+  }
+
+  .modal-body {
+    padding: 1.25rem !important;
+  }
+
+  /* Table to Cards Transformation for Universal View in DetailModal */
+  .universal-table-wrapper {
+    overflow-x: hidden;
+  }
+
+  .universal-table-wrapper .data-table, 
+  .universal-table-wrapper .data-table thead, 
+  .universal-table-wrapper .data-table tbody, 
+  .universal-table-wrapper .data-table th, 
+  .universal-table-wrapper .data-table td, 
+  .universal-table-wrapper .data-table tr {
+    display: block;
+    width: 100% !important;
+  }
+
+  .universal-table-wrapper .data-table thead {
+    display: none;
+  }
+
+  .universal-table-wrapper .data-table tr {
+    margin-bottom: 2rem;
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 1rem;
+    background: var(--surface);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+  }
+
+  .universal-table-wrapper .data-table td {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.75rem 0 !important;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.03) !important;
+    font-size: 0.8rem;
+    text-align: right;
+  }
+
+  .universal-table-wrapper .data-table td:last-child {
+    border-bottom: none !important;
+  }
+
+  .universal-table-wrapper .data-table td:first-child {
+    justify-content: center;
+    background: rgba(59, 130, 246, 0.05);
+    margin: -1rem -1rem 1rem -1rem;
+    padding: 1rem !important;
+    font-weight: 900;
+    color: var(--primary);
+    font-size: 0.9rem;
+  }
+
+  .universal-table-wrapper .data-table td::before {
+    content: attr(data-label);
+    font-weight: 800;
+    text-transform: uppercase;
+    font-size: 0.65rem;
+    color: var(--text-muted);
+    text-align: left;
+    margin-right: 1rem;
+  }
+
+  .modal-footer {
+    flex-direction: column;
+    padding: 1.25rem !important;
+  }
+
+  .modal-footer p {
+    display: none;
+  }
+
+  .modal-footer .flex {
+    flex-direction: column;
+    width: 100%;
+    gap: 0.75rem;
+  }
+
+  .modal-footer .btn {
+    width: 100%;
+    justify-content: center;
+    padding: 0.85rem !important;
+  }
 }
 
 .empty-state {

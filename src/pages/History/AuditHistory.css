@@ -61,7 +61,7 @@
   align-items: center;
   justify-content: center;
   z-index: 1000;
-  padding: 1.5rem;
+  padding: 1rem;
 }
 
 [data-theme="dark"] .modal-overlay {
@@ -86,7 +86,7 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 1.5rem 2rem;
+  padding: 1.25rem 1.5rem;
   border-bottom: 1px solid var(--border);
   background: var(--surface);
 }
@@ -135,7 +135,7 @@
 }
 
 .modal-body {
-  padding: 2rem;
+  padding: 1.25rem;
   overflow-y: auto;
   flex: 1;
 }
@@ -1036,49 +1036,168 @@
 
 /* ── Modal Footer Layout ──────────────────────── */
 .modal-footer {
+  padding: 1.5rem 2.5rem;
+  background: rgba(0, 0, 0, 0.05);
   display: flex;
   justify-content: space-between;
   align-items: center;
   border-top: 1px solid var(--border);
 }
 
-.modal-footer .flex {
+.footer-hint {
+  font-size: 10px;
+  color: var(--text-muted);
+  font-style: italic;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  opacity: 0.6;
+}
+
+.footer-actions {
   display: flex;
   align-items: center;
+  gap: 2.5rem;
 }
 
-.modal-footer .gap-2 { gap: 0.75rem; }
-.modal-footer .gap-4 { gap: 1.5rem; }
-
-/* Ensure buttons have individual presence */
-.modal-footer .btn {
-  white-space: nowrap;
+.action-group {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
 }
 
-@media (max-width: 768px) {
-  .intelligence-grid.premium {
-    grid-template-columns: 1fr;
+.btn-reject, .btn-approve {
+  padding: 0.6rem 1.75rem;
+  border-radius: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+  font-size: 11px;
+  letter-spacing: 0.05em;
+  border: none;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 10px 20px -5px rgba(0, 0, 0, 0.2);
+}
+
+.btn-reject {
+  background: #ef4444;
+  color: white;
+}
+
+.btn-reject:hover {
+  background: #dc2626;
+  transform: translateY(-2px);
+}
+
+.btn-approve {
+  background: #10b981;
+  color: white;
+}
+
+.btn-approve:hover {
+  background: #059669;
+  transform: translateY(-2px);
+}
+
+.btn-reject:active, .btn-approve:active {
+  transform: scale(0.95);
+}
+
+@media (max-width: 1024px) {
+  .modal-content {
+     width: 95vw !important;
+     max-width: 95vw !important;
   }
-
-  .page-header {
+  
+  .intelligence-grid.premium {
+    display: flex;
     flex-direction: column;
     gap: 1.5rem;
     align-items: stretch;
   }
 
+  .integrity-card {
+    padding: 1.25rem;
+    margin-bottom: 0;
+  }
+
+  .universal-modal {
+    max-width: 98vw !important;
+    width: 98vw !important;
+  }
+}
+
+@media (max-width: 768px) {
+  .history-page {
+    padding: 0;
+  }
+
+  .page-header {
+    flex-direction: column;
+    gap: 1.25rem;
+    align-items: flex-start;
+    padding: 0 0.5rem;
+  }
+
   .header-actions {
-    display: grid;
-    grid-template-columns: 1fr;
+    display: flex;
+    flex-direction: column;
+    width: 100%;
     gap: 0.75rem;
+  }
+
+  .search-bar {
+    width: 100%;
   }
 
   .input-search {
     width: 100% !important;
   }
 
+  .header-actions .btn {
+    width: 100%;
+    justify-content: center;
+  }
+
   .modal-content {
-    max-width: 95vw;
+    max-width: 98vw;
     border-radius: 16px;
+  }
+
+  .modal-header {
+    padding: 1rem;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 1rem;
+  }
+
+  .modal-header .flex {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .modal-footer {
+    padding: 1.25rem 1rem !important;
+    flex-direction: column;
+    gap: 1.5rem !important;
+    align-items: stretch !important;
+  }
+
+  .modal-footer .flex {
+    width: 100%;
+    justify-content: space-between;
+    gap: 0.5rem !important;
+  }
+
+  .modal-footer .btn {
+    flex: 1;
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+    text-align: center;
+    font-size: 9px !important;
+  }
+
+  .modal-footer p {
+    text-align: center;
   }
 
   /* Table to Card Transformation for Mobile */
@@ -1093,19 +1212,19 @@
   }
 
   .audit-row {
-    margin-bottom: 1.5rem;
+    margin-bottom: 1.25rem;
     border: 1px solid var(--border) !important;
-    border-radius: 16px;
+    border-radius: 20px;
     background: var(--surface) !important;
-    padding: 1.5rem !important;
-    box-shadow: var(--shadow-sm);
+    padding: 1.25rem !important;
+    box-shadow: 0 10px 20px -5px rgba(0, 0, 0, 0.1);
     box-sizing: border-box;
     position: relative;
     overflow: hidden;
   }
 
   .data-table td {
-    padding: 1rem 0 !important;
+    padding: 0.75rem 0 !important;
     border-bottom: 1px solid rgba(255, 255, 255, 0.03) !important;
     display: flex;
     justify-content: space-between;
@@ -1119,10 +1238,11 @@
     float: left;
     font-weight: 800;
     text-transform: uppercase;
-    font-size: 0.65rem;
+    font-size: 0.6rem;
     color: var(--text-muted);
     text-align: left;
     margin-right: 1rem;
+    flex-shrink: 0;
   }
 
   .data-table td:last-child {
@@ -1131,5 +1251,95 @@
 
   .data-table td .flex {
     justify-content: flex-end;
+  }
+
+  /* Modal Specific Adjustments */
+  .integrity-card {
+    padding: 1.5rem;
+  }
+
+  .viz-circle {
+    width: 110px;
+    height: 110px;
+  }
+
+  .viz-value {
+    font-size: 1.5rem;
+  }
+
+  .metric-row-premium {
+    padding: 1rem;
+  }
+
+  .metric-meta {
+    font-size: 0.75rem;
+  }
+
+  .universal-table-wrapper {
+    overflow-x: hidden;
+    margin: 0 -0.5rem;
+    padding: 0 0.5rem;
+  }
+
+  .comparison-table {
+    display: block;
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  .comparison-table thead {
+    display: none;
+  }
+
+  .comparison-table tr {
+    display: block;
+    margin-bottom: 2rem;
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 1rem;
+    background: var(--surface);
+  }
+
+  .field-name-cell {
+    display: block;
+    width: 100% !important;
+    border-right: none !important;
+    border-bottom: 2px solid var(--border) !important;
+    padding: 0.5rem 0 1rem 0 !important;
+    font-size: 0.85rem !important;
+    color: var(--primary) !important;
+    font-weight: 800 !important;
+  }
+
+  .doc-value-cell {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.75rem 0 !important;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.03) !important;
+    font-size: 0.75rem !important;
+    text-align: right;
+  }
+
+  .doc-value-cell::before {
+    content: attr(data-label);
+    font-weight: 800;
+    text-transform: uppercase;
+    font-size: 0.6rem;
+    color: var(--text-muted);
+    text-align: left;
+    margin-right: 1rem;
+    flex-shrink: 0;
+  }
+}
+
+@media (max-width: 480px) {
+  .modal-footer .flex {
+    flex-direction: column;
+    gap: 0.75rem !important;
+  }
+
+  .modal-footer .btn {
+    width: 100%;
   }
 }

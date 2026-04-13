@@ -164,10 +164,10 @@ const UnifiedAuditModal = ({ audit, onClose, initialView = 'intelligence', onDec
     if (status === 'fail') extraClass = 'addr-fail';
 
     return (
-      <td key={docType} className={`doc-value-cell ${extraClass}`} style={{ padding: '0.75rem', borderBottom: '1px solid var(--border)', wordBreak: 'break-word', fontWeight: 600 }}>
+      <td key={docType} data-label={docType.replace(/_/g, ' ')} className={`doc-value-cell ${extraClass}`}>
         {value}
         {status && (
-          <span className={`addr-badge ${status}`} style={{ display: 'inline-block', marginLeft: '4px' }}>
+          <span className={`addr-badge ${status}`}>
             {status === 'ok' ? '✓' : '✗'}
           </span>
         )}
@@ -177,7 +177,7 @@ const UnifiedAuditModal = ({ audit, onClose, initialView = 'intelligence', onDec
 
   return (
     <div className="modal-overlay animate-fade-in" onClick={onClose}>
-      <div className="modal-content animate-slide-up universal-modal" style={{ maxWidth: view === 'universal' ? '1100px' : '750px', transition: 'max-width 0.3s ease' }} onClick={e => e.stopPropagation()}>
+      <div className="modal-content animate-slide-up universal-modal" onClick={e => e.stopPropagation()}>
         <div className="modal-header">
           <div className="header-text-group">
             <h2 className="modal-title">
@@ -198,7 +198,7 @@ const UnifiedAuditModal = ({ audit, onClose, initialView = 'intelligence', onDec
           </div>
         </div>
 
-        <div className="modal-body" style={{ maxHeight: '72vh', overflowY: 'auto', padding: '1.5rem' }}>
+        <div className="modal-body">
           {view === 'intelligence' ? (
             !result ? (
               <div className="empty-state">
@@ -324,8 +324,8 @@ const UnifiedAuditModal = ({ audit, onClose, initialView = 'intelligence', onDec
               </div>
             )
           ) : (
-            <div className="universal-table-wrapper animate-fade-in" style={{ padding: '0rem' }}>
-                  <table className="comparison-table" style={{ fontSize: '0.75rem', tableLayout: 'fixed', width: '100%', borderCollapse: 'collapse' }}>
+            <div className="universal-table-wrapper animate-fade-in">
+                  <table className="comparison-table">
                     <thead>
                       <tr>
                         <th className="field-col" style={{ width: '20%', padding: '0.75rem' }}>Field</th>
@@ -339,7 +339,7 @@ const UnifiedAuditModal = ({ audit, onClose, initialView = 'intelligence', onDec
                         const mismatch = !isAddressField(fieldBase) && hasMismatch(vals, fieldBase);
                         return (
                           <tr key={fieldBase} className={mismatch ? 'mismatch-row' : ''}>
-                             <td className="field-name-cell" style={{ padding: '0.75rem', borderBottom: '1px solid var(--border)' }}>
+                             <td data-label="Field Identity" className="field-name-cell">
                                {fieldBase.replace(/_/g, ' ')}
                                {mismatch && <span className="mismatch-flag">⚠ Mismatch</span>}
                              </td>
@@ -355,21 +355,20 @@ const UnifiedAuditModal = ({ audit, onClose, initialView = 'intelligence', onDec
           )}
         </div>
 
-        <div className="modal-footer flex-between" style={{ padding: '2rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <p className="text-[10px] text-muted italic font-bold uppercase tracking-widest opacity-60">Field-by-field cross-doc validation active</p>
-            <div className="flex" style={{ gap: '2.5rem', display: 'flex', alignItems: 'center' }}>
-                <button className="btn btn-outline px-8 py-2 rounded-xl font-bold uppercase text-[10px] tracking-widest hover:bg-slate-800 transition-all" onClick={onClose}>Close</button>
-                <div className="flex" style={{ gap: '1rem', display: 'flex', alignItems: 'center' }}>
+        <div className="modal-footer">
+            <p className="footer-hint">Field-by-field cross-doc validation active</p>
+            <div className="flex footer-actions">
+                <button className="btn btn-outline" onClick={onClose}>Close</button>
+                <div className="flex action-group">
                   <button 
-                    className="btn px-8 py-2 rounded-xl font-black uppercase text-[11px] tracking-widest shadow-xl transition-all hover:scale-105 active:scale-95" 
-                    style={{ background: '#ef4444', color: 'white', border: 'none' }}
+                    className="btn btn-reject"
                     onClick={() => onDecision(audit.id, 'Reject')}
                     disabled={isProcessing}
                   >
                     Reject Match
                   </button>
                   <button 
-                    className="btn px-8 py-2 rounded-xl font-black uppercase text-[11px] tracking-widest shadow-xl shadow-success/20 transition-all hover:scale-105 bg-emerald-500 hover:bg-emerald-600 active:scale-95 text-white" 
+                    className="btn btn-approve"
                     onClick={() => onDecision(audit.id, 'Approve')}
                     disabled={isProcessing}
                   >
@@ -605,7 +604,7 @@ const AuditHistory = () => {
                           <div className="trace-score" style={{ 
                             color: score === 'N/A' ? 'var(--text-muted)' : (parseInt(score) > 80 ? 'var(--success)' : (parseInt(score) > 40 ? 'var(--warning)' : 'var(--error)'))
                           }}>
-                            {score}{score !== 'N/A' && '%'}
+                            {score}{score !== 'N/A' && !score.toString().includes('%') && '%'}
                           </div>
                           <div className="trace-action">
                             <Eye size={12} />

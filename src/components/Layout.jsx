@@ -15,6 +15,7 @@ import {
   Menu,
   X
 } from 'lucide-react'
+import { useAuth } from '../context/AuthContext'
 import './Layout.css'
 
 const SidebarItem = ({ to, icon, label, onClick }) => {
@@ -36,6 +37,7 @@ const SidebarItem = ({ to, icon, label, onClick }) => {
 
 const Layout = () => {
   const navigate = useNavigate()
+  const { currentUser, logout } = useAuth()
   const [theme, setTheme] = useState(localStorage.getItem('theme') || 'light')
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
   const [isSearchVisible, setIsSearchVisible] = useState(false)
@@ -49,8 +51,13 @@ const Layout = () => {
     setTheme(prev => prev === 'light' ? 'dark' : 'light')
   }
 
-  const handleLogout = () => {
-    navigate('/login')
+  const handleLogout = async () => {
+    try {
+      await logout()
+      navigate('/login')
+    } catch (error) {
+      console.error('Failed to log out', error)
+    }
   }
 
   const toggleMobileMenu = () => setIsMobileMenuOpen(!isMobileMenuOpen)
@@ -121,10 +128,16 @@ const Layout = () => {
             </button>
             <button className="action-btn"><Bell size={20} /></button>
             <div className="user-profile">
-              <div className="user-avatar">
-                <User size={18} />
+              <div className="user-avatar" style={{ overflow: 'hidden' }}>
+                {currentUser?.photoURL ? (
+                  <img src={currentUser.photoURL} alt="User profile" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                ) : (
+                  <User size={18} />
+                )}
               </div>
-              <span className="user-name">John Doe</span>
+              <span className="user-name" style={{ maxWidth: '120px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {currentUser?.email?.split('@')[0] || 'Auditor'}
+              </span>
             </div>
           </div>
         </header>
