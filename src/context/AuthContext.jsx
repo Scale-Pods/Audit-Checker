@@ -35,7 +35,11 @@ export const AuthProvider = ({ children }) => {
 
   return (
     <AuthContext.Provider value={value}>
-      {!loading && children}
+      {loading ? (
+        <div style={{ height: '100vh', width: '100vw', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#0a0f1c', color: '#3b82f6' }}>
+          <div className="loading-spinner">Loading Intelligence...</div>
+        </div>
+      ) : children}
     </AuthContext.Provider>
   );
 };
