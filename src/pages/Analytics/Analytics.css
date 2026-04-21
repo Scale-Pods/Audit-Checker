@@ -47,8 +47,8 @@
 
 /* Typography Utilities */
 .text-xs { font-size: 0.75rem; }
-.text-[10px] { font-size: 10px; }
-.text-[11px] { font-size: 11px; }
+.text-\[10px\] { font-size: 10px; }
+.text-\[11px\] { font-size: 11px; }
 .text-2xl { font-size: 1.5rem; }
 .text-4xl { font-size: 2.25rem; }
 .text-lg { font-size: 1.125rem; }
