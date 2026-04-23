@@ -466,7 +466,8 @@ const salesValuesMatch = (a, b, type = 'text') => {
   const nb = extractNum(clean(b));
 
   if (type === 'quantity') {
-    if (!isNaN(na) && !isNaN(nb)) return Math.abs(na - nb) <= 250;
+    // 1 MT = 1000 kgs. Tolerance is 250 kgs (0.25 MT).
+    if (!isNaN(na) && !isNaN(nb)) return (Math.abs(na - nb) * 1000) <= 250;
   }
 
   if (type === 'numeric') {
