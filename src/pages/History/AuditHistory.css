@@ -11,6 +11,7 @@
   border-radius: 12px;
   padding: 4px;
   gap: 4px;
+  justify-content: flex-start;
 }
 
 .side-toggle-btn {
@@ -43,6 +44,101 @@
   background: rgba(139, 92, 246, 0.18);
   color: #a78bfa;
   box-shadow: 0 2px 8px rgba(139, 92, 246, 0.18);
+}
+
+.header-actions-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.search-bar-container {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex: 1;
+  justify-content: flex-end;
+  min-width: 300px;
+}
+
+.search-bar {
+  position: relative;
+  flex: 1;
+  max-width: 400px;
+}
+
+.search-icon-inner {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+.input-search {
+  width: 100% !important;
+  padding-left: 38px !important;
+}
+
+.refresh-btn-mobile {
+  display: none !important;
+  padding: 0.5rem !important;
+  min-width: 42px;
+}
+
+@media (max-width: 768px) {
+  .header-actions-bar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  
+  .side-toggle-group {
+    width: 100%;
+    justify-content: center;
+  }
+  
+  .side-toggle-btn {
+    flex: 1;
+    text-align: center;
+  }
+  
+  .search-bar-container {
+    min-width: 100%;
+  }
+  
+  .search-bar {
+    max-width: none;
+  }
+  
+  .refresh-btn-desktop {
+    display: none !important;
+  }
+  
+  .refresh-btn-mobile {
+    display: flex !important;
+  }
+}
+
+@media (max-width: 480px) {
+  .page-header {
+    padding: 0 !important;
+  }
+  .page-title {
+    font-size: 1.6rem !important;
+    text-align: left !important;
+  }
+  .page-subtitle {
+    font-size: 0.75rem !important;
+    text-align: left !important;
+    margin-bottom: 1.5rem;
+  }
+  
+  .side-toggle-btn {
+    padding: 0.5rem 0.75rem !important;
+    font-size: 0.68rem !important;
+  }
 }
 
 /* ── Sales Comparison Modal ──────────────────────────────── */
@@ -194,7 +290,86 @@
 
 /* ── Sales Table ─────────────────────────────────────────── */
 .sales-data-table {
-  min-width: 900px;
+  min-width: 100%;
+}
+
+@media (min-width: 1024px) {
+  .sales-data-table {
+    min-width: 900px;
+  }
+}
+
+.hide-mobile {
+  display: table-cell !important;
+}
+
+.show-mobile-only {
+  display: none !important;
+}
+
+.btn-view-details {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 12px;
+  background: rgba(37, 99, 235, 0.1);
+  color: var(--primary);
+  border-radius: 6px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  transition: all 0.2s;
+}
+
+.btn-view-details:hover {
+  background: var(--primary);
+  color: white;
+}
+
+@media (max-width: 768px) {
+  .hide-mobile {
+    display: none !important;
+  }
+  
+  .show-mobile-only {
+    display: block !important;
+  }
+  
+  .sales-data-table td[data-label]::before {
+    display: none !important; /* Hide the labels for simplified view */
+  }
+  
+  .sales-data-table td {
+    padding: 1rem 1.5rem !important;
+  }
+  
+  .sales-data-table thead {
+    display: none;
+  }
+  
+  .sales-data-table tr {
+    display: flex !important;
+    justify-content: space-between !important;
+    align-items: center !important;
+    padding: 1.25rem !important;
+    border-bottom: 1px solid var(--border) !important;
+    background: transparent !important;
+    margin-bottom: 0 !important;
+    transform: none !important;
+    box-shadow: none !important;
+  }
+  
+  .sales-data-table td {
+    padding: 0 !important;
+    border: none !important;
+    display: block !important;
+    width: auto !important;
+    text-align: left !important;
+  }
+  
+  .sales-action-col {
+    flex-shrink: 0;
+  }
 }
 
 .sales-cell {
@@ -227,6 +402,128 @@
 .input-search:focus {
   border-color: var(--primary);
   box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.1);
+}
+
+/* ── Sales Record List (New) ─────────────────────────────── */
+.sales-records-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.sales-record-card {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1.25rem 2rem;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  background: transparent;
+}
+
+.sales-record-card:hover {
+  background: rgba(37, 99, 235, 0.04);
+}
+
+.sales-record-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.sales-order-id {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--primary);
+  margin: 0;
+  font-family: 'Outfit', sans-serif;
+}
+
+.sales-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.sales-party {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 300px;
+}
+
+.sales-dot {
+  opacity: 0.4;
+  font-size: 0.6rem;
+}
+
+.sales-date {
+  opacity: 0.8;
+  white-space: nowrap;
+}
+
+.btn-action-view {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.6rem 1.25rem;
+  background: rgba(37, 99, 235, 0.1);
+  color: var(--primary);
+  border: 1px solid rgba(37, 99, 235, 0.2);
+  border-radius: 10px;
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  transition: all 0.2s;
+}
+
+.btn-action-view:hover {
+  background: var(--primary);
+  color: white;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.2);
+}
+
+@media (max-width: 768px) {
+  .sales-record-card {
+    padding: 1.25rem 1rem;
+  }
+  
+  .sales-party {
+    max-width: 180px;
+  }
+  
+  .btn-action-view {
+    padding: 0.65rem;
+    min-width: 38px;
+    justify-content: center;
+  }
+}
+
+@media (max-width: 480px) {
+  .sales-order-id {
+    font-size: 0.95rem;
+  }
+  .sales-meta {
+    font-size: 0.72rem;
+    gap: 0.4rem;
+  }
+  .sales-party {
+    max-width: 130px;
+  }
+}
+
+.sales-primary-col {
+  text-align: left !important;
+}
+
+.sales-action-col {
+  vertical-align: middle !important;
 }
 
 .action-buttons {
@@ -1418,34 +1715,34 @@
     display: none; /* Hide column headers */
   }
 
+  /* Standardize Mobile Audit Cards */
   .audit-row {
     margin-bottom: 1.25rem;
     border: 1px solid var(--border) !important;
-    border-radius: 20px;
+    border-radius: 16px;
     background: var(--surface) !important;
-    padding: 1.25rem !important;
-    box-shadow: 0 10px 20px -5px rgba(0, 0, 0, 0.1);
-    box-sizing: border-box;
+    padding: 1rem !important;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
     position: relative;
-    overflow: hidden;
+    box-sizing: border-box;
   }
 
   .data-table td {
-    padding: 0.75rem 0 !important;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.03) !important;
+    padding: 0.65rem 0 !important;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05) !important;
     display: flex;
     justify-content: space-between;
     align-items: center;
-    text-align: right;
+    text-align: right !important;
     width: 100% !important;
+    min-height: 2.5rem;
   }
 
   .data-table td::before {
     content: attr(data-label);
-    float: left;
     font-weight: 800;
     text-transform: uppercase;
-    font-size: 0.6rem;
+    font-size: 0.55rem;
     color: var(--text-muted);
     text-align: left;
     margin-right: 1rem;
@@ -1454,10 +1751,6 @@
 
   .data-table td:last-child {
     border-bottom: none !important;
-  }
-
-  .data-table td .flex {
-    justify-content: flex-end;
   }
 
   /* Modal Specific Adjustments */

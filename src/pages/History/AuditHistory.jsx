@@ -737,15 +737,20 @@ const AuditHistory = () => {
 
   return (
     <div className="history-page animate-fade-in">
-      <div className="page-header flex-between mb-8">
-        <div>
-          <h1 className="page-title">Operational Ledger</h1>
-          <p className="page-subtitle">
-            {activeSide === 'purchase' ? 'Purchase audit traces & dispatch compliance' : 'Sales side records & invoice log'}
-          </p>
+      <div className="page-header mb-8">
+        <div className="flex-between mb-6">
+          <div>
+            <h1 className="page-title">Operational Ledger</h1>
+            <p className="page-subtitle">
+              {activeSide === 'purchase' ? 'Purchase audit traces & dispatch compliance' : 'Sales side records & invoice log'}
+            </p>
+          </div>
+          <button className="btn btn-outline flex items-center gap-2 refresh-btn-desktop" onClick={handleRefresh} disabled={isRefreshing}>
+            <RefreshCw size={16} className={isRefreshing ? 'animate-spin' : ''} /> Refresh
+          </button>
         </div>
-        <div className="header-actions">
-          {/* Purchase / Sales Toggle */}
+
+        <div className="header-actions-bar">
           <div className="side-toggle-group">
             <button
               className={`side-toggle-btn ${activeSide === 'purchase' ? 'active-purchase' : ''}`}
@@ -760,20 +765,22 @@ const AuditHistory = () => {
               💰 Sales
             </button>
           </div>
-          <div className="search-bar" style={{ position: 'relative' }}>
-            <Search size={16} className="text-muted" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)' }} />
-            <input 
-              type="text" 
-              placeholder={activeSide === 'purchase' ? 'Search Invoice, Supplier or Vehicle...' : 'Search sales records...'}
-              className="input-search" 
-              style={{ paddingLeft: '36px', width: '300px' }}
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-            />
+          
+          <div className="search-bar-container">
+            <div className="search-bar">
+              <Search size={16} className="text-muted search-icon-inner" />
+              <input 
+                type="text" 
+                placeholder={activeSide === 'purchase' ? 'Search records...' : 'Search sales...'}
+                className="input-search" 
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
+            </div>
+            <button className="btn btn-outline refresh-btn-mobile" onClick={handleRefresh} disabled={isRefreshing}>
+              <RefreshCw size={16} className={isRefreshing ? 'animate-spin' : ''} />
+            </button>
           </div>
-          <button className="btn btn-outline flex items-center gap-2" onClick={handleRefresh} disabled={isRefreshing}>
-            <RefreshCw size={16} className={isRefreshing ? 'animate-spin' : ''} /> Refresh
-          </button>
         </div>
       </div>
 
@@ -893,44 +900,41 @@ const AuditHistory = () => {
             </div>
           ) : (
             <>
-              <div className="table-responsive">
-                <table className="data-table sales-data-table">
-                  <thead>
-                    <tr>
-                      {salesColumns.map(col => (
-                        <th key={col}>{col.replace(/_/g, ' ')}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredSalesHistory.map((record, idx) => (
-                      <tr
-                        key={record.id || idx}
-                        className="audit-row"
-                        style={{ cursor: 'pointer' }}
-                        onClick={() => setSelectedSalesRecord(record)}
-                      >
-                        {salesColumns.map(col => (
-                          <td key={col} data-label={col.replace(/_/g, ' ')} className="sales-cell">
-                            {record[col] !== undefined && record[col] !== null && record[col] !== ''
-                              ? record[col].toString()
-                              : <span className="text-muted" style={{ opacity: 0.4, fontStyle: 'italic', fontSize: '0.7rem' }}>—</span>
-                            }
-                          </td>
-                        ))}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              <div className="pagination p-6 border-t flex justify-between items-center text-sm text-muted">
-                <span>Displaying {filteredSalesHistory.length} sales records</span>
-                <div className="flex gap-2">
-                  <button className="btn btn-outline btn-sm" disabled>Prev</button>
-                  <button className="btn btn-primary btn-sm px-4">1</button>
-                  <button className="btn btn-outline btn-sm" disabled>Next</button>
-                </div>
-              </div>
+          <div className="sales-records-list animate-fade-in">
+             {filteredSalesHistory.map((record, idx) => (
+               <div 
+                 key={record.id || idx} 
+                 className="sales-record-card"
+                 onClick={() => setSelectedSalesRecord(record)}
+               >
+                 <div className="sales-record-info">
+                   <h3 className="sales-order-id">{record.order_number || record.Order_Number || 'N/A'}</h3>
+                   <div className="sales-meta">
+                     <span className="sales-party">{record.bill_to_name || record.broker_name || 'Unknown Party'}</span>
+                     <span className="sales-dot">•</span>
+                     <span className="sales-date">
+                       {record.created_at ? new Date(record.created_at).toLocaleDateString('en-IN', { dateStyle: 'medium' }) : '—'}
+                     </span>
+                   </div>
+                 </div>
+                 <div className="sales-record-action">
+                    <button className="btn-action-view">
+                      <Eye size={16} />
+                      <span className="hide-mobile">View Comparison</span>
+                    </button>
+                 </div>
+               </div>
+             ))}
+          </div>
+          <div className="pagination p-6 border-t flex justify-between items-center text-sm text-muted">
+            <span className="hide-mobile">Displaying {filteredSalesHistory.length} sales records</span>
+            <span className="show-mobile-only">{filteredSalesHistory.length} Records</span>
+            <div className="flex gap-2">
+              <button className="btn btn-outline btn-sm" disabled>Prev</button>
+              <button className="btn btn-primary btn-sm px-4">1</button>
+              <button className="btn btn-outline btn-sm" disabled>Next</button>
+            </div>
+          </div>
             </>
           )}
         </div>
