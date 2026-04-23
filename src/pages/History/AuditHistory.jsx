@@ -3,6 +3,7 @@ import { FileText, Filter, CheckCircle, AlertTriangle, Eye, Download, RefreshCw,
 import './AuditHistory.css'
 
 const AUDITS_WEBHOOK_URL = import.meta.env.VITE_AUDITS_HISTORY_URL || 'https://n8n.srv1010832.hstgr.cloud/webhook/40a6351a-d510-492f-918b-7ec9bae2bd2a'
+const SALES_WEBHOOK_URL = 'https://n8n.srv1010832.hstgr.cloud/webhook/10916618-e795-416f-9d0a-6646da9aba06'
 
 // Known ZV Steels address tokens for fuzzy checking
 const BILL_TO_TOKENS = ['zv steels', 'zvsteels', 'zv metal', 'aaacz0915c', 'gupta bhavan', 'masjid', 'carnac bunder', 'masjid bandar', '400009', 'mumbai', 'maharashtra']
@@ -382,13 +383,202 @@ const UnifiedAuditModal = ({ audit, onClose, initialView = 'intelligence', onDec
   )
 }
 
+// ── Sales field comparison map ─────────────────────────────────
+const SALES_COMPARE_FIELDS = [
+  { label: 'Order Number',       invoice: 'order_number',        sheet: 'order_number_sheet',        type: 'text' },
+  { label: 'Party Order Number', invoice: 'party_order_number',  sheet: 'party_order_number_sheet',  type: 'text' },
+  { label: 'Broker Name',        invoice: 'broker_name',         sheet: 'broker_name_sheet',         type: 'name' },
+  { label: 'Bill To Name',       invoice: 'bill_to_name',        sheet: 'bill_to_name_sheet',        type: 'name' },
+  { label: 'Rate',               invoice: 'rate',                sheet: 'rate_sheet',                type: 'numeric' },
+  { label: 'Quantity (MT)',      invoice: 'quantity',            sheet: 'quantity_sheet',            type: 'quantity' },
+  { label: 'Payment Terms',      invoice: 'payment_terms',       sheet: 'payment_terms_sheet',       type: 'numeric' },
+  { label: 'Thickness',          invoice: 'thickness',           sheet: 'thickness_sheet',           type: 'numeric' },
+  { label: 'Width',              invoice: 'width',               sheet: 'width_sheet',               type: 'numeric' },
+  { label: 'Length',             invoice: 'length',              sheet: 'length_sheet',              type: 'numeric' },
+];
+
+// Common abbreviation normalizer for name fuzzy matching
+const normalizeNameTokens = (str) => {
+  const ABBR = { 'ltd': 'limited', 'pvt': 'private', 'co': 'company', 'corp': 'corporation', 'intl': 'international', 'ind': 'industries', 'mfg': 'manufacturing' };
+  return str
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, '')    // strip punctuation
+    .split(/\s+/)
+    .filter(Boolean)
+    .map(t => ABBR[t] || t);        // expand abbreviations
+};
+
+// Simple Levenshtein distance for spelling mistakes
+const levenshtein = (a, b) => {
+  if (a.length === 0) return b.length;
+  if (b.length === 0) return a.length;
+  const matrix = Array.from({ length: b.length + 1 }, (_, i) => [i]);
+  for (let j = 0; j <= a.length; j++) matrix[0][j] = j;
+  for (let i = 1; i <= b.length; i++) {
+    for (let j = 1; j <= a.length; j++) {
+      if (b.charAt(i - 1) === a.charAt(j - 1)) {
+        matrix[i][j] = matrix[i - 1][j - 1];
+      } else {
+        matrix[i][j] = Math.min(matrix[i - 1][j - 1] + 1, matrix[i][j - 1] + 1, matrix[i - 1][j] + 1);
+      }
+    }
+  }
+  return matrix[b.length][a.length];
+};
+
+const fuzzyNameMatch = (a, b) => {
+  const ta = normalizeNameTokens(a);
+  const tb = normalizeNameTokens(b);
+  const shorter = ta.length <= tb.length ? ta : tb;
+  const longer  = ta.length <= tb.length ? tb : ta;
+  // Each token of the shorter must appear in the longer (or be ≥80% similar or max 2 typos)
+  const matched = shorter.filter(st =>
+    longer.some(lt => {
+      if (lt === st) return true;
+      if (st.length > 3 && lt.includes(st)) return true;
+      if (lt.length > 3 && st.includes(lt)) return true;
+      // Allow minor spelling mistakes (max 2 characters diff for words > 4 chars)
+      if (st.length > 4 && lt.length > 4) {
+         const dist = levenshtein(st, lt);
+         return dist <= 2;
+      }
+      return false;
+    })
+  );
+  return matched.length / shorter.length >= 0.7;
+};
+
+const salesValuesMatch = (a, b, type = 'text') => {
+  if (!a && !b) return true;
+  if (!a || !b) return false;
+
+  const clean = v => v.toString().replace(/,/g, '').trim();
+
+  if (type === 'name') return fuzzyNameMatch(a, b);
+
+  // For numeric/quantity, extract just the numbers if there's text attached (e.g. '150 DAYS' -> 150)
+  const extractNum = (v) => {
+     const match = v.toString().match(/-?\d+(\.\d+)?/);
+     return match ? parseFloat(match[0]) : NaN;
+  };
+
+  const na = extractNum(clean(a));
+  const nb = extractNum(clean(b));
+
+  if (type === 'quantity') {
+    if (!isNaN(na) && !isNaN(nb)) return Math.abs(na - nb) <= 250;
+  }
+
+  if (type === 'numeric') {
+    if (!isNaN(na) && !isNaN(nb)) return Math.abs(na - nb) < 0.01;
+  }
+
+  // text / fallback
+  return clean(a).toLowerCase() === clean(b).toLowerCase();
+};
+
+// ── Sales Record Detail Modal ─────────────────────────────────
+const SalesRecordModal = ({ record, onClose }) => {
+  if (!record) return null;
+
+  const val = (key) => {
+    const v = record[key];
+    return (v !== null && v !== undefined && v !== '') ? v.toString() : null;
+  };
+
+  const totalFields = SALES_COMPARE_FIELDS.length;
+  const matchCount = SALES_COMPARE_FIELDS.filter(f => {
+    const iv = val(f.invoice), sv = val(f.sheet);
+    return iv && sv && salesValuesMatch(iv, sv, f.type);
+  }).length;
+  const scorePercent = Math.round((matchCount / totalFields) * 100);
+  const allMatch = matchCount === totalFields;
+
+  return (
+    <div className="modal-overlay animate-fade-in" onClick={onClose}>
+      <div className="modal-content animate-slide-up sales-modal" onClick={e => e.stopPropagation()}>
+        <div className="modal-header">
+          <div className="header-text-group">
+            <h2 className="modal-title">
+              <FileText className="text-primary" size={22} />
+              Sales Comparison Ledger
+            </h2>
+            <p className="modal-subtitle">Order Ref: {record.order_number || record.Order_Number || record.id || '—'}</p>
+          </div>
+          <div className="flex items-center gap-3">
+            <div className="sales-score-pill" style={{
+              background: allMatch ? 'rgba(16,185,129,0.15)' : scorePercent >= 70 ? 'rgba(245,158,11,0.15)' : 'rgba(239,68,68,0.15)',
+              color: allMatch ? '#10b981' : scorePercent >= 70 ? '#f59e0b' : '#ef4444',
+              border: `1px solid ${allMatch ? 'rgba(16,185,129,0.3)' : scorePercent >= 70 ? 'rgba(245,158,11,0.3)' : 'rgba(239,68,68,0.3)'}`,
+            }}>
+              {scorePercent}% Match
+            </div>
+            <button className="close-btn" onClick={onClose}><X size={20} /></button>
+          </div>
+        </div>
+
+        <div className="modal-body" style={{ padding: '0' }}>
+          <table className="sales-compare-table">
+            <thead>
+              <tr>
+                <th className="sc-field-col">Field</th>
+                <th className="sc-inv-col">📄 Invoice</th>
+                <th className="sc-sheet-col">📊 Sheet</th>
+                <th className="sc-status-col">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {SALES_COMPARE_FIELDS.map(({ label, invoice, sheet, type }) => {
+                const iv = val(invoice);
+                const sv = val(sheet);
+                const bothPresent = iv && sv;
+                const matched = bothPresent && salesValuesMatch(iv, sv, type);
+                const mismatched = bothPresent && !matched;
+                return (
+                  <tr key={label} className={mismatched ? 'sc-row-mismatch' : matched ? 'sc-row-match' : ''}>
+                    <td className="sc-field-name">{label}</td>
+                    <td className={`sc-cell ${mismatched ? 'sc-val-mismatch' : matched ? 'sc-val-match' : ''}`}>
+                      {iv ?? <span className="sc-empty">—</span>}
+                    </td>
+                    <td className={`sc-cell ${mismatched ? 'sc-val-mismatch' : matched ? 'sc-val-match' : ''}`}>
+                      {sv ?? <span className="sc-empty">—</span>}
+                    </td>
+                    <td className="sc-status-cell">
+                      {bothPresent
+                        ? matched
+                          ? <span className="sc-badge match"><CheckCircle size={12} /> Match</span>
+                          : <span className="sc-badge mismatch"><AlertTriangle size={12} /> Mismatch</span>
+                        : <span className="sc-badge missing">—</span>
+                      }
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+
+        <div className="modal-footer">
+          <p className="footer-hint">{matchCount}/{totalFields} fields match · Invoice vs Sheet comparison</p>
+          <button className="btn btn-outline" onClick={onClose}>Close</button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const AuditHistory = () => {
+  const [activeSide, setActiveSide] = useState('purchase') // 'purchase' | 'sales'
   const [history, setHistory] = useState([])
+  const [salesHistory, setSalesHistory] = useState([])
   const [isLoading, setIsLoading] = useState(true)
+  const [isSalesLoading, setIsSalesLoading] = useState(false)
   const [error, setError] = useState(null)
+  const [salesError, setSalesError] = useState(null)
   const [searchTerm, setSearchTerm] = useState('')
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [selectedAudit, setSelectedAudit] = useState(null)
+  const [selectedSalesRecord, setSelectedSalesRecord] = useState(null)
   const [initialModalView, setInitialModalView] = useState('intelligence')
   const [decisionProcessing, setDecisionProcessing] = useState(null)
   const [confirmDecision, setConfirmDecision] = useState(null)
@@ -435,6 +625,14 @@ const AuditHistory = () => {
     }
   }
 
+  const normalizeArray = (data) => {
+    if (Array.isArray(data)) return data;
+    if (data?.audits && Array.isArray(data.audits)) return data.audits;
+    if (data?.data && Array.isArray(data.data)) return data.data;
+    if (data && typeof data === 'object' && Object.keys(data).length > 0) return [data];
+    return [];
+  };
+
   const fetchHistory = async (showLoading = true) => {
     if (showLoading) setIsLoading(true)
     setError(null)
@@ -442,23 +640,12 @@ const AuditHistory = () => {
       const response = await fetch(AUDITS_WEBHOOK_URL)
       if (!response.ok) throw new Error('Failed to synchronize logs')
       const data = await response.json()
-      
-      let auditData = [];
-      if (Array.isArray(data)) {
-        auditData = data;
-      } else if (data.audits && Array.isArray(data.audits)) {
-        auditData = data.audits;
-      } else if (data.data && Array.isArray(data.data)) {
-        auditData = data.data;
-      } else if (data && typeof data === 'object' && Object.keys(data).length > 0) {
-        auditData = [data];
-      }
+      const auditData = normalizeArray(data);
       
       setHistory(prev => {
         const merged = new Map();
         prev.forEach(item => merged.set(item.id, item));
         auditData.forEach(item => merged.set(item.id, item));
-        
         return Array.from(merged.values()).sort((a, b) => 
           new Date(b.created_at || Date.now()) - new Date(a.created_at || Date.now())
         );
@@ -473,9 +660,36 @@ const AuditHistory = () => {
     }
   }
 
+  const fetchSalesHistory = async (showLoading = true) => {
+    if (showLoading) setIsSalesLoading(true)
+    setSalesError(null)
+    try {
+      const response = await fetch(SALES_WEBHOOK_URL)
+      if (!response.ok) throw new Error('Failed to fetch sales records')
+      const data = await response.json()
+      const salesData = normalizeArray(data);
+      setSalesHistory(salesData);
+    } catch {
+      console.error('Sales History Fetch Error')
+      setSalesError('Could not load sales records.')
+      setSalesHistory([])
+    } finally {
+      setIsSalesLoading(false)
+      setIsRefreshing(false)
+    }
+  }
+
   useEffect(() => {
     fetchHistory()
   }, [])
+
+  const handleSideToggle = (side) => {
+    setActiveSide(side);
+    setSearchTerm('');
+    if (side === 'sales' && salesHistory.length === 0 && !isSalesLoading) {
+      fetchSalesHistory();
+    }
+  };
 
   const filteredHistory = useMemo(() => {
     return history.filter(item => 
@@ -486,10 +700,30 @@ const AuditHistory = () => {
     )
   }, [history, searchTerm])
 
+  const filteredSalesHistory = useMemo(() => {
+    if (!searchTerm) return salesHistory;
+    const term = searchTerm.toLowerCase();
+    return salesHistory.filter(item =>
+      Object.values(item).some(v => v?.toString().toLowerCase().includes(term))
+    );
+  }, [salesHistory, searchTerm])
+
   const handleRefresh = () => {
     setIsRefreshing(true)
-    fetchHistory(false)
+    if (activeSide === 'sales') {
+      fetchSalesHistory(false)
+    } else {
+      fetchHistory(false)
+    }
   }
+
+  // Derive sales table columns dynamically (must be before any early return)
+  const salesColumns = useMemo(() => {
+    if (salesHistory.length === 0) return [];
+    const allKeys = new Set();
+    salesHistory.forEach(row => Object.keys(row).forEach(k => allKeys.add(k)));
+    return Array.from(allKeys);
+  }, [salesHistory]);
 
   if (isLoading) {
     return (
@@ -505,17 +739,33 @@ const AuditHistory = () => {
       <div className="page-header flex-between mb-8">
         <div>
           <h1 className="page-title">Operational Ledger</h1>
-          <p className="page-subtitle">Granular audit traces for purchase and dispatch compliance</p>
-          {error && <span className="error-badge">{error}</span>}
+          <p className="page-subtitle">
+            {activeSide === 'purchase' ? 'Purchase audit traces & dispatch compliance' : 'Sales side records & invoice log'}
+          </p>
         </div>
         <div className="header-actions">
+          {/* Purchase / Sales Toggle */}
+          <div className="side-toggle-group">
+            <button
+              className={`side-toggle-btn ${activeSide === 'purchase' ? 'active-purchase' : ''}`}
+              onClick={() => handleSideToggle('purchase')}
+            >
+              🛒 Purchase
+            </button>
+            <button
+              className={`side-toggle-btn ${activeSide === 'sales' ? 'active-sales' : ''}`}
+              onClick={() => handleSideToggle('sales')}
+            >
+              💰 Sales
+            </button>
+          </div>
           <div className="search-bar" style={{ position: 'relative' }}>
             <Search size={16} className="text-muted" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)' }} />
             <input 
               type="text" 
-              placeholder="Search Invoice, Supplier or Vehicle..." 
+              placeholder={activeSide === 'purchase' ? 'Search Invoice, Supplier or Vehicle...' : 'Search sales records...'}
               className="input-search" 
-              style={{ paddingLeft: '36px', width: '320px' }}
+              style={{ paddingLeft: '36px', width: '300px' }}
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
             />
@@ -526,109 +776,171 @@ const AuditHistory = () => {
         </div>
       </div>
 
-      <div className="card table-card overflow-hidden">
-        <div className="table-responsive">
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>Audit Identity</th>
-                <th>Supplier / Logistics Asset</th>
-                <th>Reference Tracking</th>
-                <th>Operational Metrics</th>
-                <th>Time of Audit</th>
-                <th>Integrity Status</th>
-                <th className="text-right">Intelligence Trace</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredHistory.map((record) => {
-                const result = parseAuditResult(record.Audit_Result);
-                const score = result?.overall?.final_score || 'N/A';
-                
-                // Prioritize 'Approve' or 'Reject' from either Status or Result columns
-                const finalDecision = (record.Result === 'Approve' || record.Result === 'Reject') ? record.Result : 
-                                      (record.Status === 'Approve' || record.Status === 'Reject') ? record.Status : null;
-
-                const status = finalDecision || result?.overall?.status || record.Result || record.Status;
-                
-                const rowBg = finalDecision === 'Approve' ? 'rgba(16, 185, 129, 0.2)' : 
-                              finalDecision === 'Reject' ? 'rgba(239, 68, 68, 0.2)' : undefined;
-                
-                return (
-                  <tr key={record.id} onClick={() => setSelectedAudit(record)} style={{ cursor: 'pointer', backgroundColor: rowBg }} className="audit-row">
-                    <td data-label="Audit Identity" className="font-bold text-primary">
-                      <div className="flex flex-col">
-                        <span>{record.Invoice_Number_Invoice || 'N/A'}</span>
-                        <span className="text-[10px] text-muted opacity-60">REF: {record.id}</span>
-                      </div>
-                    </td>
-                    <td data-label="Supplier / Logistics Asset">
-                      <div className="flex flex-col">
-                        <span className="font-semibold text-gray-800">{record.Supplier_Name_Invoice || 'Unknown'}</span>
-                        <span className="text-xs text-muted flex items-center gap-1"><Truck size={10}/> {record.Vehicle_No_Eway || 'NO_VEHICLE'}</span>
-                      </div>
-                    </td>
-                    <td data-label="Reference Tracking">
-                      <div className="flex flex-col text-xs">
+      {/* ── PURCHASE SIDE ──────────────────────────────────────── */}
+      {activeSide === 'purchase' && (
+        <div className="card table-card overflow-hidden animate-fade-in">
+          <div className="table-responsive">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Audit Identity</th>
+                  <th>Supplier / Logistics Asset</th>
+                  <th>Reference Tracking</th>
+                  <th>Operational Metrics</th>
+                  <th>Time of Audit</th>
+                  <th>Integrity Status</th>
+                  <th className="text-right">Intelligence Trace</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredHistory.map((record) => {
+                  const result = parseAuditResult(record.Audit_Result);
+                  const score = result?.overall?.final_score || 'N/A';
+                  const finalDecision = (record.Result === 'Approve' || record.Result === 'Reject') ? record.Result :
+                                        (record.Status === 'Approve' || record.Status === 'Reject') ? record.Status : null;
+                  const status = finalDecision || result?.overall?.status || record.Result || record.Status;
+                  const rowBg = finalDecision === 'Approve' ? 'rgba(16, 185, 129, 0.2)' :
+                                finalDecision === 'Reject' ? 'rgba(239, 68, 68, 0.2)' : undefined;
+                  return (
+                    <tr key={record.id} onClick={() => setSelectedAudit(record)} style={{ cursor: 'pointer', backgroundColor: rowBg }} className="audit-row">
+                      <td data-label="Audit Identity" className="font-bold text-primary">
+                        <div className="flex flex-col">
+                          <span>{record.Invoice_Number_Invoice || 'N/A'}</span>
+                          <span className="text-[10px] text-muted opacity-60">REF: {record.id}</span>
+                        </div>
+                      </td>
+                      <td data-label="Supplier / Logistics Asset">
+                        <div className="flex flex-col">
+                          <span className="font-semibold text-gray-800">{record.Supplier_Name_Invoice || 'Unknown'}</span>
+                          <span className="text-xs text-muted flex items-center gap-1"><Truck size={10}/> {record.Vehicle_No_Eway || 'NO_VEHICLE'}</span>
+                        </div>
+                      </td>
+                      <td data-label="Reference Tracking">
+                        <div className="flex flex-col text-xs">
                           <span className="flex items-center gap-1"><Hash size={10}/> BATCH: {record.Batch_Code_Invoice || 'N/A'}</span>
                           <span className="text-muted font-mono">EWB: {record.EWB_Number_EWay || 'NONE'}</span>
-                      </div>
-                    </td>
-                    <td data-label="Operational Metrics" className="text-muted font-medium">
-                      <span className="text-primary font-bold">₹{(parseFloat(record.Total_Amount_Invoice) / 100000).toFixed(2)} L</span>
-                      <br/>
-                      <span className="text-[10px] uppercase tracking-tighter">Gross (in Lakhs)</span>
-                    </td>
-                    <td data-label="Time of Audit" className="text-muted text-xs font-semibold">
-                      {new Date(record.created_at).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })}
-                    </td>
-                    <td data-label="Integrity Status">
-                      <span 
-                        className={`badge-status ${status?.toLowerCase().replace(/_/g, '')}`}
-                        style={
-                          status === 'Approve' ? { background: '#10b981', color: 'white', border: '1px solid #10b981' } :
-                          status === 'Reject' ? { background: '#ef4444', color: 'white', border: '1px solid #ef4444' } : {}
-                        }
-                      >
-                        {status === 'GOOD_MATCH' || status === 'Completed' || status === 'Approve' ? <CheckCircle size={14} /> : <AlertTriangle size={14} />}
-                        {(status?.replace(/_/g, ' ') || 'Pending').toUpperCase()}
-                      </span>
-                    </td>
-                    <td data-label="Trace" className="text-right">
-                      <div className="flex items-center justify-end">
-                        <div className="unified-trace-btn" onClick={(e) => {
-                          e.stopPropagation();
-                          setInitialModalView('universal');
-                          setSelectedAudit(record);
-                        }}>
-                          <div className="trace-score" style={{ 
-                            color: score === 'N/A' ? 'var(--text-muted)' : (parseInt(score) > 80 ? 'var(--success)' : (parseInt(score) > 40 ? 'var(--warning)' : 'var(--error)'))
+                        </div>
+                      </td>
+                      <td data-label="Operational Metrics" className="text-muted font-medium">
+                        <span className="text-primary font-bold">₹{(parseFloat(record.Total_Amount_Invoice) / 100000).toFixed(2)} L</span>
+                        <br/>
+                        <span className="text-[10px] uppercase tracking-tighter">Gross (in Lakhs)</span>
+                      </td>
+                      <td data-label="Time of Audit" className="text-muted text-xs font-semibold">
+                        {new Date(record.created_at).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })}
+                      </td>
+                      <td data-label="Integrity Status">
+                        <span
+                          className={`badge-status ${status?.toLowerCase().replace(/_/g, '')}`}
+                          style={
+                            status === 'Approve' ? { background: '#10b981', color: 'white', border: '1px solid #10b981' } :
+                            status === 'Reject' ? { background: '#ef4444', color: 'white', border: '1px solid #ef4444' } : {}
+                          }
+                        >
+                          {status === 'GOOD_MATCH' || status === 'Completed' || status === 'Approve' ? <CheckCircle size={14} /> : <AlertTriangle size={14} />}
+                          {(status?.replace(/_/g, ' ') || 'Pending').toUpperCase()}
+                        </span>
+                      </td>
+                      <td data-label="Trace" className="text-right">
+                        <div className="flex items-center justify-end">
+                          <div className="unified-trace-btn" onClick={(e) => {
+                            e.stopPropagation();
+                            setInitialModalView('universal');
+                            setSelectedAudit(record);
                           }}>
-                            {score}{score !== 'N/A' && !score.toString().includes('%') && '%'}
-                          </div>
-                          <div className="trace-action">
-                            <Eye size={12} />
-                            <span>LEDGER</span>
+                            <div className="trace-score" style={{
+                              color: score === 'N/A' ? 'var(--text-muted)' : (parseInt(score) > 80 ? 'var(--success)' : (parseInt(score) > 40 ? 'var(--warning)' : 'var(--error)'))
+                            }}>
+                              {score}{score !== 'N/A' && !score.toString().includes('%') && '%'}
+                            </div>
+                            <div className="trace-action">
+                              <Eye size={12} />
+                              <span>LEDGER</span>
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        </div>
-        
-        <div className="pagination p-6 border-t flex justify-between items-center text-sm text-muted">
-          <span>Displaying {filteredHistory.length} active audit records</span>
-          <div className="flex gap-2">
-            <button className="btn btn-outline btn-sm" disabled>Prev</button>
-            <button className="btn btn-primary btn-sm px-4">1</button>
-            <button className="btn btn-outline btn-sm" disabled>Next</button>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+          <div className="pagination p-6 border-t flex justify-between items-center text-sm text-muted">
+            <span>Displaying {filteredHistory.length} purchase audit records</span>
+            <div className="flex gap-2">
+              <button className="btn btn-outline btn-sm" disabled>Prev</button>
+              <button className="btn btn-primary btn-sm px-4">1</button>
+              <button className="btn btn-outline btn-sm" disabled>Next</button>
+            </div>
           </div>
         </div>
-      </div>
+      )}
+
+      {/* ── SALES SIDE ──────────────────────────────────────── */}
+      {activeSide === 'sales' && (
+        <div className="card table-card overflow-hidden animate-fade-in">
+          {isSalesLoading ? (
+            <div className="flex-center" style={{ height: '300px', flexDirection: 'column', gap: '1.5rem' }}>
+              <Loader2 className="animate-spin text-primary" size={36} />
+              <p className="text-muted font-bold tracking-widest uppercase text-xs">Fetching Sales Records...</p>
+            </div>
+          ) : filteredSalesHistory.length === 0 ? (
+            <div className="empty-state">
+              <AlertTriangle size={40} className="empty-icon" />
+              <p>{salesError || 'No sales records found.'}</p>
+            </div>
+          ) : (
+            <>
+              <div className="table-responsive">
+                <table className="data-table sales-data-table">
+                  <thead>
+                    <tr>
+                      {salesColumns.map(col => (
+                        <th key={col}>{col.replace(/_/g, ' ')}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredSalesHistory.map((record, idx) => (
+                      <tr
+                        key={record.id || idx}
+                        className="audit-row"
+                        style={{ cursor: 'pointer' }}
+                        onClick={() => setSelectedSalesRecord(record)}
+                      >
+                        {salesColumns.map(col => (
+                          <td key={col} data-label={col.replace(/_/g, ' ')} className="sales-cell">
+                            {record[col] !== undefined && record[col] !== null && record[col] !== ''
+                              ? record[col].toString()
+                              : <span className="text-muted" style={{ opacity: 0.4, fontStyle: 'italic', fontSize: '0.7rem' }}>—</span>
+                            }
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div className="pagination p-6 border-t flex justify-between items-center text-sm text-muted">
+                <span>Displaying {filteredSalesHistory.length} sales records</span>
+                <div className="flex gap-2">
+                  <button className="btn btn-outline btn-sm" disabled>Prev</button>
+                  <button className="btn btn-primary btn-sm px-4">1</button>
+                  <button className="btn btn-outline btn-sm" disabled>Next</button>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+      {selectedSalesRecord && (
+        <SalesRecordModal
+          record={selectedSalesRecord}
+          onClose={() => setSelectedSalesRecord(null)}
+        />
+      )}
 
       {selectedAudit && (
         <UnifiedAuditModal 
