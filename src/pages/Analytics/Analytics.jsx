@@ -139,12 +139,12 @@ const Analytics = () => {
 
   return (
     <div className="analytics-page px-8 pb-12 bg-[var(--background)] min-h-screen text-[var(--text)]">
-      <div className="page-header flex justify-between items-start mb-10 pt-8">
-        <div className="header-text-group">
-          <h1 className="page-title text-4xl font-black tracking-tighter text-[var(--text)]">System Analytics Intelligence</h1>
+      <div className="page-header flex flex-col items-start mb-8 pt-8 px-4">
+        <div className="header-text-group w-full mb-6">
+          <h1 className="page-title text-3xl font-black tracking-tighter text-[var(--text)]">System Analytics Intelligence</h1>
           <p className="page-subtitle text-[10px] uppercase font-black tracking-widest text-slate-500 mt-2">Operational surveillance modeling</p>
         </div>
-        <button className="btn btn-secondary py-2.5 px-6 rounded-xl font-black uppercase text-[10px] tracking-widest flex items-center gap-2 border-slate-700" onClick={() => fetchAnalyticsData(false)}>
+        <button className="btn btn-secondary w-full py-3 rounded-xl font-black uppercase text-[10px] tracking-widest flex items-center justify-center gap-2 border-slate-700" onClick={() => fetchAnalyticsData(false)}>
           <RefreshCw size={14} className={isLoading ? 'animate-spin' : ''} /> Refresh Trace
         </button>
       </div>

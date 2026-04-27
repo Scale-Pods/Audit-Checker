@@ -92,10 +92,16 @@
   .header-actions-bar {
     flex-direction: column;
     align-items: stretch;
+    margin-left: -0.75rem;
+    margin-right: -0.75rem;
+    width: calc(100% + 1.5rem);
   }
   
   .side-toggle-group {
     width: 100%;
+    border-radius: 0;
+    border-left: none;
+    border-right: none;
     justify-content: center;
   }
   
@@ -106,6 +112,11 @@
   
   .search-bar-container {
     min-width: 100%;
+    width: 100%;
+  }
+  
+  .side-toggle-group {
+    width: 100%;
   }
   
   .search-bar {
@@ -124,20 +135,27 @@
 @media (max-width: 480px) {
   .page-header {
     padding: 0 !important;
+    margin-bottom: 1.25rem !important;
   }
   .page-title {
     font-size: 1.6rem !important;
     text-align: left !important;
+    padding: 0 0.25rem;
   }
   .page-subtitle {
     font-size: 0.75rem !important;
     text-align: left !important;
     margin-bottom: 1.5rem;
+    padding: 0 0.25rem;
   }
   
   .side-toggle-btn {
-    padding: 0.5rem 0.75rem !important;
+    padding: 0.6rem 0.75rem !important;
     font-size: 0.68rem !important;
+  }
+
+  .header-actions-bar {
+    gap: 0.75rem;
   }
 }
 
@@ -490,12 +508,16 @@
 }
 
 @media (max-width: 768px) {
-  .sales-record-card {
-    padding: 1.25rem 1rem;
+  .sales-records-list {
+    margin-left: -0.75rem;
+    margin-right: -0.75rem;
+    width: calc(100% + 1.5rem);
   }
   
-  .sales-party {
-    max-width: 180px;
+  .sales-record-card {
+    padding: 1.25rem 0.75rem;
+    border-left: none;
+    border-right: none;
   }
   
   .btn-action-view {
@@ -1637,9 +1659,9 @@
 
   .page-header {
     flex-direction: column;
-    gap: 1.25rem;
+    gap: 1rem;
     align-items: flex-start;
-    padding: 0 0.5rem;
+    padding: 0;
   }
 
   .header-actions {
@@ -1841,5 +1863,190 @@
 
   .modal-footer .btn {
     width: 100%;
+  }
+}
+
+/* ── Invoice Grouping & Swipe Navigation ───────────────────── */
+.sales-invoice-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.item-count-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 10px;
+  border-radius: 99px;
+  font-size: 0.62rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  background: rgba(139, 92, 246, 0.15);
+  color: #a78bfa;
+  border: 1px solid rgba(139, 92, 246, 0.25);
+  white-space: nowrap;
+}
+
+.swipe-item-counter {
+  font-size: 0.68rem;
+  font-weight: 800;
+  color: var(--text-muted);
+  background: rgba(100, 116, 139, 0.1);
+  padding: 3px 10px;
+  border-radius: 6px;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+/* Swipe Navigation Bar */
+.swipe-nav-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 1.5rem;
+  border-top: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.swipe-nav-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.45rem 1rem;
+  border-radius: 8px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  background: rgba(37, 99, 235, 0.08);
+  color: var(--primary);
+  border: 1px solid rgba(37, 99, 235, 0.15);
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.swipe-nav-btn:hover:not(:disabled) {
+  background: rgba(37, 99, 235, 0.18);
+  transform: translateY(-1px);
+}
+
+.swipe-nav-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+/* Dot Indicators */
+.swipe-dots {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.swipe-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: rgba(100, 116, 139, 0.25);
+  cursor: pointer;
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.swipe-dot:hover {
+  background: rgba(37, 99, 235, 0.4);
+  transform: scale(1.3);
+}
+
+.swipe-dot.active {
+  background: var(--primary);
+  transform: scale(1.25);
+  box-shadow: 0 0 8px rgba(37, 99, 235, 0.4);
+}
+
+/* Slide Animations */
+.swipe-body {
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.slide-out-left {
+  opacity: 0;
+  transform: translateX(-30px);
+}
+
+.slide-out-right {
+  opacity: 0;
+  transform: translateX(30px);
+}
+
+.slide-in-right {
+  animation: slideFromRight 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.slide-in-left {
+  animation: slideFromLeft 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes slideFromRight {
+  from { opacity: 0; transform: translateX(30px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes slideFromLeft {
+  from { opacity: 0; transform: translateX(-30px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+@media (max-width: 480px) {
+  .swipe-nav-bar {
+    padding: 0.6rem 0.75rem;
+  }
+
+  .swipe-nav-btn {
+    padding: 0.4rem 0.65rem;
+    font-size: 0.65rem;
+  }
+
+  .swipe-item-counter {
+    font-size: 0.6rem;
+    padding: 2px 7px;
+  }
+
+  .item-count-badge {
+    font-size: 0.58rem;
+    padding: 1px 7px;
+  }
+}
+
+@media (max-width: 640px) {
+  .sales-compare-table {
+    font-size: 0.72rem;
+  }
+  .sc-field-name, .sc-cell, .sc-status-cell {
+    padding: 0.75rem 0.5rem !important;
+  }
+  .sc-field-col { width: 35% !important; }
+  .sc-inv-col { width: 32.5% !important; }
+  .sc-sheet-col { width: 32.5% !important; }
+  .sc-status-col { display: none !important; } /* Hide status col on small screens */
+  
+  .sc-status-cell {
+     display: none !important;
+  }
+  
+  .sc-row-mismatch .sc-cell {
+    color: #ef4444 !important;
+  }
+  
+  .sc-row-match .sc-cell {
+    color: #10b981 !important;
+  }
+}
+
+@media (max-width: 380px) {
+  .sales-compare-table {
+    font-size: 0.65rem;
+  }
+  .sc-field-name, .sc-cell {
+    padding: 0.6rem 0.4rem !important;
   }
 }

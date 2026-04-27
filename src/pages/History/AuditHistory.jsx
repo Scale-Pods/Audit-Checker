@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react'
-import { FileText, Filter, CheckCircle, AlertTriangle, Eye, Download, RefreshCw, Loader2, Search, Truck, Hash, X, Info, IndianRupee, Activity } from 'lucide-react'
+import { FileText, Filter, CheckCircle, AlertTriangle, Eye, Download, RefreshCw, Loader2, Search, Truck, Hash, X, Info, IndianRupee, Activity, ChevronLeft, ChevronRight } from 'lucide-react'
 import './AuditHistory.css'
 
 const AUDITS_WEBHOOK_URL = import.meta.env.VITE_AUDITS_HISTORY_URL || 'https://n8n.srv1010832.hstgr.cloud/webhook/40a6351a-d510-492f-918b-7ec9bae2bd2a'
@@ -478,9 +478,56 @@ const salesValuesMatch = (a, b, type = 'text') => {
   return clean(a).toLowerCase() === clean(b).toLowerCase();
 };
 
-// ── Sales Record Detail Modal ─────────────────────────────────
-const SalesRecordModal = ({ record, onClose }) => {
-  if (!record) return null;
+// ── Sales Record Detail Modal (supports grouped items with swipe) ──
+const SalesRecordModal = ({ records, onClose, invoiceNumber }) => {
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [slideClass, setSlideClass] = useState('');
+  const [touchStartX, setTouchStartX] = useState(null);
+  const [touchStartY, setTouchStartY] = useState(null);
+  const [touchDeltaX, setTouchDeltaX] = useState(0);
+  const [touchDeltaY, setTouchDeltaY] = useState(0);
+
+  if (!records || records.length === 0) return null;
+
+  const record = records[currentIndex];
+  const totalItems = records.length;
+  const hasMultiple = totalItems > 1;
+
+  const navigateTo = (dir) => {
+    const next = dir === 'next' ? currentIndex + 1 : currentIndex - 1;
+    if (next < 0 || next >= totalItems) return;
+    setSlideClass(dir === 'next' ? 'slide-out-left' : 'slide-out-right');
+    setTimeout(() => {
+      setCurrentIndex(next);
+      setSlideClass(dir === 'next' ? 'slide-in-right' : 'slide-in-left');
+      setTimeout(() => setSlideClass(''), 300);
+    }, 200);
+  };
+
+  const onTouchStart = (e) => { 
+    setTouchStartX(e.touches[0].clientX); 
+    setTouchStartY(e.touches[0].clientY);
+    setTouchDeltaX(0); 
+    setTouchDeltaY(0);
+  };
+  
+  const onTouchMove = (e) => { 
+    if (touchStartX !== null && touchStartY !== null) {
+      setTouchDeltaX(e.touches[0].clientX - touchStartX);
+      setTouchDeltaY(e.touches[0].clientY - touchStartY);
+    }
+  };
+  
+  const onTouchEnd = () => {
+    // Only swipe if horizontal movement is significantly greater than vertical movement
+    if (Math.abs(touchDeltaX) > 70 && Math.abs(touchDeltaX) > Math.abs(touchDeltaY) * 1.5) { 
+      touchDeltaX < 0 ? navigateTo('next') : navigateTo('prev'); 
+    }
+    setTouchStartX(null); 
+    setTouchStartY(null);
+    setTouchDeltaX(0); 
+    setTouchDeltaY(0);
+  };
 
   const val = (key) => {
     const v = record[key];
@@ -504,9 +551,12 @@ const SalesRecordModal = ({ record, onClose }) => {
               <FileText className="text-primary" size={22} />
               Sales Comparison Ledger
             </h2>
-            <p className="modal-subtitle">Order Ref: {record.order_number || record.Order_Number || record.id || '—'}</p>
+            <p className="modal-subtitle">Invoice: {invoiceNumber || '—'}</p>
           </div>
           <div className="flex items-center gap-3">
+            {hasMultiple && (
+              <span className="swipe-item-counter">Item {currentIndex + 1}/{totalItems}</span>
+            )}
             <div className="sales-score-pill" style={{
               background: allMatch ? 'rgba(16,185,129,0.15)' : scorePercent >= 70 ? 'rgba(245,158,11,0.15)' : 'rgba(239,68,68,0.15)',
               color: allMatch ? '#10b981' : scorePercent >= 70 ? '#f59e0b' : '#ef4444',
@@ -518,7 +568,13 @@ const SalesRecordModal = ({ record, onClose }) => {
           </div>
         </div>
 
-        <div className="modal-body" style={{ padding: '0' }}>
+        <div
+          className={`modal-body swipe-body ${slideClass}`}
+          style={{ padding: '0' }}
+          onTouchStart={hasMultiple ? onTouchStart : undefined}
+          onTouchMove={hasMultiple ? onTouchMove : undefined}
+          onTouchEnd={hasMultiple ? onTouchEnd : undefined}
+        >
           <table className="sales-compare-table">
             <thead>
               <tr>
@@ -559,6 +615,22 @@ const SalesRecordModal = ({ record, onClose }) => {
           </table>
         </div>
 
+        {hasMultiple && (
+          <div className="swipe-nav-bar">
+            <button className="swipe-nav-btn" onClick={() => navigateTo('prev')} disabled={currentIndex === 0}>
+              <ChevronLeft size={16} /> Prev
+            </button>
+            <div className="swipe-dots">
+              {records.map((_, i) => (
+                <span key={i} className={`swipe-dot ${i === currentIndex ? 'active' : ''}`} onClick={() => setCurrentIndex(i)} />
+              ))}
+            </div>
+            <button className="swipe-nav-btn" onClick={() => navigateTo('next')} disabled={currentIndex === totalItems - 1}>
+              Next <ChevronRight size={16} />
+            </button>
+          </div>
+        )}
+
         <div className="modal-footer">
           <p className="footer-hint">{matchCount}/{totalFields} fields match · Invoice vs Sheet comparison</p>
           <button className="btn btn-outline" onClick={onClose}>Close</button>
@@ -579,7 +651,7 @@ const AuditHistory = () => {
   const [searchTerm, setSearchTerm] = useState('')
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [selectedAudit, setSelectedAudit] = useState(null)
-  const [selectedSalesRecord, setSelectedSalesRecord] = useState(null)
+  const [selectedSalesGroup, setSelectedSalesGroup] = useState(null)
   const [initialModalView, setInitialModalView] = useState('intelligence')
   const [decisionProcessing, setDecisionProcessing] = useState(null)
   const [confirmDecision, setConfirmDecision] = useState(null)
@@ -669,7 +741,13 @@ const AuditHistory = () => {
       if (!response.ok) throw new Error('Failed to fetch sales records')
       const data = await response.json()
       const salesData = normalizeArray(data);
-      setSalesHistory(salesData);
+      
+      // Deduplicate by ID to handle potential backend/API duplicates
+      const uniqueSales = Array.from(
+        new Map(salesData.map(item => [item.id || JSON.stringify(item), item])).values()
+      );
+      
+      setSalesHistory(uniqueSales);
     } catch {
       console.error('Sales History Fetch Error')
       setSalesError('Could not load sales records.')
@@ -708,6 +786,27 @@ const AuditHistory = () => {
       Object.values(item).some(v => v?.toString().toLowerCase().includes(term))
     );
   }, [salesHistory, searchTerm])
+
+  // Group sales records by invoice number
+  const groupedSalesHistory = useMemo(() => {
+    const groups = {};
+    filteredSalesHistory.forEach(record => {
+      const invoiceNum = record.order_number || record.Order_Number || record.invoice_number || 'Unknown';
+      if (!groups[invoiceNum]) {
+        groups[invoiceNum] = {
+          invoiceNumber: invoiceNum,
+          records: [],
+          partyName: record.bill_to_name || record.broker_name || 'Unknown Party',
+          latestDate: record.created_at
+        };
+      }
+      groups[invoiceNum].records.push(record);
+      if (record.created_at && (!groups[invoiceNum].latestDate || new Date(record.created_at) > new Date(groups[invoiceNum].latestDate))) {
+        groups[invoiceNum].latestDate = record.created_at;
+      }
+    });
+    return Object.values(groups);
+  }, [filteredSalesHistory])
 
   const handleRefresh = () => {
     setIsRefreshing(true)
@@ -901,19 +1000,24 @@ const AuditHistory = () => {
           ) : (
             <>
           <div className="sales-records-list animate-fade-in">
-             {filteredSalesHistory.map((record, idx) => (
+             {groupedSalesHistory.map((group, idx) => (
                <div 
-                 key={record.id || idx} 
+                 key={group.invoiceNumber || idx} 
                  className="sales-record-card"
-                 onClick={() => setSelectedSalesRecord(record)}
+                 onClick={() => setSelectedSalesGroup(group)}
                >
                  <div className="sales-record-info">
-                   <h3 className="sales-order-id">{record.order_number || record.Order_Number || 'N/A'}</h3>
+                   <div className="sales-invoice-header">
+                     <h3 className="sales-order-id">{group.invoiceNumber}</h3>
+                     {group.records.length > 1 && (
+                       <span className="item-count-badge">{group.records.length} items</span>
+                     )}
+                   </div>
                    <div className="sales-meta">
-                     <span className="sales-party">{record.bill_to_name || record.broker_name || 'Unknown Party'}</span>
+                     <span className="sales-party">{group.partyName}</span>
                      <span className="sales-dot">•</span>
                      <span className="sales-date">
-                       {record.created_at ? new Date(record.created_at).toLocaleDateString('en-IN', { dateStyle: 'medium' }) : '—'}
+                       {group.latestDate ? new Date(group.latestDate).toLocaleDateString('en-IN', { dateStyle: 'medium' }) : '—'}
                      </span>
                    </div>
                  </div>
@@ -927,8 +1031,8 @@ const AuditHistory = () => {
              ))}
           </div>
           <div className="pagination p-6 border-t flex justify-between items-center text-sm text-muted">
-            <span className="hide-mobile">Displaying {filteredSalesHistory.length} sales records</span>
-            <span className="show-mobile-only">{filteredSalesHistory.length} Records</span>
+            <span className="hide-mobile">Displaying {groupedSalesHistory.length} sales records</span>
+            <span className="show-mobile-only">{groupedSalesHistory.length} Records</span>
             <div className="flex gap-2">
               <button className="btn btn-outline btn-sm" disabled>Prev</button>
               <button className="btn btn-primary btn-sm px-4">1</button>
@@ -940,10 +1044,11 @@ const AuditHistory = () => {
         </div>
       )}
 
-      {selectedSalesRecord && (
+      {selectedSalesGroup && (
         <SalesRecordModal
-          record={selectedSalesRecord}
-          onClose={() => setSelectedSalesRecord(null)}
+          records={selectedSalesGroup.records}
+          invoiceNumber={selectedSalesGroup.invoiceNumber}
+          onClose={() => setSelectedSalesGroup(null)}
         />
       )}
 
