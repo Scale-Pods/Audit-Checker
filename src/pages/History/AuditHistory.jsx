@@ -760,7 +760,7 @@ const salesValuesMatch = (a, b, type = 'text') => {
 };
 
 // ── Sales Record Detail Modal (supports grouped items with swipe) ──
-const SalesRecordModal = ({ records, onClose, invoiceNumber }) => {
+const SalesRecordModal = ({ records, onClose, invoiceNumber, onDecision, isProcessing }) => {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [slideClass, setSlideClass] = useState('');
   const [touchStartX, setTouchStartX] = useState(null);
@@ -914,7 +914,27 @@ const SalesRecordModal = ({ records, onClose, invoiceNumber }) => {
 
         <div className="modal-footer">
           <p className="footer-hint">{matchCount}/{totalFields} fields match · Invoice vs Sheet comparison</p>
-          <button className="btn btn-outline" onClick={onClose}>Close</button>
+          <div className="flex action-group" style={{ gap: '0.75rem' }}>
+            <button className="btn btn-outline" onClick={onClose}>Close</button>
+            {onDecision && (
+              <>
+                <button 
+                  className="btn btn-reject"
+                  onClick={() => onDecision(record.id, 'Reject')}
+                  disabled={isProcessing}
+                >
+                  Reject Match
+                </button>
+                <button 
+                  className="btn btn-approve"
+                  onClick={() => onDecision(record.id, 'Approve')}
+                  disabled={isProcessing}
+                >
+                  Approve Match
+                </button>
+              </>
+            )}
+          </div>
         </div>
       </div>
     </div>
@@ -958,8 +978,9 @@ const AuditHistory = () => {
       if (!response.ok) throw new Error('Network response was not ok');
       
       setConfirmDecision(null);
-      setSelectedAudit(null); // Auto-close modal on success
-      await fetchHistory(false); // Refetch from webhook
+      setSelectedAudit(null);
+      setSelectedSalesGroup(null);
+      await fetchHistory(false);
     } catch (err) {
       console.error('Decision submission failed', err);
       alert('Failed to communicate with webhook.');
@@ -979,12 +1000,24 @@ const AuditHistory = () => {
     }
   }
 
-  const normalizeArray = (data) => {
+  const normalizeArray = (data, depth = 0) => {
+    if (depth > 3) return [];
     if (Array.isArray(data)) return data;
+    if (!data || typeof data !== 'object') return [];
     if (data?.audits && Array.isArray(data.audits)) return data.audits;
     if (data?.data && Array.isArray(data.data)) return data.data;
-    if (data && typeof data === 'object' && Object.keys(data).length > 0) return [data];
-    return [];
+    if (data?.results && Array.isArray(data.results)) return data.results;
+    if (data?.records && Array.isArray(data.records)) return data.records;
+    if (data?.items && Array.isArray(data.items)) return data.items;
+    // Unwrap single-key wrapper objects (e.g. {"sales": [...]})
+    const keys = Object.keys(data);
+    if (keys.length === 1 && Array.isArray(data[keys[0]])) return data[keys[0]];
+    if (depth === 0 && keys.length > 0) {
+      // Check if any value is an array and return the largest one
+      const arrays = keys.filter(k => Array.isArray(data[k]) && data[k].length > 0);
+      if (arrays.length === 1) return data[arrays[0]];
+    }
+    return [data];
   };
 
   const fetchHistory = async (showLoading = true) => {
@@ -1330,6 +1363,8 @@ const AuditHistory = () => {
           records={selectedSalesGroup.records}
           invoiceNumber={selectedSalesGroup.invoiceNumber}
           onClose={() => setSelectedSalesGroup(null)}
+          onDecision={handleDecisionClick}
+          isProcessing={!!decisionProcessing}
         />
       )}
 
