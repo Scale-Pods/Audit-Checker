@@ -503,25 +503,46 @@
   white-space: nowrap;
 }
 
-.btn-action-view {
+.sales-record-action {
   display: flex;
   align-items: center;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
+.btn-action-view {
+  display: inline-flex;
+  align-items: center;
   justify-content: center;
-  width: 40px;
-  height: 40px;
-  padding: 0;
+  gap: 0.35rem;
+  padding: 0.5rem 0.75rem;
   background: rgba(37, 99, 235, 0.1);
   color: var(--primary);
   border: 1px solid rgba(37, 99, 235, 0.2);
   border-radius: 10px;
+  font-size: 0.75rem;
+  font-weight: 600;
   transition: all 0.2s;
   flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .btn-action-view:hover {
   background: var(--primary);
   color: white;
   transform: translateY(-1px);
+}
+
+.sales-decision-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.25rem 0.6rem;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 @media (max-width: 768px) {

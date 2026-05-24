@@ -918,7 +918,7 @@ const SalesRecordModal = ({ records, onClose, invoiceNumber, onDecision, isProce
           <div className="flex action-group" style={{ gap: '0.75rem' }}>
             <button className="btn btn-outline" onClick={onClose}>Close</button>
             {hasDecision ? (
-              <span className={`badge-status ${decisionStatus === 'Approve' ? 'badge-approve' : 'badge-reject'}`} style={{
+              <span className="sales-decision-badge" style={{
                 background: decisionStatus === 'Approve' ? 'rgba(16,185,129,0.15)' : 'rgba(239,68,68,0.15)',
                 color: decisionStatus === 'Approve' ? '#10b981' : '#ef4444',
                 border: `1px solid ${decisionStatus === 'Approve' ? 'rgba(16,185,129,0.3)' : 'rgba(239,68,68,0.3)'}`,
@@ -1438,13 +1438,12 @@ const AuditHistory = () => {
                       </span>
                     </div>
                   </div>
-                  <div className="sales-record-action" style={{ gap: '0.5rem' }}>
+                  <div className="sales-record-action">
                     {groupDecision && (
-                      <span className={`badge-status ${groupDecision === 'Approve' ? 'badge-approve' : 'badge-reject'}`} style={{
+                      <span className={`sales-decision-badge ${groupDecision === 'Approve' ? 'badge-approve' : 'badge-reject'}`} style={{
                         background: groupDecision === 'Approve' ? 'rgba(16,185,129,0.15)' : 'rgba(239,68,68,0.15)',
                         color: groupDecision === 'Approve' ? '#10b981' : '#ef4444',
-                        border: `1px solid ${groupDecision === 'Approve' ? 'rgba(16,185,129,0.3)' : 'rgba(239,68,68,0.3)'}`,
-                        padding: '0.25rem 0.6rem', borderRadius: '4px', fontSize: '0.7rem', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '4px'
+                        border: `1px solid ${groupDecision === 'Approve' ? 'rgba(16,185,129,0.3)' : 'rgba(239,68,68,0.3)'}`
                       }}>
                         {groupDecision === 'Approve' ? <CheckCircle size={12} /> : <AlertTriangle size={12} />}
                         {groupDecision === 'Approve' ? 'Approved' : 'Rejected'}
