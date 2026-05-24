@@ -974,8 +974,12 @@ const AuditHistory = () => {
     const map = {};
     salesHistory.forEach(r => {
       const inv = r.order_number || r.Order_Number || r.invoice_number;
-      if (inv && (r.Result === 'yes' || r.Result === 'Approve' || r.Result === 'Reject' || r.result === 'yes')) {
-        map[inv] = r.Result || r.result;
+      if (!inv) return;
+      const raw = r.Result || r.result || r.Status || r.status;
+      if (raw === 'Approve' || raw === 'Reject') {
+        if (!map[inv]) map[inv] = raw;
+      } else if (raw === 'yes' || raw === 'Yes' || raw === 'YES') {
+        if (!map[inv]) map[inv] = 'Approve';
       }
     });
     return map;
@@ -1381,12 +1385,17 @@ const AuditHistory = () => {
           ) : (
             <>
           <div className="sales-records-list animate-fade-in">
-             {groupedSalesHistory.map((group, idx) => (
-               <div 
-                 key={group.invoiceNumber || idx} 
-                 className="sales-record-card"
-                 onClick={() => setSelectedSalesGroup(group)}
-               >
+              {groupedSalesHistory.map((group, idx) => {
+                const groupDecision = salesGroupDecisions[group.invoiceNumber];
+                const cardBg = groupDecision === 'Approve' ? 'rgba(16, 185, 129, 0.12)' :
+                               groupDecision === 'Reject' ? 'rgba(239, 68, 68, 0.12)' : '';
+                return (
+                <div 
+                  key={group.invoiceNumber || idx} 
+                  className="sales-record-card"
+                  style={cardBg ? { backgroundColor: cardBg } : {}}
+                  onClick={() => setSelectedSalesGroup(group)}
+                >
                   <div className="sales-record-info">
                     <div className="sales-invoice-header">
                       <h3 className="sales-order-id">{group.invoiceNumber}</h3>
@@ -1403,15 +1412,15 @@ const AuditHistory = () => {
                     </div>
                   </div>
                   <div className="sales-record-action" style={{ gap: '0.5rem' }}>
-                    {salesGroupDecisions[group.invoiceNumber] && (
-                      <span className={`badge-status ${salesGroupDecisions[group.invoiceNumber] === 'Approve' ? 'badge-approve' : 'badge-reject'}`} style={{
-                        background: salesGroupDecisions[group.invoiceNumber] === 'Approve' ? 'rgba(16,185,129,0.15)' : 'rgba(239,68,68,0.15)',
-                        color: salesGroupDecisions[group.invoiceNumber] === 'Approve' ? '#10b981' : '#ef4444',
-                        border: `1px solid ${salesGroupDecisions[group.invoiceNumber] === 'Approve' ? 'rgba(16,185,129,0.3)' : 'rgba(239,68,68,0.3)'}`,
+                    {groupDecision && (
+                      <span className={`badge-status ${groupDecision === 'Approve' ? 'badge-approve' : 'badge-reject'}`} style={{
+                        background: groupDecision === 'Approve' ? 'rgba(16,185,129,0.15)' : 'rgba(239,68,68,0.15)',
+                        color: groupDecision === 'Approve' ? '#10b981' : '#ef4444',
+                        border: `1px solid ${groupDecision === 'Approve' ? 'rgba(16,185,129,0.3)' : 'rgba(239,68,68,0.3)'}`,
                         padding: '0.25rem 0.6rem', borderRadius: '4px', fontSize: '0.7rem', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '4px'
                       }}>
-                        {salesGroupDecisions[group.invoiceNumber] === 'Approve' ? <CheckCircle size={12} /> : <AlertTriangle size={12} />}
-                        {salesGroupDecisions[group.invoiceNumber] === 'Approve' ? 'Approved' : 'Rejected'}
+                        {groupDecision === 'Approve' ? <CheckCircle size={12} /> : <AlertTriangle size={12} />}
+                        {groupDecision === 'Approve' ? 'Approved' : 'Rejected'}
                       </span>
                     )}
                     <button className="btn-action-view">
@@ -1419,9 +1428,10 @@ const AuditHistory = () => {
                       <span className="hide-mobile">View Comparison</span>
                     </button>
                   </div>
-               </div>
-             ))}
-          </div>
+                </div>
+                );
+              })}
+           </div>
           <div className="pagination p-6 border-t flex justify-between items-center text-sm text-muted">
             <span className="hide-mobile">Displaying {groupedSalesHistory.length} sales records</span>
             <span className="show-mobile-only">{groupedSalesHistory.length} Records</span>
