@@ -76,12 +76,13 @@ const DocumentUpload = ({ title, accepted, onUpload, files, isSubmitted, multipl
   )
 }
 
-const MatchResultRow = ({ label, invVal, ewVal, lrVal, isMatch }) => (
+const MatchResultRow = ({ label, invVal, ewVal, lrVal, grnVal, isMatch }) => (
   <tr>
     <td data-label="Field Identity" className="font-medium text-muted">{label}</td>
     <td data-label="Supplier Invoice">{invVal || '-'}</td>
     <td data-label="E-Way Bill" className={ewVal && (invVal !== ewVal) ? 'text-error font-medium' : ''}>{ewVal || '-'}</td>
     <td data-label="LR Copy" className={lrVal && (invVal !== lrVal) ? 'text-error font-medium' : ''}>{lrVal || '-'}</td>
+    <td data-label="GRN" className={grnVal && (invVal !== grnVal) ? 'text-error font-medium' : ''}>{grnVal || '-'}</td>
     <td data-label="Verification Status">
       {isMatch ? 
         <span className="status-badge success"><CheckCircle size={14}/> Match</span> : 
@@ -93,7 +94,7 @@ const MatchResultRow = ({ label, invVal, ewVal, lrVal, isMatch }) => (
 
 const PurchaseAudit = () => {
   const [result, setResult] = useState(null)
-  const [activeStep, setActiveStep] = useState(0) // 0: Invoice, 1: E-way, 2: LR, 3: Processing
+  const [activeStep, setActiveStep] = useState(0) // 0: Invoice, 1: E-way, 2: LR, 3: GRN, 4: Processing
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
 
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -103,6 +104,7 @@ const PurchaseAudit = () => {
   const [invoiceFiles, setInvoiceFiles] = useState([])
   const [ewayFiles, setEwayFiles]       = useState([])
   const [lrFiles, setLrFiles]           = useState([])
+  const [grnFiles, setGrnFiles]         = useState([])
 
   // Paste handler
   useEffect(() => {
@@ -118,6 +120,7 @@ const PurchaseAudit = () => {
             if (activeStep === 0) setInvoiceFiles(prev => [...prev, pastedFile]);
             if (activeStep === 1) setEwayFiles(prev => [...prev, pastedFile]);
             if (activeStep === 2) setLrFiles(prev => [...prev, pastedFile]);
+            if (activeStep === 3) setGrnFiles(prev => [...prev, pastedFile]);
           }
         }
       }
@@ -132,12 +135,13 @@ const PurchaseAudit = () => {
     invoiceFiles.forEach(f => uploads.push({ file: f, name: 'Invoice' }))
     ewayFiles.forEach(f => uploads.push({ file: f, name: 'Eway' }))
     lrFiles.forEach(f => uploads.push({ file: f, name: 'LR' }))
+    grnFiles.forEach(f => uploads.push({ file: f, name: 'GRN' }))
 
     if (uploads.length === 0) return
     setIsSubmitting(true)
     setSubmitError(null)
     setAllDone(true)
-    setActiveStep(3)
+    setActiveStep(4)
 
     try {
       const formData = new FormData()
@@ -162,7 +166,7 @@ const PurchaseAudit = () => {
       console.error('[Submit] Error:', err)
       setSubmitError(err.message || 'Failed to send.')
       setAllDone(false)
-      setActiveStep(2)
+      setActiveStep(3)
     } finally {
       setIsSubmitting(false)
     }
@@ -171,11 +175,12 @@ const PurchaseAudit = () => {
   const steps = [
     { label: 'Supplier Invoice', files: invoiceFiles, status: invoiceFiles.length > 0 ? 'Ready' : 'Pending', icon: FileText },
     { label: 'E-Way Bill', files: ewayFiles, status: ewayFiles.length > 0 ? 'Ready' : 'Pending', icon: TrendingUp },
-    { label: 'LR Copy', files: lrFiles, status: lrFiles.length > 0 ? 'Ready' : 'Pending', icon: FileText }
+    { label: 'LR Copy', files: lrFiles, status: lrFiles.length > 0 ? 'Ready' : 'Pending', icon: FileText },
+    { label: 'GRN', files: grnFiles, status: grnFiles.length > 0 ? 'Ready' : 'Pending', icon: FileText }
   ]
 
   const nextStep = () => {
-    if (activeStep < 2) setActiveStep(activeStep + 1)
+    if (activeStep < 3) setActiveStep(activeStep + 1)
   }
 
   const prevStep = () => {
@@ -196,7 +201,7 @@ const PurchaseAudit = () => {
         <div className="header-actions">
           {(result || allDone) && (
             <button className="btn btn-outline" onClick={() => {
-              setResult(null); setInvoiceFiles([]); setEwayFiles([]); setLrFiles([]); setAllDone(false); setActiveStep(0);
+              setResult(null); setInvoiceFiles([]); setEwayFiles([]); setLrFiles([]); setGrnFiles([]); setAllDone(false); setActiveStep(0);
             }}>
               Reset Audit
             </button>
@@ -256,6 +261,15 @@ const PurchaseAudit = () => {
                         multiple={true}
                       />
                     )}
+                    {activeStep === 3 && (
+                      <DocumentUpload 
+                        title="GRN Upload" 
+                        accepted={{'image/*': ['.png', '.jpg', '.jpeg']}}
+                        onUpload={setGrnFiles}
+                        files={grnFiles}
+                        multiple={true}
+                      />
+                    )}
 
                     <div className="paste-hint" style={{ marginTop: '2rem' }}>
                       <span className="kbd" style={{ padding: '4px 8px' }}>Ctrl</span> + <span className="kbd" style={{ padding: '4px 8px' }}>V</span> to paste screenshots directly
@@ -267,7 +281,7 @@ const PurchaseAudit = () => {
                           Back
                         </button>
                       )}
-                      {activeStep < 2 ? (
+                      {activeStep < 3 ? (
                         <button 
                           className="btn btn-primary btn-done" 
                           onClick={nextStep}
@@ -280,7 +294,7 @@ const PurchaseAudit = () => {
                         <button 
                           className="btn btn-primary btn-done" 
                           onClick={handleSubmitAll}
-                          disabled={isSubmitting || lrFiles.length === 0}
+                          disabled={isSubmitting || grnFiles.length === 0}
                           style={{ background: 'var(--success)', borderColor: 'var(--success)', padding: '1rem 5rem' }}
                         >
                           {isSubmitting ? <><Loader2 size={24} className="spin-icon" /> Sending...</> : <><Send size={24} /> Final Submit</>}
@@ -353,29 +367,30 @@ const PurchaseAudit = () => {
                   <th>Supplier Invoice</th>
                   <th>E-Way Bill</th>
                   <th>LR Copy</th>
+                  <th>GRN</th>
                   <th>Status</th>
                 </tr>
               </thead>
               <tbody>
                 <MatchResultRow 
                   label="Invoice Number" 
-                  invVal={result.data.invoiceNo.inv} ewVal={result.data.invoiceNo.ew} lrVal={result.data.invoiceNo.lr} isMatch={result.data.invoiceNo.match} 
+                  invVal={result.data.invoiceNo?.inv} ewVal={result.data.invoiceNo?.ew} lrVal={result.data.invoiceNo?.lr} grnVal={result.data.invoiceNo?.grn} isMatch={result.data.invoiceNo?.match} 
                 />
                 <MatchResultRow 
                   label="Date" 
-                  invVal={result.data.date.inv} ewVal={result.data.date.ew} lrVal={result.data.date.lr} isMatch={result.data.date.match} 
+                  invVal={result.data.date?.inv} ewVal={result.data.date?.ew} lrVal={result.data.date?.lr} grnVal={result.data.date?.grn} isMatch={result.data.date?.match} 
                 />
                 <MatchResultRow 
                   label="GSTIN" 
-                  invVal={result.data.gstin.inv} ewVal={result.data.gstin.ew} lrVal={result.data.gstin.lr} isMatch={result.data.gstin.match} 
+                  invVal={result.data.gstin?.inv} ewVal={result.data.gstin?.ew} lrVal={result.data.gstin?.lr} grnVal={result.data.gstin?.grn} isMatch={result.data.gstin?.match} 
                 />
                 <MatchResultRow 
                   label="Quantity" 
-                  invVal={result.data.quantity.inv} ewVal={result.data.quantity.ew} lrVal={result.data.quantity.lr} isMatch={result.data.quantity.match} 
+                  invVal={result.data.quantity?.inv} ewVal={result.data.quantity?.ew} lrVal={result.data.quantity?.lr} grnVal={result.data.quantity?.grn} isMatch={result.data.quantity?.match} 
                 />
                 <MatchResultRow 
                   label="Amount" 
-                  invVal={result.data.amount.inv} ewVal={result.data.amount.ew} lrVal={result.data.amount.lr} isMatch={result.data.amount.match} 
+                  invVal={result.data.amount?.inv} ewVal={result.data.amount?.ew} lrVal={result.data.amount?.lr} grnVal={result.data.amount?.grn} isMatch={result.data.amount?.match} 
                 />
               </tbody>
             </table>

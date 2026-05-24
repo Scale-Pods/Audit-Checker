@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react'
-import { FileText, Filter, CheckCircle, AlertTriangle, Eye, Download, RefreshCw, Loader2, Search, Truck, Hash, X, Info, IndianRupee, Activity, ChevronLeft, ChevronRight } from 'lucide-react'
+import { FileText, Filter, CheckCircle, AlertTriangle, Eye, Download, RefreshCw, Loader2, Search, Truck, Hash, X, Info, IndianRupee, Activity, ChevronLeft, ChevronRight, Check, Shield, TrendingUp, BarChart3 } from 'lucide-react'
 import './AuditHistory.css'
 
 const AUDITS_WEBHOOK_URL = import.meta.env.VITE_AUDITS_HISTORY_URL || 'https://n8n.srv1010832.hstgr.cloud/webhook/40a6351a-d510-492f-918b-7ec9bae2bd2a'
@@ -22,6 +22,230 @@ const fuzzyMatch = (value, tokens) => {
   });
 }
 
+// ── Intelligent Comparison Utilities ─────────────────────────
+const normalizeText = (text) => {
+  if (!text || text === '—' || text === 'N/A') return '';
+  return text.toString().toLowerCase().replace(/[^a-z0-9]/g, '').trim();
+};
+
+const normalizeInvoiceNo = (text) => {
+  if (!text || text === '—') return '';
+  return text.toString()
+    .toLowerCase()
+    .replace(/^inv[\s\-_:#]*/i, '')
+    .replace(/^invoice[\s\-_:#]*/i, '')
+    .replace(/[\/\s\-_#,.:]/g, '')
+    .trim();
+};
+
+const normalizeSupplierName = (text) => {
+  if (!text || text === '—') return '';
+  return text.toString()
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, '')
+    .replace(/\b(pvt|ltd|private|limited|co|company|corp|corporation|inc|incorporated)\b/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/\s/g, '');
+};
+
+const normalizeHSN = (text) => {
+  if (!text || text === '—') return '';
+  return text.toString().replace(/[^0-9]/g, '');
+};
+
+const normalizeVehicleNo = (text) => {
+  if (!text || text === '—') return '';
+  return text.toString().toUpperCase().replace(/\s/g, '');
+};
+
+const extractNumericValue = (text) => {
+  if (!text || text === '—') return null;
+  const cleaned = text.toString().replace(/,/g, '').replace(/[^0-9.-]/g, '');
+  const parsed = parseFloat(cleaned);
+  return isNaN(parsed) ? null : parsed;
+};
+
+const toKG = (value, text) => {
+  if (value === null) return null;
+  if (!text) return value;
+  const lower = text.toString().toLowerCase();
+  if (lower.includes('mt') || lower.includes('ton')) return value * 1000;
+  return value;
+};
+
+const semanticSimilarity = (a, b) => {
+  const na = normalizeText(a);
+  const nb = normalizeText(b);
+  if (!na || !nb) return 0;
+  if (na === nb) return 1;
+  const tokensA = new Set(na.split(/\s+/));
+  const tokensB = new Set(nb.split(/\s+/));
+  const intersection = new Set([...tokensA].filter(t => tokensB.has(t)));
+  const union = new Set([...tokensA, ...tokensB]);
+  return intersection.size / union.size;
+};
+
+const compareFieldValues = (fieldName, vals, audit) => {
+  const docs = ['Invoice', 'E-Way Bill', 'LR Copy', 'GRN'];
+  const filledDocs = docs.filter(d => vals[d] && vals[d] !== '—');
+  if (filledDocs.length <= 1) return { status: null, reason: 'Single data point — no comparison' };
+  const field = fieldName.toLowerCase();
+
+  if (field.includes('bill to') || field.includes('recipient')) {
+    const results = filledDocs.map(d => ({ doc: d, match: fuzzyMatch(vals[d], BILL_TO_TOKENS) }));
+    const allOk = results.every(r => r.match);
+    return { status: allOk ? 'MATCH' : 'MISMATCH', reason: allOk ? 'Bill-to address matches known vendor locations' : 'Bill-to address does not match known vendor locations' };
+  }
+
+  if (field.includes('ship to') || field.includes('consignee')) {
+    const results = filledDocs.map(d => ({ doc: d, match: fuzzyMatch(vals[d], SHIP_TO_TOKENS) }));
+    const allOk = results.every(r => r.match);
+    return { status: allOk ? 'MATCH' : 'MISMATCH', reason: allOk ? 'Ship-to address matches known destinations' : 'Ship-to address does not match known destinations' };
+  }
+
+  if (field.includes('invoice number')) {
+    const normalized = filledDocs.map(d => ({ doc: d, norm: normalizeInvoiceNo(vals[d]) }));
+    const unique = new Set(normalized.map(n => n.norm));
+    if (unique.size === 1) return { status: 'MATCH', reason: 'Invoice numbers match after normalization' };
+    if (unique.size === 2) return { status: 'PARTIAL_MATCH', reason: 'Minor variation in invoice number format' };
+    return { status: 'MISMATCH', reason: 'Invoice numbers differ across documents' };
+  }
+
+  if (field.includes('supplier name')) {
+    const normalized = filledDocs.map(d => ({ doc: d, norm: normalizeSupplierName(vals[d]) }));
+    const unique = new Set(normalized.map(n => n.norm));
+    if (unique.size === 1) return { status: 'MATCH', reason: 'Supplier name verified across all documents' };
+    if (unique.size === 2) {
+      const names = Array.from(unique);
+      if (semanticSimilarity(names[0], names[1]) > 0.7) return { status: 'PARTIAL_MATCH', reason: 'Supplier name has minor formatting variation (Ltd/Limited)' };
+    }
+    return { status: 'MISMATCH', reason: 'Supplier name differs — possible vendor mismatch' };
+  }
+
+  if (field.includes('gstin')) {
+    const normalized = filledDocs.map(d => ({ doc: d, norm: normalizeText(vals[d]) }));
+    const unique = new Set(normalized.map(n => n.norm));
+    if (unique.size === 1) return { status: 'MATCH', reason: 'GSTIN verified across documents' };
+    return { status: 'CRITICAL', reason: 'GSTIN MISMATCH — possible tax compliance violation' };
+  }
+
+  if (field.includes('product')) {
+    const normalized = filledDocs.map(d => ({ doc: d, norm: normalizeText(vals[d]) }));
+    const unique = new Set(normalized.map(n => n.norm));
+    if (unique.size === 1) return { status: 'MATCH', reason: 'Product code matches across documents' };
+    if (unique.size === 2) {
+      const codes = Array.from(unique);
+      if (semanticSimilarity(codes[0], codes[1]) > 0.6) return { status: 'PARTIAL_MATCH', reason: 'Product code has minor spacing/format variation' };
+    }
+    return { status: 'MISMATCH', reason: 'Product code differs across documents' };
+  }
+
+  if (field.includes('description')) {
+    let bestSim = 1;
+    for (let i = 0; i < filledDocs.length; i++) {
+      for (let j = i + 1; j < filledDocs.length; j++) {
+        bestSim = Math.min(bestSim, semanticSimilarity(vals[filledDocs[i]], vals[filledDocs[j]]));
+      }
+    }
+    if (bestSim >= 0.8) return { status: 'MATCH', reason: 'Descriptions semantically match' };
+    if (bestSim >= 0.4) return { status: 'PARTIAL_MATCH', reason: 'Descriptions partially match — possible OCR variation' };
+    return { status: 'MISMATCH', reason: 'Descriptions differ significantly' };
+  }
+
+  if (field.includes('hsn')) {
+    const normalized = filledDocs.map(d => ({ doc: d, norm: normalizeHSN(vals[d]) }));
+    const first4 = new Set(normalized.map(n => n.norm.substring(0, 4)));
+    if (first4.size === 1) {
+      const first6 = new Set(normalized.map(n => n.norm.substring(0, 6)));
+      return first6.size === 1
+        ? { status: 'MATCH', reason: 'HSN code fully matches' }
+        : { status: 'PARTIAL_MATCH', reason: 'HSN first 4–6 digits match — sub-classification difference' };
+    }
+    return { status: 'MISMATCH', reason: 'HSN code differs across documents' };
+  }
+
+  if (field.includes('batch') || field.includes('coil')) {
+    const normalized = filledDocs.map(d => ({ doc: d, norm: normalizeText(vals[d]) }));
+    const unique = new Set(normalized.map(n => n.norm));
+    if (unique.size === 1) return { status: 'MATCH', reason: 'Batch/coil number matches' };
+    return { status: 'MISMATCH', reason: 'Batch/coil number differs' };
+  }
+
+  if (field.includes('vehicle')) {
+    const normalized = filledDocs.map(d => ({ doc: d, norm: normalizeVehicleNo(vals[d]) }));
+    const unique = new Set(normalized.map(n => n.norm));
+    if (unique.size === 1) return { status: 'MATCH', reason: 'Vehicle number matches transport records' };
+    return { status: 'MISMATCH', reason: 'Vehicle number differs between documents' };
+  }
+
+  if (field.includes('weight') || field.includes('quantity')) {
+    const numericVals = {};
+    filledDocs.forEach(d => {
+      const raw = extractNumericValue(vals[d]);
+      numericVals[d] = raw !== null ? toKG(raw, vals[d]) : null;
+    });
+    const valid = Object.entries(numericVals).filter(([, v]) => v !== null);
+    if (valid.length <= 1) return { status: null, reason: 'Insufficient data' };
+    const invVal = numericVals['Invoice'];
+    const lrVal = numericVals['LR Copy'];
+    if (invVal && lrVal) {
+      const ratio = lrVal / invVal;
+      if (ratio > 1.5 && ratio < 2.5) return { status: 'DUPLICATE_LR_CASE', reason: 'LR weight appears duplicated (combined shipment pattern)' };
+    }
+    const allV = valid.map(([, v]) => v);
+    const maxDiff = Math.max(...allV) - Math.min(...allV);
+    if (maxDiff <= 250) return { status: 'MATCH', reason: `Weight within 250 KG tolerance (${Math.round(maxDiff)} KG diff)` };
+    if (maxDiff <= 500) return { status: 'PARTIAL_MATCH', reason: `Weight difference ${Math.round(maxDiff)} KG — within extended tolerance` };
+    return { status: 'MISMATCH', reason: `Weight differs by ${Math.round(maxDiff)} KG — possible discrepancy` };
+  }
+
+  if (field.includes('total amount') || field === 'amount') {
+    const numericVals = {};
+    filledDocs.forEach(d => { numericVals[d] = extractNumericValue(vals[d]); });
+    const valid = Object.entries(numericVals).filter(([, v]) => v !== null);
+    if (valid.length <= 1) return { status: null, reason: 'Single data point' };
+    const allV = valid.map(([, v]) => v);
+    const maxDiff = Math.max(...allV) - Math.min(...allV);
+    if (maxDiff < 1) return { status: 'MATCH', reason: `Amount matches within ₹1 tolerance (₹${maxDiff.toFixed(2)} diff)` };
+    return { status: 'MISMATCH', reason: `Amount differs by ₹${maxDiff.toFixed(2)}` };
+  }
+
+  const filled = Object.values(vals).filter(v => v !== '—');
+  if (new Set(filled).size > 1) return { status: 'MISMATCH', reason: 'Values differ across documents' };
+  return { status: 'MATCH', reason: 'Values match across documents' };
+};
+
+const generateInsights = (comparisons, fieldMap) => {
+  const insights = [];
+  const matched = Object.values(comparisons).filter(c => c.status === 'MATCH').length;
+  const partial = Object.values(comparisons).filter(c => c.status === 'PARTIAL_MATCH').length;
+  const mismatched = Object.values(comparisons).filter(c => c.status === 'MISMATCH' || c.status === 'CRITICAL').length;
+  const dupLR = Object.values(comparisons).filter(c => c.status === 'DUPLICATE_LR_CASE').length;
+
+  if (matched > partial + mismatched) insights.push('Majority of fields match across all documents — high data integrity.');
+  if (partial > 0) insights.push(`${partial} field(s) show partial matches — likely due to formatting or OCR variations.`);
+  if (mismatched > 0) insights.push(`${mismatched} field(s) have critical or significant mismatches requiring attention.`);
+  if (dupLR > 0) insights.push('LR weight pattern suggests combined shipment entry — common logistics scenario.');
+
+  const supl = fieldMap['Supplier Name'];
+  if (supl) {
+    const suplDocs = Object.values(supl).filter(v => v !== '—');
+    if (new Set(suplDocs.map(s => normalizeSupplierName(s))).size === 1 && suplDocs.length >= 2) {
+      insights.push('Invoice, EWay and GRN supplier details align successfully.');
+    }
+  }
+
+  const veh = fieldMap['Vehicle No'];
+  if (veh && veh['E-Way Bill'] !== '—' && veh['LR Copy'] !== '—') {
+    if (normalizeVehicleNo(veh['E-Way Bill']) === normalizeVehicleNo(veh['LR Copy'])) {
+      insights.push('Vehicle number matches transport records — logistics chain verified.');
+    }
+  }
+
+  return insights;
+};
+
 const UnifiedAuditModal = ({ audit, onClose, initialView = 'intelligence', onDecision, isProcessing }) => {
   const [view, setView] = useState(initialView);
   if (!audit) return null;
@@ -38,25 +262,23 @@ const UnifiedAuditModal = ({ audit, onClose, initialView = 'intelligence', onDec
 
   const result = parseAuditResult(audit.Audit_Result);
 
-  // --- Universal Data Logic ---
+  // ── Enhanced field parser with GRN support ──
   const fieldMap = {};
   Object.entries(audit).forEach(([key, val]) => {
-    const EXCLUDED_KEYS = ['Audit_Result', 'Audit_Intelligence', 'id', 'created_at', 'Invoice_SupplierGSTIn_(Invoice)'];
+    const EXCLUDED_KEYS = ['Audit_Result', 'Audit_Intelligence', 'id', 'created_at'];
     if (EXCLUDED_KEYS.some(k => key.toLowerCase().includes(k.toLowerCase()))) return;
 
     let docType = null;
     let fieldBase = key;
 
-    // 1. Identify Document Type from Suffix (handle both _ and space before parenthesis)
     if (key.match(/[ _]\(Invoice\)$|_Invoice$/i)) { docType = 'Invoice'; fieldBase = key.replace(/[ _]\(Invoice\)$|_Invoice$/i, ''); }
     else if (key.match(/[ _]\(EWay\)$|_EWay$/i)) { docType = 'E-Way Bill'; fieldBase = key.replace(/[ _]\(EWay\)$|_EWay$/i, ''); }
     else if (key.match(/[ _]\(LR\)$|_LR$/i)) { docType = 'LR Copy'; fieldBase = key.replace(/[ _]\(LR\)$|_LR$/i, ''); }
+    else if (key.match(/[ _]\(GRN\)$|_GRN$/i)) { docType = 'GRN'; fieldBase = key.replace(/[ _]\(GRN\)$|_GRN$/i, ''); }
 
     if (docType) {
-      // 2. Normalize prefixes (e.g., "Invoice_Weight" -> "Weight")
-      // Special handling for identity numbers and GSTINs to prevent incorrect merging
       const lowKey = fieldBase.toLowerCase();
-      if (lowKey.includes('invoice_number')) {
+      if (lowKey.includes('invoice_number') || lowKey.includes('invoice_no')) {
         fieldBase = 'Invoice Number';
       } else if (lowKey.includes('lr_number')) {
         fieldBase = 'LR Number';
@@ -64,18 +286,37 @@ const UnifiedAuditModal = ({ audit, onClose, initialView = 'intelligence', onDec
         fieldBase = 'E-Way Bill Number';
       } else if (lowKey.includes('gstin')) {
         fieldBase = 'GSTIN';
-      } else if (lowKey.includes('batch_code') || lowKey.includes('coil_number')) {
+      } else if (lowKey.includes('batch_code') || lowKey.includes('coil_number') || lowKey.includes('batch_number')) {
         fieldBase = 'Batch / Coil Number';
+      } else if (lowKey === 'consigner_name' || lowKey === 'supplier_name') {
+        fieldBase = 'Supplier Name';
+      } else if (lowKey === 'consignee_name' || lowKey === 'ship_to') {
+        fieldBase = 'Ship To';
+      } else if (lowKey === 'bill_to') {
+        fieldBase = 'Bill To';
+      } else if (lowKey.includes('product') || lowKey.includes('item_description') || lowKey.includes('item')) {
+        fieldBase = 'Product';
+      } else if (lowKey.includes('description') || lowKey.includes('desc')) {
+        fieldBase = 'Description';
+      } else if (lowKey.includes('hsn') || lowKey.includes('sac')) {
+        fieldBase = 'HSN';
+      } else if (lowKey.includes('vehicle') || lowKey.includes('veh_no')) {
+        fieldBase = 'Vehicle No';
+      } else if (lowKey.includes('weight') || lowKey.includes('wt')) {
+        fieldBase = 'Weight';
+      } else if (lowKey.includes('total_amount') || lowKey === 'amount') {
+        fieldBase = 'Total Amount';
+      } else if (lowKey.includes('quantity') || lowKey.includes('qty')) {
+        fieldBase = 'Quantity';
       } else {
         fieldBase = fieldBase.replace(/^(Invoice|EWay|EWB|LR|Supplier|Consigner|Consignee)[_ ]+/i, '');
       }
-      
-      // 3. Final cleanup and special cases
+
       fieldBase = fieldBase.replace(/_/g, ' ').trim();
       if (fieldBase.toLowerCase().includes('total amount')) fieldBase = 'Total Amount';
-      if (fieldBase.toLowerCase() === 'name') return;
-      
-      if (!fieldMap[fieldBase]) fieldMap[fieldBase] = { Invoice: '—', 'E-Way Bill': '—', 'LR Copy': '—' };
+      if (fieldBase.toLowerCase() === 'name' && !lowKey.includes('supplier') && !lowKey.includes('consigner') && !lowKey.includes('consignee')) return;
+
+      if (!fieldMap[fieldBase]) fieldMap[fieldBase] = { Invoice: '—', 'E-Way Bill': '—', 'LR Copy': '—', 'GRN': '—' };
       fieldMap[fieldBase][docType] = val?.toString() || '—';
     }
   });
@@ -94,83 +335,87 @@ const UnifiedAuditModal = ({ audit, onClose, initialView = 'intelligence', onDec
     return null;
   };
 
-  const hasMismatch = (vals, fieldName = '') => {
-    const filled = Object.values(vals).filter(v => v !== '—');
-    if (filled.length <= 1) return false;
-    
-    // 1. Date-aware comparison (Tolerance: ±1 day)
-    if (fieldName.toLowerCase().includes('date')) {
-      const timestamps = filled.map(v => {
-        const parts = v.split(/[./-]/);
-        if (parts.length === 3) {
-          const d = parseInt(parts[0], 10);
-          const m = parseInt(parts[1], 10) - 1;
-          const y = parseInt(parts[2], 10);
-          return new Date(y, m, d).getTime();
-        }
-        const p = Date.parse(v);
-        return isNaN(p) ? null : p;
-      });
+  // ── Compute all field comparisons ──
+  const comparisons = {};
+  Object.entries(fieldMap).forEach(([fieldBase, vals]) => {
+    comparisons[fieldBase] = compareFieldValues(fieldBase, vals, audit);
+  });
 
-      if (timestamps.every(t => t !== null)) {
-        const base = timestamps[0];
-        const dayMs = 24 * 60 * 60 * 1000;
-        return timestamps.some(t => Math.abs(t - base) > dayMs + 1000); 
-      }
+  const totalFields = Object.keys(comparisons).length;
+  const matchCount = Object.values(comparisons).filter(c => c.status === 'MATCH').length;
+  const partialCount = Object.values(comparisons).filter(c => c.status === 'PARTIAL_MATCH').length;
+  const mismatchCount = Object.values(comparisons).filter(c => c.status === 'MISMATCH' || c.status === 'CRITICAL').length;
+  const auditScore = totalFields > 0 ? Math.round(((matchCount + partialCount * 0.5) / totalFields) * 100) : 0;
+  const overallStatus = auditScore >= 85 ? 'GOOD MATCH' : auditScore >= 60 ? 'PARTIAL MATCH' : 'HIGH MISMATCH';
+  const riskLevel = mismatchCount > 1 || Object.values(comparisons).some(c => c.status === 'CRITICAL') ? 'HIGH' : mismatchCount > 0 ? 'MEDIUM' : 'LOW';
+  const confidence = auditScore >= 85 ? 'HIGH' : auditScore >= 60 ? 'MEDIUM' : 'LOW';
+
+  const insights = generateInsights(comparisons, fieldMap);
+
+  const statusIcon = (status) => {
+    switch (status) {
+      case 'MATCH': return <Check size={12} />;
+      case 'PARTIAL_MATCH': return <AlertTriangle size={12} />;
+      case 'MISMATCH': return <X size={12} />;
+      case 'CRITICAL': return <AlertTriangle size={12} />;
+      case 'DUPLICATE_LR_CASE': return <Truck size={12} />;
+      default: return null;
     }
+  };
 
-    const nums = filled.map(v => {
-      const cleaned = v.replace(/,/g, '').replace(/[^\d.-]/g, '');
-      const parsed = parseFloat(cleaned);
-      return isNaN(parsed) ? null : parsed;
-    });
-
-    if (nums.every(n => n !== null)) {
-      const base = nums[0];
-      const tolerance = fieldName.toLowerCase().includes('weight') ? 0.25 : 1.2;
-      return nums.some(n => Math.abs(n - base) >= tolerance);
+  const statusClass = (status) => {
+    switch (status) {
+      case 'MATCH': return 'status-match';
+      case 'PARTIAL_MATCH': return 'status-partial';
+      case 'MISMATCH': return 'status-mismatch';
+      case 'CRITICAL': return 'status-critical';
+      case 'DUPLICATE_LR_CASE': return 'status-duplicate-lr';
+      default: return '';
     }
-
-    return new Set(filled).size > 1;
   };
 
   const renderCell = (fieldBase, docType, value) => {
     const addr = isAddressField(fieldBase);
-    if (docType === 'LR Copy' && addr) return <td key={docType} className="doc-value-cell not-applicable">N/A</td>;
-    
-    // LR Number is only applicable for LR Copy
+    if (docType === 'LR Copy' && addr) return <td key={docType} className="doc-value-cell not-applicable"><span className="na-text">N/A</span></td>;
+
     if (fieldBase === 'LR Number' && (docType === 'Invoice' || docType === 'E-Way Bill')) {
-      return <td key={docType} className="doc-value-cell not-applicable">N/A</td>;
+      return <td key={docType} className="doc-value-cell not-applicable"><span className="na-text">N/A</span></td>;
     }
 
-    // E-Way Bill Number and Vehicle No are not applicable for Invoice
     if ((fieldBase === 'E-Way Bill Number' || fieldBase === 'Vehicle No') && docType === 'Invoice') {
-      return <td key={docType} className="doc-value-cell not-applicable">N/A</td>;
+      return <td key={docType} className="doc-value-cell not-applicable"><span className="na-text">N/A</span></td>;
     }
 
-    // Batch / Coil Number is not applicable for E-Way Bill
     if (fieldBase === 'Batch / Coil Number' && docType === 'E-Way Bill') {
-      return <td key={docType} className="doc-value-cell not-applicable">N/A</td>;
+      return <td key={docType} className="doc-value-cell not-applicable"><span className="na-text">N/A</span></td>;
     }
 
     const status = addr ? getAddressStatus(fieldBase, docType, value) : null;
-    const mismatch = !addr && hasMismatch(fieldMap[fieldBase], fieldBase);
-    const filled = Object.values(fieldMap[fieldBase]).filter(v => v !== '—');
-    const allMatch = !mismatch && filled.length >= 2 && value !== '—';
+    const comp = comparisons[fieldBase];
+    const cellStatus = comp?.status;
 
     let extraClass = '';
-    if (mismatch && value !== '—') extraClass = 'mismatch-val';
-    else if (allMatch) extraClass = 'match-val';
+    if (cellStatus && value !== '—') {
+      extraClass = statusClass(cellStatus) + '-cell';
+    }
     if (status === 'ok')   extraClass = 'addr-ok';
     if (status === 'fail') extraClass = 'addr-fail';
 
     return (
       <td key={docType} data-label={docType.replace(/_/g, ' ')} className={`doc-value-cell ${extraClass}`}>
-        {value}
-        {status && (
+        <span className="cell-value">{value}</span>
+        {!addr && cellStatus && value !== '—' && (
+          <span className={`cell-status-badge ${statusClass(cellStatus)}`} title={comp?.reason || ''}>
+            {statusIcon(cellStatus)}
+          </span>
+        )}
+        {addr && status && (
           <span className={`addr-badge ${status}`}>
             {status === 'ok' ? '✓' : '✗'}
           </span>
+        )}
+        {!addr && cellStatus && value !== '—' && comp?.reason && (
+          <div className="cell-tooltip">{comp.reason}</div>
         )}
       </td>
     );
@@ -178,7 +423,7 @@ const UnifiedAuditModal = ({ audit, onClose, initialView = 'intelligence', onDec
 
   return (
     <div className="modal-overlay animate-fade-in" onClick={onClose}>
-      <div className="modal-content animate-slide-up universal-modal" onClick={e => e.stopPropagation()}>
+      <div className="modal-content animate-slide-up universal-modal ledger-modal" onClick={e => e.stopPropagation()}>
         <div className="modal-header">
           <div className="header-text-group">
             <h2 className="modal-title">
@@ -193,7 +438,7 @@ const UnifiedAuditModal = ({ audit, onClose, initialView = 'intelligence', onDec
                 onClick={() => setView(view === 'intelligence' ? 'universal' : 'intelligence')}
                 style={{ height: '32px' }}
               >
-                {view === 'intelligence' ? '📊 Switch to Raw Data' : '🤖 Back to Intelligence'}
+                {view === 'intelligence' ? '📊 Raw Data' : '🤖 Intelligence'}
               </button>
             <button className="close-btn" onClick={onClose}><X size={20} /></button>
           </div>
@@ -208,7 +453,6 @@ const UnifiedAuditModal = ({ audit, onClose, initialView = 'intelligence', onDec
               </div>
             ) : (
               <div className="intelligence-grid animate-fade-in premium">
-                {/* Left Column: Core Integrity */}
                 <div className="intelligence-main">
                   <div className="integrity-card glass">
                     <div className="integrity-viz">
@@ -247,26 +491,17 @@ const UnifiedAuditModal = ({ audit, onClose, initialView = 'intelligence', onDec
                   </div>
                 </div>
 
-                {/* Right Column: Match Verticals */}
                 <div className="intelligence-metrics">
                   <h4 className="section-label">Verification Verticals</h4>
-                  
                   <div className="metric-group-premium">
                     <div className="metric-row-premium">
-                      <div className="metric-meta">
-                        <FileText size={16} />
-                        <span>Invoice Identity</span>
-                      </div>
+                      <div className="metric-meta"><FileText size={16} /><span>Invoice Identity</span></div>
                       <span className={`metric-status ${result.invoice_number_match?.invoice_vs_eway === 'MATCH' ? 'pass' : 'fail'}`}>
                         {result.invoice_number_match?.invoice_vs_eway || 'N/A'}
                       </span>
                     </div>
-
                     <div className="metric-row-premium has-tooltip">
-                      <div className="metric-meta">
-                        <Truck size={16} />
-                        <span>Vehicle Positioning</span>
-                      </div>
+                      <div className="metric-meta"><Truck size={16} /><span>Vehicle Positioning</span></div>
                       <span className={`metric-status ${parseInt(result.vehicle_match?.score) > 80 ? 'pass' : 'fail'}`}>
                         {result.vehicle_match?.score || 'Pending'}
                       </span>
@@ -275,12 +510,8 @@ const UnifiedAuditModal = ({ audit, onClose, initialView = 'intelligence', onDec
                         <div className="tooltip-row"><span>LR No:</span> <strong>{audit.Vehicle_No_LR || audit['Vehicle_No_LR'] || audit['Vehicle No (LR)'] || '—'}</strong></div>
                       </div>
                     </div>
-
                     <div className="metric-row-premium has-tooltip">
-                      <div className="metric-meta">
-                        <IndianRupee size={16} />
-                        <span>Financial Value</span>
-                      </div>
+                      <div className="metric-meta"><IndianRupee size={16} /><span>Financial Value</span></div>
                       <span className={`metric-status ${parseInt(result.amount_match?.score) === 100 ? 'pass' : 'fail'}`}>
                         {result.amount_match?.score || '—'}
                       </span>
@@ -291,12 +522,8 @@ const UnifiedAuditModal = ({ audit, onClose, initialView = 'intelligence', onDec
                         <div className="tooltip-row"><span>DIFF:</span> <strong>₹{Math.abs(parseFloat(result.amount_match?.difference || 0)).toLocaleString('en-IN')}</strong></div>
                       </div>
                     </div>
-
                     <div className="metric-row-premium has-tooltip">
-                      <div className="metric-meta">
-                        <Activity size={16} />
-                        <span>Weight Verification</span>
-                      </div>
+                      <div className="metric-meta"><Activity size={16} /><span>Weight Verification</span></div>
                       <span className={`metric-status ${result.weight_match?.score === 'MATCH' || parseInt(result.weight_match?.score) > 80 ? 'pass' : 'fail'}`}>
                         {result.weight_match?.score || '—'}
                       </span>
@@ -307,14 +534,11 @@ const UnifiedAuditModal = ({ audit, onClose, initialView = 'intelligence', onDec
                       </div>
                     </div>
                   </div>
-
                   {result.invoice_number_match?.remarks && (
                     <div className="technical-summary-minimal" style={{ marginTop: '3.3rem' }}>
-                      <Info size={12} />
-                      <span>{result.invoice_number_match.remarks}</span>
+                      <Info size={12} /><span>{result.invoice_number_match.remarks}</span>
                     </div>
                   )}
-
                   {parseInt(result.overall?.final_score) < 100 && (
                      <div className="metric-row-premium" style={{ background: 'rgba(239, 68, 68, 0.05)', borderColor: 'rgba(239, 68, 68, 0.1)', marginTop: '0.75rem' }}>
                         <span className="section-label" style={{ margin: 0, color: '#ef4444' }}>Integrity Deduction</span>
@@ -325,39 +549,96 @@ const UnifiedAuditModal = ({ audit, onClose, initialView = 'intelligence', onDec
               </div>
             )
           ) : (
-            <div className="universal-table-wrapper animate-fade-in">
-                  <table className="comparison-table">
-                    <thead>
-                      <tr>
-                        <th className="field-col" style={{ width: '20%', padding: '0.75rem' }}>Field</th>
-                        <th className="doc-col invoice-col" style={{ padding: '0.75rem' }}>📄 Invoice</th>
-                        <th className="doc-col eway-col" style={{ padding: '0.75rem' }}>🚛 E-Way Bill</th>
-                        <th className="doc-col lr-col" style={{ padding: '0.75rem' }}>📋 LR Copy</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {Object.entries(fieldMap).map(([fieldBase, vals]) => {
-                        const mismatch = !isAddressField(fieldBase) && hasMismatch(vals, fieldBase);
-                        return (
-                          <tr key={fieldBase} className={mismatch ? 'mismatch-row' : ''}>
-                             <td data-label="Field Identity" className="field-name-cell">
-                               {fieldBase.replace(/_/g, ' ')}
-                               {mismatch && <span className="mismatch-flag">⚠ Mismatch</span>}
-                             </td>
-                             {renderCell(fieldBase, 'Invoice', vals['Invoice'])}
-                             {renderCell(fieldBase, 'E-Way Bill', vals['E-Way Bill'])}
-                             {renderCell(fieldBase, 'LR Copy', vals['LR Copy'])}
-                          </tr>
-                        )
-                      })}
-                    </tbody>
-                  </table>
-            </div>
+            <>
+              {/* ── Audit Score Header ── */}
+              <div className="audit-score-header glass-morphism">
+                <div className="score-header-left">
+                  <div className="audit-score-ring" style={{
+                    background: `conic-gradient(${auditScore >= 85 ? '#10b981' : auditScore >= 60 ? '#f59e0b' : '#ef4444'} ${auditScore}%, rgba(255,255,255,0.06) ${auditScore}%)`
+                  }}>
+                    <span className="audit-score-value">{auditScore}%</span>
+                  </div>
+                </div>
+                <div className="score-header-meta">
+                  <div className="score-header-top">
+                    <span className={`score-status-badge ${overallStatus === 'GOOD MATCH' ? 'score-good' : overallStatus === 'PARTIAL MATCH' ? 'score-partial' : 'score-bad'}`}>
+                      {overallStatus}
+                    </span>
+                    <span className={`risk-badge ${riskLevel === 'LOW' ? 'risk-low' : riskLevel === 'MEDIUM' ? 'risk-medium' : 'risk-high'}`}>
+                      {riskLevel} RISK
+                    </span>
+                    <span className="confidence-badge">AI Confidence: {confidence}</span>
+                  </div>
+                  <div className="score-header-stats">
+                    <span className="stat-chip match-chip"><Check size={11} /> {matchCount} Match</span>
+                    <span className="stat-chip partial-chip"><AlertTriangle size={11} /> {partialCount} Partial</span>
+                    <span className="stat-chip mismatch-chip"><X size={11} /> {mismatchCount} Issue{mismatchCount !== 1 ? 's' : ''}</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="universal-table-wrapper animate-fade-in">
+                <table className="comparison-table">
+                  <thead>
+                    <tr>
+                      <th className="field-col" style={{ width: '18%', padding: '0.75rem' }}>Field</th>
+                      <th className="doc-col invoice-col" style={{ padding: '0.75rem' }}>📄 Invoice</th>
+                      <th className="doc-col eway-col" style={{ padding: '0.75rem' }}>🚛 E-Way Bill</th>
+                      <th className="doc-col lr-col" style={{ padding: '0.75rem' }}>📋 LR Copy</th>
+                      <th className="doc-col grn-col" style={{ padding: '0.75rem' }}>📦 GRN</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {Object.entries(fieldMap).map(([fieldBase, vals]) => {
+                      const comp = comparisons[fieldBase];
+                      return (
+                        <tr key={fieldBase} className={`ledger-row ${comp?.status ? statusClass(comp.status) + '-row' : ''}`}>
+                          <td data-label="Field Identity" className="field-name-cell">
+                            <span className="field-label-text">{fieldBase.replace(/_/g, ' ')}</span>
+                            {comp?.status && (
+                              <span className={`row-status-badge ${statusClass(comp.status)}`} title={comp.reason || ''}>
+                                {statusIcon(comp.status)}
+                                <span className="badge-label">
+                                  {comp.status === 'DUPLICATE_LR_CASE' ? 'DUPLICATE LR' : comp.status === 'PARTIAL_MATCH' ? 'PARTIAL' : comp.status}
+                                </span>
+                              </span>
+                            )}
+                            {comp?.reason && <div className="row-tooltip">{comp.reason}</div>}
+                          </td>
+                          {renderCell(fieldBase, 'Invoice', vals['Invoice'])}
+                          {renderCell(fieldBase, 'E-Way Bill', vals['E-Way Bill'])}
+                          {renderCell(fieldBase, 'LR Copy', vals['LR Copy'])}
+                          {renderCell(fieldBase, 'GRN', vals['GRN'])}
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* ── Audit Insights Panel ── */}
+              {insights.length > 0 && (
+                <div className="audit-insights-panel glass-morphism animate-fade-in">
+                  <div className="insights-header">
+                    <BarChart3 size={14} />
+                    <span>Audit Insights</span>
+                  </div>
+                  <div className="insights-list">
+                    {insights.map((insight, i) => (
+                      <div key={i} className="insight-item">
+                        <span className="insight-bullet" />
+                        <span>{insight}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </>
           )}
         </div>
 
         <div className="modal-footer">
-            <p className="footer-hint">Field-by-field cross-doc validation active</p>
+            <p className="footer-hint">4-way cross-document validation · {totalFields} fields analyzed</p>
             <div className="flex footer-actions">
                 <button className="btn btn-outline" onClick={onClose}>Close</button>
                 <div className="flex action-group">
