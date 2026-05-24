@@ -4,6 +4,7 @@ import './AuditHistory.css'
 
 const AUDITS_WEBHOOK_URL = import.meta.env.VITE_AUDITS_HISTORY_URL || 'https://n8n.srv1010832.hstgr.cloud/webhook/40a6351a-d510-492f-918b-7ec9bae2bd2a'
 const SALES_WEBHOOK_URL = 'https://n8n.srv1010832.hstgr.cloud/webhook/10916618-e795-416f-9d0a-6646da9aba06'
+const SALES_DECISION_WEBHOOK_URL = 'https://n8n.srv1010832.hstgr.cloud/webhook/0c5dfbd4-db17-4d71-87ab-96fa2fb7369e'
 
 // Known ZV Steels address tokens for fuzzy checking
 const BILL_TO_TOKENS = ['zv steels', 'zvsteels', 'zv metal', 'aaacz0915c', 'gupta bhavan', 'masjid', 'carnac bunder', 'masjid bandar', '400009', 'mumbai', 'maharashtra']
@@ -760,7 +761,7 @@ const salesValuesMatch = (a, b, type = 'text') => {
 };
 
 // ── Sales Record Detail Modal (supports grouped items with swipe) ──
-const SalesRecordModal = ({ records, onClose, invoiceNumber, onDecision, isProcessing }) => {
+const SalesRecordModal = ({ records, onClose, invoiceNumber, onDecision, isProcessing, hasDecision, decisionStatus }) => {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [slideClass, setSlideClass] = useState('');
   const [touchStartX, setTouchStartX] = useState(null);
@@ -916,7 +917,17 @@ const SalesRecordModal = ({ records, onClose, invoiceNumber, onDecision, isProce
           <p className="footer-hint">{matchCount}/{totalFields} fields match · Invoice vs Sheet comparison</p>
           <div className="flex action-group" style={{ gap: '0.75rem' }}>
             <button className="btn btn-outline" onClick={onClose}>Close</button>
-            {onDecision && (
+            {hasDecision ? (
+              <span className={`badge-status ${decisionStatus === 'Approve' ? 'badge-approve' : 'badge-reject'}`} style={{
+                background: decisionStatus === 'Approve' ? 'rgba(16,185,129,0.15)' : 'rgba(239,68,68,0.15)',
+                color: decisionStatus === 'Approve' ? '#10b981' : '#ef4444',
+                border: `1px solid ${decisionStatus === 'Approve' ? 'rgba(16,185,129,0.3)' : 'rgba(239,68,68,0.3)'}`,
+                padding: '0.5rem 1rem', borderRadius: '6px', fontSize: '0.8rem', fontWeight: 700
+              }}>
+                {decisionStatus === 'Approve' ? <CheckCircle size={14} /> : <AlertTriangle size={14} />}
+                {' '}{decisionStatus === 'Approve' ? 'Approved' : 'Rejected'}
+              </span>
+            ) : onDecision && (
               <>
                 <button 
                   className="btn btn-reject"
@@ -956,9 +967,45 @@ const AuditHistory = () => {
   const [initialModalView, setInitialModalView] = useState('intelligence')
   const [decisionProcessing, setDecisionProcessing] = useState(null)
   const [confirmDecision, setConfirmDecision] = useState(null)
+  const [sortOrder, setSortOrder] = useState('latest') // 'latest' | 'oldest'
+
+  // Derived: which groups already have a decision saved
+  const salesGroupDecisions = useMemo(() => {
+    const map = {};
+    salesHistory.forEach(r => {
+      const inv = r.order_number || r.Order_Number || r.invoice_number;
+      if (inv && (r.Result === 'yes' || r.Result === 'Approve' || r.Result === 'Reject' || r.result === 'yes')) {
+        map[inv] = r.Result || r.result;
+      }
+    });
+    return map;
+  }, [salesHistory]);
 
   const handleDecisionClick = (auditId, decision) => {
+    if (activeSide === 'sales') {
+      handleSalesDecision(auditId, decision);
+      return;
+    }
     setConfirmDecision({ id: auditId, decision });
+  }
+
+  const handleSalesDecision = async (id, decision) => {
+    setDecisionProcessing(id);
+    try {
+      const response = await fetch(SALES_DECISION_WEBHOOK_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, decision })
+      });
+      if (!response.ok) throw new Error('Network response was not ok');
+      setSelectedSalesGroup(null);
+      await fetchSalesHistory(false);
+    } catch (err) {
+      console.error('Sales decision submission failed', err);
+      alert('Failed to submit sales decision.');
+    } finally {
+      setDecisionProcessing(null);
+    }
   }
 
   const executeDecision = async () => {
@@ -1085,13 +1132,18 @@ const AuditHistory = () => {
   };
 
   const filteredHistory = useMemo(() => {
-    return history.filter(item => 
+    const filtered = history.filter(item => 
       (item.Invoice_Number_Invoice?.toLowerCase().includes(searchTerm.toLowerCase())) ||
       (item.Supplier_Name_Invoice?.toLowerCase().includes(searchTerm.toLowerCase())) ||
       (item.Vehicle_No_Eway?.toLowerCase().includes(searchTerm.toLowerCase())) ||
       (item.id?.toString().includes(searchTerm))
-    )
-  }, [history, searchTerm])
+    );
+    return [...filtered].sort((a, b) => {
+      const da = new Date(a.created_at || 0).getTime();
+      const db = new Date(b.created_at || 0).getTime();
+      return sortOrder === 'latest' ? db - da : da - db;
+    });
+  }, [history, searchTerm, sortOrder])
 
   const filteredSalesHistory = useMemo(() => {
     if (!searchTerm) return salesHistory;
@@ -1119,8 +1171,14 @@ const AuditHistory = () => {
         groups[invoiceNum].latestDate = record.created_at;
       }
     });
-    return Object.values(groups);
-  }, [filteredSalesHistory])
+    const groups_arr = Object.values(groups);
+    groups_arr.sort((a, b) => {
+      const da = new Date(a.latestDate || 0).getTime();
+      const db = new Date(b.latestDate || 0).getTime();
+      return sortOrder === 'latest' ? db - da : da - db;
+    });
+    return groups_arr;
+  }, [filteredSalesHistory, sortOrder])
 
   const handleRefresh = () => {
     setIsRefreshing(true)
@@ -1190,6 +1248,15 @@ const AuditHistory = () => {
                 onChange={(e) => setSearchTerm(e.target.value)}
               />
             </div>
+            <button 
+              className="btn btn-outline btn-sm" 
+              onClick={() => setSortOrder(sortOrder === 'latest' ? 'oldest' : 'latest')}
+              title={`Sort: ${sortOrder === 'latest' ? 'Newest first' : 'Oldest first'}`}
+              style={{ padding: '0.5rem 0.65rem', fontSize: '0.65rem', fontWeight: 700, whiteSpace: 'nowrap', gap: '4px', flexShrink: 0 }}
+            >
+              <span>{sortOrder === 'latest' ? '↓' : '↑'}</span>
+              <span className="hide-mobile">{sortOrder === 'latest' ? 'Latest' : 'Oldest'}</span>
+            </button>
             <button className="btn btn-outline refresh-btn-mobile" onClick={handleRefresh} disabled={isRefreshing}>
               <RefreshCw size={16} className={isRefreshing ? 'animate-spin' : ''} />
             </button>
@@ -1320,27 +1387,38 @@ const AuditHistory = () => {
                  className="sales-record-card"
                  onClick={() => setSelectedSalesGroup(group)}
                >
-                 <div className="sales-record-info">
-                   <div className="sales-invoice-header">
-                     <h3 className="sales-order-id">{group.invoiceNumber}</h3>
-                     {group.records.length > 1 && (
-                       <span className="item-count-badge">{group.records.length} items</span>
-                     )}
-                   </div>
-                   <div className="sales-meta">
-                     <span className="sales-party">{group.partyName}</span>
-                     <span className="sales-dot">•</span>
-                     <span className="sales-date">
-                       {group.latestDate ? new Date(group.latestDate).toLocaleDateString('en-IN', { dateStyle: 'medium' }) : '—'}
-                     </span>
-                   </div>
-                 </div>
-                 <div className="sales-record-action">
+                  <div className="sales-record-info">
+                    <div className="sales-invoice-header">
+                      <h3 className="sales-order-id">{group.invoiceNumber}</h3>
+                      {group.records.length > 1 && (
+                        <span className="item-count-badge">{group.records.length} items</span>
+                      )}
+                    </div>
+                    <div className="sales-meta">
+                      <span className="sales-party">{group.partyName}</span>
+                      <span className="sales-dot">•</span>
+                      <span className="sales-date">
+                        {group.latestDate ? new Date(group.latestDate).toLocaleDateString('en-IN', { dateStyle: 'medium' }) : '—'}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="sales-record-action" style={{ gap: '0.5rem' }}>
+                    {salesGroupDecisions[group.invoiceNumber] && (
+                      <span className={`badge-status ${salesGroupDecisions[group.invoiceNumber] === 'Approve' ? 'badge-approve' : 'badge-reject'}`} style={{
+                        background: salesGroupDecisions[group.invoiceNumber] === 'Approve' ? 'rgba(16,185,129,0.15)' : 'rgba(239,68,68,0.15)',
+                        color: salesGroupDecisions[group.invoiceNumber] === 'Approve' ? '#10b981' : '#ef4444',
+                        border: `1px solid ${salesGroupDecisions[group.invoiceNumber] === 'Approve' ? 'rgba(16,185,129,0.3)' : 'rgba(239,68,68,0.3)'}`,
+                        padding: '0.25rem 0.6rem', borderRadius: '4px', fontSize: '0.7rem', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '4px'
+                      }}>
+                        {salesGroupDecisions[group.invoiceNumber] === 'Approve' ? <CheckCircle size={12} /> : <AlertTriangle size={12} />}
+                        {salesGroupDecisions[group.invoiceNumber] === 'Approve' ? 'Approved' : 'Rejected'}
+                      </span>
+                    )}
                     <button className="btn-action-view">
                       <Eye size={16} />
                       <span className="hide-mobile">View Comparison</span>
                     </button>
-                 </div>
+                  </div>
                </div>
              ))}
           </div>
@@ -1365,6 +1443,8 @@ const AuditHistory = () => {
           onClose={() => setSelectedSalesGroup(null)}
           onDecision={handleDecisionClick}
           isProcessing={!!decisionProcessing}
+          hasDecision={!!salesGroupDecisions[selectedSalesGroup.invoiceNumber]}
+          decisionStatus={salesGroupDecisions[selectedSalesGroup.invoiceNumber]}
         />
       )}
 
