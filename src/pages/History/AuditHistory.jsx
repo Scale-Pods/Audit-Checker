@@ -995,6 +995,24 @@ const AuditHistory = () => {
 
   const handleSalesDecision = async (id, decision) => {
     setDecisionProcessing(id);
+
+    // Optimistic update: immediately mark all records with same invoice as decided
+    setSalesHistory(prev => {
+      let targetInvoice = null;
+      const record = prev.find(r => r.id === id);
+      if (record) {
+        targetInvoice = record.order_number || record.Order_Number || record.invoice_number;
+      }
+      if (!targetInvoice) return prev;
+      return prev.map(r => {
+        const inv = r.order_number || r.Order_Number || r.invoice_number;
+        if (inv === targetInvoice) {
+          return { ...r, Result: decision };
+        }
+        return r;
+      });
+    });
+
     try {
       const response = await fetch(SALES_DECISION_WEBHOOK_URL, {
         method: 'POST',
@@ -1007,6 +1025,8 @@ const AuditHistory = () => {
     } catch (err) {
       console.error('Sales decision submission failed', err);
       alert('Failed to submit sales decision.');
+      // Roll back optimistic update on failure
+      await fetchSalesHistory(false);
     } finally {
       setDecisionProcessing(null);
     }
