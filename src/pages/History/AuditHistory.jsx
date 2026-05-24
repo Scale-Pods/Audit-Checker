@@ -973,11 +973,11 @@ const AuditHistory = () => {
   const salesGroupDecisions = useMemo(() => {
     const map = {};
     salesHistory.forEach(r => {
-      const inv = r.order_number || r.Order_Number || r.invoice_number;
+      const inv = r.order_number || r["Invoice Number"] || r.Order_Number || r.invoice_number;
       if (!inv) return;
       const raw = r.Result || r.result || r.Status || r.status;
-      if (raw === 'Approve' || raw === 'Reject') {
-        if (!map[inv]) map[inv] = raw;
+      if (raw === 'Approve' || raw === 'Reject' || raw === 'APPROVED' || raw === 'REJECTED') {
+        if (!map[inv]) map[inv] = raw === 'APPROVED' ? 'Approve' : raw === 'REJECTED' ? 'Reject' : raw;
       } else if (raw === 'yes' || raw === 'Yes' || raw === 'YES') {
         if (!map[inv]) map[inv] = 'Approve';
       }
@@ -1001,11 +1001,11 @@ const AuditHistory = () => {
       let targetInvoice = null;
       const record = prev.find(r => r.id === id);
       if (record) {
-        targetInvoice = record.order_number || record.Order_Number || record.invoice_number;
+        targetInvoice = record.order_number || record["Invoice Number"] || record.Order_Number || record.invoice_number;
       }
       if (!targetInvoice) return prev;
       return prev.map(r => {
-        const inv = r.order_number || r.Order_Number || r.invoice_number;
+        const inv = r.order_number || r["Invoice Number"] || r.Order_Number || r.invoice_number;
         if (inv === targetInvoice) {
           return { ...r, Result: decision };
         }
@@ -1073,7 +1073,14 @@ const AuditHistory = () => {
 
   const normalizeArray = (data, depth = 0) => {
     if (depth > 3) return [];
-    if (Array.isArray(data)) return data;
+    if (Array.isArray(data)) {
+      // Check if the array wraps a single object with a data key
+      if (data.length === 1 && data[0] && typeof data[0] === 'object' && !Array.isArray(data[0])) {
+        const inner = normalizeArray(data[0], depth + 1);
+        if (Array.isArray(inner) && inner.length > 0) return inner;
+      }
+      return data;
+    }
     if (!data || typeof data !== 'object') return [];
     if (data?.audits && Array.isArray(data.audits)) return data.audits;
     if (data?.data && Array.isArray(data.data)) return data.data;
@@ -1181,7 +1188,7 @@ const AuditHistory = () => {
   const groupedSalesHistory = useMemo(() => {
     const groups = {};
     filteredSalesHistory.forEach(record => {
-      const invoiceNum = record.order_number || record.Order_Number || record.invoice_number || 'Unknown';
+      const invoiceNum = record.order_number || record["Invoice Number"] || record.Order_Number || record.invoice_number || 'Unknown';
       if (!groups[invoiceNum]) {
         groups[invoiceNum] = {
           invoiceNumber: invoiceNum,
