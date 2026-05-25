@@ -930,10 +930,10 @@ const Dashboard = () => {
         />
         <StatCard 
           title="Total Audit Value" 
-          value={`₹${(processedData.stats.totalValue / 100000).toFixed(2)} L`} 
+          value={`₹${(processedData.stats.totalValue / 10000000).toFixed(2)} Cr`} 
           icon={TrendingDown} 
           type="warning"
-          trendLabel="Live transactional volume in Lakhs"
+          trendLabel="Live transactional volume in Crores"
         />
       </div>
 
