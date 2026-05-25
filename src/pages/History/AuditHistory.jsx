@@ -60,6 +60,37 @@ const normalizeVehicleNo = (text) => {
   return text.toString().toUpperCase().replace(/\s/g, '');
 };
 
+const normalizeDate = (text) => {
+  if (!text || text === '—') return '';
+  const s = text.toString().trim();
+  const months = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];
+  const mmmMatch = s.match(/^(\d{1,2})[-\/](\w{3})[-\/](\d{2,4})$/);
+  if (mmmMatch) {
+    const day = mmmMatch[1].padStart(2, '0');
+    const monthIdx = months.indexOf(mmmMatch[2].toLowerCase().substring(0, 3));
+    if (monthIdx !== -1) {
+      let year = mmmMatch[3];
+      if (year.length === 2) year = '20' + year;
+      return `${year}-${String(monthIdx + 1).padStart(2, '0')}-${day}`;
+    }
+  }
+  const numMatch = s.match(/^(\d{1,2})[-\/](\d{1,2})[-\/](\d{2,4})$/);
+  if (numMatch) {
+    const day = numMatch[1].padStart(2, '0');
+    const month = numMatch[2].padStart(2, '0');
+    let year = numMatch[3];
+    if (year.length === 2) year = '20' + year;
+    return `${year}-${month}-${day}`;
+  }
+  const ymdMatch = s.match(/^(\d{4})[-\/](\d{1,2})[-\/](\d{1,2})$/);
+  if (ymdMatch) {
+    return `${ymdMatch[1]}-${ymdMatch[2].padStart(2, '0')}-${ymdMatch[3].padStart(2, '0')}`;
+  }
+  const d = new Date(s);
+  if (!isNaN(d.getTime())) return d.toISOString().split('T')[0];
+  return normalizeText(s);
+};
+
 const extractNumericValue = (text) => {
   if (!text || text === '—') return null;
   const cleaned = text.toString().replace(/,/g, '').replace(/[^0-9.-]/g, '');
@@ -212,6 +243,13 @@ const compareFieldValues = (fieldName, vals, audit) => {
     return { status: 'MISMATCH', reason: `Amount differs by ₹${maxDiff.toFixed(2)}` };
   }
 
+  if (field.includes('date')) {
+    const normalized = filledDocs.map(d => ({ doc: d, norm: normalizeDate(vals[d]) }));
+    const unique = new Set(normalized.map(n => n.norm));
+    if (unique.size === 1) return { status: 'MATCH', reason: 'Dates match after normalization' };
+    return { status: 'MISMATCH', reason: 'Date values differ across documents' };
+  }
+
   const filled = Object.values(vals).filter(v => v !== '—');
   if (new Set(filled).size > 1) return { status: 'MISMATCH', reason: 'Values differ across documents' };
   return { status: 'MATCH', reason: 'Values match across documents' };
@@ -255,7 +293,8 @@ const UnifiedAuditModal = ({ audit, onClose, initialView = 'intelligence', onDec
     if (!resultStr) return null;
     try {
       const parsed = typeof resultStr === 'string' ? JSON.parse(resultStr) : resultStr;
-      return Array.isArray(parsed) ? parsed[0] : parsed;
+      const extracted = Array.isArray(parsed) ? parsed[0] : parsed;
+      return normalizeAuditResult(extracted);
     } catch {
       return null;
     }
@@ -346,9 +385,10 @@ const UnifiedAuditModal = ({ audit, onClose, initialView = 'intelligence', onDec
   const matchCount = Object.values(comparisons).filter(c => c.status === 'MATCH').length;
   const partialCount = Object.values(comparisons).filter(c => c.status === 'PARTIAL_MATCH').length;
   const mismatchCount = Object.values(comparisons).filter(c => c.status === 'MISMATCH' || c.status === 'CRITICAL').length;
-  const auditScore = totalFields > 0 ? Math.round(((matchCount + partialCount * 0.5) / totalFields) * 100) : 0;
-  const overallStatus = auditScore >= 85 ? 'GOOD MATCH' : auditScore >= 60 ? 'PARTIAL MATCH' : 'HIGH MISMATCH';
-  const riskLevel = mismatchCount > 1 || Object.values(comparisons).some(c => c.status === 'CRITICAL') ? 'HIGH' : mismatchCount > 0 ? 'MEDIUM' : 'LOW';
+  const webhookScore = parseInt(result?.overall?.final_score);
+  const auditScore = !isNaN(webhookScore) ? webhookScore : (totalFields > 0 ? Math.round(((matchCount + partialCount * 0.5) / totalFields) * 100) : 0);
+  const overallStatus = result?.overall?.status || (auditScore >= 85 ? 'GOOD MATCH' : auditScore >= 60 ? 'PARTIAL MATCH' : 'HIGH MISMATCH');
+  const riskLevel = result?.overall?.status === 'CRITICAL' ? 'HIGH' : mismatchCount > 1 || Object.values(comparisons).some(c => c.status === 'CRITICAL') ? 'HIGH' : mismatchCount > 0 ? 'MEDIUM' : 'LOW';
   const confidence = auditScore >= 85 ? 'HIGH' : auditScore >= 60 ? 'MEDIUM' : 'LOW';
 
   const insights = generateInsights(comparisons, fieldMap);
@@ -562,8 +602,8 @@ const UnifiedAuditModal = ({ audit, onClose, initialView = 'intelligence', onDec
                 </div>
                 <div className="score-header-meta">
                   <div className="score-header-top">
-                    <span className={`score-status-badge ${overallStatus === 'GOOD MATCH' ? 'score-good' : overallStatus === 'PARTIAL MATCH' ? 'score-partial' : 'score-bad'}`}>
-                      {overallStatus}
+                    <span className={`score-status-badge ${overallStatus === 'GOOD MATCH' || overallStatus === 'GOOD_MATCH' ? 'score-good' : overallStatus === 'PARTIAL MATCH' || overallStatus === 'PARTIAL_MATCH' || overallStatus === 'NEEDS_REVIEW' ? 'score-partial' : 'score-bad'}`}>
+                      {overallStatus.replace(/_/g, ' ')}
                     </span>
                     <span className={`risk-badge ${riskLevel === 'LOW' ? 'risk-low' : riskLevel === 'MEDIUM' ? 'risk-medium' : 'risk-high'}`}>
                       {riskLevel} RISK
@@ -706,6 +746,27 @@ const levenshtein = (a, b) => {
     }
   }
   return matrix[b.length][a.length];
+};
+
+const normalizeAuditResult = (result) => {
+  if (!result || !result.output?.overall_summary) return result;
+  const o = result.output;
+  const di = o.detailed_issues?.[0] || {};
+  const fi = o.field_issues || {};
+  const isMatch = (arr) => !arr?.length;
+  return {
+    overall: {
+      final_score: (o.overall_summary.average_score || '0').replace('%', ''),
+      status: o.overall_summary.overall_status || 'UNVERIFIED'
+    },
+    issues: di.key_issues || [],
+    invoice_number_match: {
+      invoice_vs_eway: isMatch(fi.invoice_number_lr_mismatch) && isMatch(fi.invoice_number_grn_mismatch) ? 'MATCH' : 'MISMATCH'
+    },
+    vehicle_match: { score: isMatch(fi.vehicle_mismatch) ? 'MATCH' : 'MISMATCH' },
+    amount_match: { score: isMatch(fi.amount_mismatch) ? 'MATCH' : 'MISMATCH' },
+    weight_match: { score: isMatch(fi.weight_mismatch) ? 'MATCH' : 'MISMATCH' },
+  };
 };
 
 const fuzzyNameMatch = (a, b) => {
@@ -1065,7 +1126,8 @@ const AuditHistory = () => {
     if (!resultStr) return null;
     try {
       const parsed = typeof resultStr === 'string' ? JSON.parse(resultStr) : resultStr;
-      return Array.isArray(parsed) ? parsed[0] : parsed;
+      const extracted = Array.isArray(parsed) ? parsed[0] : parsed;
+      return normalizeAuditResult(extracted);
     } catch {
       return null;
     }

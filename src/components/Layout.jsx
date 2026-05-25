@@ -91,6 +91,13 @@ const Layout = () => {
             <p className="nav-group-title">AUDIT MODULES</p>
             <SidebarItem to="/purchase" icon={ShoppingBag} label="Purchase Audit" onClick={closeMobileMenu} />
             <SidebarItem to="/sales" icon={FileText} label="Sales Audit" onClick={closeMobileMenu} />
+            <div className="sidebar-item disabled">
+              <FileText size={20} />
+              <div className="sidebar-item-content">
+                <span>TDC to MTC Checker</span>
+                <span className="dev-badge">Under Development</span>
+              </div>
+            </div>
           </div>
 
           <div className="nav-group">
