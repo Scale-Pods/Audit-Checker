@@ -1,21 +1,18 @@
 import React, { useState, useCallback, useEffect } from 'react'
 import { useDropzone } from 'react-dropzone'
-import { UploadCloud, File as FileIcon, FileText, CheckCircle, AlertTriangle, ArrowRight, X, Send, Mail, Loader2, XCircle, Info, ChevronRight, Check, ClipboardList, Scale, ShoppingCart } from 'lucide-react'
+import { UploadCloud, File as FileIcon, FileText, CheckCircle, AlertTriangle, ArrowRight, X, Send, Mail, Loader2, XCircle, Info, ChevronRight, Check, ClipboardList, Scale, ShoppingCart, FileSpreadsheet } from 'lucide-react'
 import '../Purchase/PurchaseAudit.css'
 
-const DocumentUpload = ({ title, accepted, onUpload, files, isSubmitted, multiple }) => {
+const DocumentUpload = ({ title, accepted, onUpload, files, isSubmitted }) => {
   const onDrop = useCallback(acceptedFiles => {
-    if (multiple) {
-      onUpload(prev => [...prev, ...acceptedFiles])
-    } else if (acceptedFiles.length > 0) {
-      onUpload(acceptedFiles[0])
+    if (acceptedFiles.length > 0) {
+      onUpload([acceptedFiles[0]])
     }
-  }, [onUpload, multiple])
+  }, [onUpload])
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({ 
     onDrop,
-    accept: accepted,
-    multiple: !!multiple
+    accept: accepted
   })
 
   const renderFilePreview = (f, index) => (
@@ -39,13 +36,13 @@ const DocumentUpload = ({ title, accepted, onUpload, files, isSubmitted, multipl
   const hasFiles = files && files.length > 0
 
   return (
-    <div className={`upload-box card ${isSubmitted ? 'card-submitted' : ''} ${multiple ? 'bulk-upload-box' : ''}`} style={{ transition: 'all 0.4s', height: '100%' }}>
+    <div className={`upload-box card ${isSubmitted ? 'card-submitted' : ''}`} style={{ transition: 'all 0.4s', height: '100%' }}>
       <h3 className="upload-title text-primary flex items-center gap-2" style={{ fontSize: '1.25rem', marginBottom: '1.5rem' }}>
         <UploadCloud size={24} /> {title}
       </h3>
       
       {!hasFiles ? (
-        <div {...getRootProps()} className={`dropzone ${isDragActive ? 'active' : ''} ${multiple ? 'bulk-dropzone' : ''}`}>
+        <div {...getRootProps()} className={`dropzone ${isDragActive ? 'active' : ''}`}>
           <input {...getInputProps()} />
           <UploadCloud size={80} className="drop-icon" style={{ opacity: 0.7, marginBottom: '1.5rem' }} />
           <p className="drop-text" style={{ fontSize: '1.5rem', fontWeight: '700' }}>Drag & drop files here</p>
@@ -54,13 +51,6 @@ const DocumentUpload = ({ title, accepted, onUpload, files, isSubmitted, multipl
       ) : (
         <div className="file-list-container">
           {files.map((f, i) => renderFilePreview(f, i))}
-          
-          {!isSubmitted && (
-            <div {...getRootProps()} className="dropzone-mini" style={{ padding: '1.5rem', borderStyle: 'solid', borderWidth: '2px' }}>
-              <input {...getInputProps()} />
-              <span style={{ fontSize: '1rem' }}>+ Add more files</span>
-            </div>
-          )}
 
           {isSubmitted && (
             <div className="submit-success" style={{ padding: '1.5rem' }}>
@@ -92,7 +82,7 @@ const SalesAudit = () => {
 
   const [webhookResponse, setWebhookResponse] = useState(null)
 
-  // Paste handler
+  // Paste handler (single file per section)
   useEffect(() => {
     const handlePaste = (e) => {
       const items = (e.clipboardData || e.originalEvent?.clipboardData)?.items;
@@ -103,10 +93,10 @@ const SalesAudit = () => {
           const blob = item.getAsFile();
           if (blob && blob.type.startsWith('image/')) {
             const pastedFile = new File([blob], `Pasted-Image-${Date.now()}.png`, { type: blob.type });
-            if (activeStep === 0) setInvoiceFiles(prev => [...prev, pastedFile]);
-            if (activeStep === 1) setGatepassFiles(prev => [...prev, pastedFile]);
-            if (activeStep === 2) setWeightslipFiles(prev => [...prev, pastedFile]);
-            if (activeStep === 3) setPurchaseOrderFiles(prev => [...prev, pastedFile]);
+            if (activeStep === 0) setPurchaseOrderFiles([pastedFile]);
+            if (activeStep === 2) setWeightslipFiles([pastedFile]);
+            if (activeStep === 3) setGatepassFiles([pastedFile]);
+            if (activeStep === 4) setInvoiceFiles([pastedFile]);
           }
         }
       }
@@ -118,16 +108,16 @@ const SalesAudit = () => {
 
   const handleSubmitAll = async () => {
     let uploads = []
-    invoiceFiles.forEach(f => uploads.push({ file: f, name: 'Invoice' }))
-    gatepassFiles.forEach(f => uploads.push({ file: f, name: 'Gatepass' }))
-    weightslipFiles.forEach(f => uploads.push({ file: f, name: 'Weightslip' }))
     purchaseOrderFiles.forEach(f => uploads.push({ file: f, name: 'PurchaseOrder' }))
+    weightslipFiles.forEach(f => uploads.push({ file: f, name: 'Weightslip' }))
+    gatepassFiles.forEach(f => uploads.push({ file: f, name: 'Gatepass' }))
+    invoiceFiles.forEach(f => uploads.push({ file: f, name: 'Invoice' }))
 
     if (uploads.length === 0) return
     setIsSubmitting(true)
     setSubmitError(null)
     setAllDone(true)
-    setActiveStep(4)
+    setActiveStep(5)
 
     try {
       const formData = new FormData()
@@ -163,21 +153,22 @@ const SalesAudit = () => {
       console.error('[Submit] Error:', err)
       setSubmitError(err.message || 'Failed to send.')
       setAllDone(false)
-      setActiveStep(3)
+      setActiveStep(4)
     } finally {
       setIsSubmitting(false)
     }
   }
 
   const steps = [
-    { label: 'Sales Invoice', files: invoiceFiles, status: invoiceFiles.length > 0 ? 'Ready' : 'Pending', icon: FileText },
-    { label: 'Gatepass', files: gatepassFiles, status: gatepassFiles.length > 0 ? 'Ready' : 'Pending', icon: ClipboardList },
+    { label: 'Purchase Order', files: purchaseOrderFiles, status: purchaseOrderFiles.length > 0 ? 'Ready' : 'Pending', icon: ShoppingCart },
+    { label: 'Sales Order', files: [], status: 'Sheet Added', icon: FileSpreadsheet },
     { label: 'Weightslip', files: weightslipFiles, status: weightslipFiles.length > 0 ? 'Ready' : 'Pending', icon: Scale },
-    { label: 'Purchase Order', files: purchaseOrderFiles, status: purchaseOrderFiles.length > 0 ? 'Ready' : 'Pending', icon: ShoppingCart }
+    { label: 'Gatepass', files: gatepassFiles, status: gatepassFiles.length > 0 ? 'Ready' : 'Pending', icon: ClipboardList },
+    { label: 'Invoice', files: invoiceFiles, status: invoiceFiles.length > 0 ? 'Ready' : 'Pending', icon: FileText }
   ]
 
   const nextStep = () => {
-    if (activeStep < 3) setActiveStep(activeStep + 1)
+    if (activeStep < 4) setActiveStep(activeStep + 1)
   }
 
   const prevStep = () => {
@@ -473,7 +464,7 @@ const SalesAudit = () => {
             <button className="btn btn-outline" onClick={() => {
               setResult(null); setInvoiceFiles([]); setGatepassFiles([]); setWeightslipFiles([]); setPurchaseOrderFiles([]); setAllDone(false); setActiveStep(0); setWebhookResponse(null);
             }}>
-              Reset Audit
+              New Entry
             </button>
           )}
         </div>
@@ -506,21 +497,22 @@ const SalesAudit = () => {
                   <div style={{ minHeight: '500px' }}>
                     {activeStep === 0 && (
                       <DocumentUpload 
-                        title="Sales Invoice Upload" 
+                        title="Purchase Order Upload" 
                         accepted={{'image/*': ['.png', '.jpg', '.jpeg']}}
-                        onUpload={setInvoiceFiles}
-                        files={invoiceFiles}
-                        multiple={true}
+                        onUpload={setPurchaseOrderFiles}
+                        files={purchaseOrderFiles}
                       />
                     )}
                     {activeStep === 1 && (
-                      <DocumentUpload 
-                        title="Gatepass Upload" 
-                        accepted={{'image/*': ['.png', '.jpg', '.jpeg']}}
-                        onUpload={setGatepassFiles}
-                        files={gatepassFiles}
-                        multiple={true}
-                      />
+                      <div className="upload-box card" style={{ textAlign: 'center', padding: '3rem 2rem' }}>
+                        <FileSpreadsheet size={64} style={{ opacity: 0.5, marginBottom: '1.5rem', color: 'var(--primary)' }} />
+                        <h3 className="upload-title text-primary" style={{ fontSize: '1.25rem', marginBottom: '0.75rem' }}>
+                          Sales Order
+                        </h3>
+                        <p style={{ fontSize: '1rem', color: 'var(--text-muted)', maxWidth: '400px', margin: '0 auto', lineHeight: '1.6' }}>
+                          Sales Order sheet has been added and will be included in the audit.
+                        </p>
+                      </div>
                     )}
                     {activeStep === 2 && (
                       <DocumentUpload 
@@ -528,22 +520,30 @@ const SalesAudit = () => {
                         accepted={{'image/*': ['.png', '.jpg', '.jpeg']}}
                         onUpload={setWeightslipFiles}
                         files={weightslipFiles}
-                        multiple={true}
                       />
                     )}
                     {activeStep === 3 && (
                       <DocumentUpload 
-                        title="Purchase Order Upload" 
+                        title="Gatepass Upload" 
                         accepted={{'image/*': ['.png', '.jpg', '.jpeg']}}
-                        onUpload={setPurchaseOrderFiles}
-                        files={purchaseOrderFiles}
-                        multiple={true}
+                        onUpload={setGatepassFiles}
+                        files={gatepassFiles}
+                      />
+                    )}
+                    {activeStep === 4 && (
+                      <DocumentUpload 
+                        title="Invoice Upload" 
+                        accepted={{'image/*': ['.png', '.jpg', '.jpeg']}}
+                        onUpload={setInvoiceFiles}
+                        files={invoiceFiles}
                       />
                     )}
 
-                    <div className="paste-hint" style={{ marginTop: '2rem' }}>
-                      <span className="kbd" style={{ padding: '4px 8px' }}>Ctrl</span> + <span className="kbd" style={{ padding: '4px 8px' }}>V</span> to paste screenshots directly
-                    </div>
+                    {activeStep !== 1 && (
+                      <div className="paste-hint" style={{ marginTop: '2rem' }}>
+                        <span className="kbd" style={{ padding: '4px 8px' }}>Ctrl</span> + <span className="kbd" style={{ padding: '4px 8px' }}>V</span> to paste screenshots directly
+                      </div>
+                    )}
 
                     <div className="step-footer">
                       {activeStep > 0 && (
@@ -551,11 +551,11 @@ const SalesAudit = () => {
                           Back
                         </button>
                       )}
-                      {activeStep < 3 ? (
+                      {activeStep < 4 ? (
                         <button 
                           className="btn btn-primary btn-done" 
                           onClick={nextStep}
-                          disabled={steps[activeStep].files.length === 0}
+                          disabled={activeStep === 0 ? purchaseOrderFiles.length === 0 : activeStep !== 1 && steps[activeStep].files.length === 0}
                           style={{ padding: '1rem 4rem' }}
                         >
                           Next Stage <ChevronRight size={22} />
@@ -564,7 +564,7 @@ const SalesAudit = () => {
                         <button 
                           className="btn btn-primary btn-done" 
                           onClick={handleSubmitAll}
-                          disabled={isSubmitting || purchaseOrderFiles.length === 0}
+                          disabled={isSubmitting || invoiceFiles.length === 0}
                           style={{ background: 'var(--success)', borderColor: 'var(--success)', padding: '1rem 5rem' }}
                         >
                           {isSubmitting ? <><Loader2 size={24} className="spin-icon" /> Sending...</> : <><Send size={24} /> Final Submit</>}
@@ -596,7 +596,7 @@ const SalesAudit = () => {
                       return (
                         <div 
                           key={idx} 
-                          className={`sidebar-nav-item ${activeStep === idx ? 'active' : ''} ${s.files.length > 0 ? 'completed' : ''}`}
+                          className={`sidebar-nav-item ${activeStep === idx ? 'active' : ''} ${s.files.length > 0 || idx === 1 ? 'completed' : ''}`}
                           onClick={() => !allDone && setActiveStep(idx)}
                         >
                           <div className="sidebar-step-num">
@@ -604,7 +604,7 @@ const SalesAudit = () => {
                           </div>
                           <div className="sidebar-step-info">
                             <span className="sidebar-step-name">{s.label}</span>
-                            <span className="sidebar-step-status">{s.files.length > 0 ? 'Uploaded' : 'Waiting...'}</span>
+                            <span className="sidebar-step-status">{idx === 1 ? 'Added' : s.files.length > 0 ? 'Uploaded' : 'Waiting...'}</span>
                           </div>
                         </div>
                       );
