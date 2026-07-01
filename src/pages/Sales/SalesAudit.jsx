@@ -1,78 +1,95 @@
 import React, { useState, useCallback, useEffect } from 'react'
 import { useDropzone } from 'react-dropzone'
-import { UploadCloud, File, FileText, CheckCircle, AlertTriangle, ArrowRight, X, Loader2, Send, Info, Mail } from 'lucide-react'
-import '../Purchase/PurchaseAudit.css' // Reusing styles from Purchase Audit
+import { UploadCloud, File as FileIcon, FileText, CheckCircle, AlertTriangle, ArrowRight, X, Send, Mail, Loader2, XCircle, Info, ChevronRight, Check, ClipboardList, Scale, ShoppingCart } from 'lucide-react'
+import '../Purchase/PurchaseAudit.css'
 
-const DocumentUpload = ({ title, accepted, onUpload, files, icon: IconComponent }) => {
+const DocumentUpload = ({ title, accepted, onUpload, files, isSubmitted, multiple }) => {
   const onDrop = useCallback(acceptedFiles => {
-    if (acceptedFiles.length > 0) {
+    if (multiple) {
       onUpload(prev => [...prev, ...acceptedFiles])
+    } else if (acceptedFiles.length > 0) {
+      onUpload(acceptedFiles[0])
     }
-  }, [onUpload])
+  }, [onUpload, multiple])
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({ 
     onDrop,
     accept: accepted,
-    multiple: true
+    multiple: !!multiple
   })
 
-  const Icon = IconComponent || File;
+  const renderFilePreview = (f, index) => (
+    <div key={index || 0} className="file-preview animate-scale-in">
+      <FileIcon className="file-icon" size={32} />
+      <div className="file-info">
+        <span className="file-name" style={{ fontSize: '1.1rem' }}>{f.name}</span>
+        <span className="file-size">{(f.size / 1024).toFixed(2)} KB</span>
+      </div>
+      {!isSubmitted && (
+        <button className="remove-btn" onClick={(e) => {
+          e.stopPropagation();
+          onUpload(prev => prev.filter((_, i) => i !== index))
+        }}>
+          <X size={20} />
+        </button>
+      )}
+    </div>
+  )
+
+  const hasFiles = files && files.length > 0
 
   return (
-    <div className="upload-box card">
-      <h3 className="upload-title flex items-center gap-2">
-        <Icon size={18} className="text-primary"/> {title}
+    <div className={`upload-box card ${isSubmitted ? 'card-submitted' : ''} ${multiple ? 'bulk-upload-box' : ''}`} style={{ transition: 'all 0.4s', height: '100%' }}>
+      <h3 className="upload-title text-primary flex items-center gap-2" style={{ fontSize: '1.25rem', marginBottom: '1.5rem' }}>
+        <UploadCloud size={24} /> {title}
       </h3>
       
-      <div {...getRootProps()} className={`dropzone ${isDragActive ? 'active' : ''}`} style={{ minHeight: '140px', padding: '1.5rem' }}>
-        <input {...getInputProps()} />
-        <UploadCloud size={32} className="drop-icon" style={{ marginBottom: '0.5rem' }} />
-        <p className="drop-text" style={{ fontSize: '0.9rem' }}>Choose Files</p>
-        <span className="drop-subtext">Drag & drop or click</span>
-      </div>
-
-      {files && files.length > 0 && (
-        <div className="file-list-container" style={{ marginTop: '1rem' }}>
-          {files.map((file, idx) => (
-            <div key={idx} className="file-preview" style={{ marginBottom: '0.5rem' }}>
-              <File className="file-icon" size={20} />
-              <div className="file-info">
-                <span className="file-name" style={{ fontSize: '0.8rem' }}>{file.name}</span>
-                <span className="file-size">{(file.size / 1024).toFixed(2)} KB</span>
-              </div>
-              <button className="remove-btn" onClick={() => onUpload(files.filter((_, i) => i !== idx))}>
-                <X size={14} />
-              </button>
+      {!hasFiles ? (
+        <div {...getRootProps()} className={`dropzone ${isDragActive ? 'active' : ''} ${multiple ? 'bulk-dropzone' : ''}`}>
+          <input {...getInputProps()} />
+          <UploadCloud size={80} className="drop-icon" style={{ opacity: 0.7, marginBottom: '1.5rem' }} />
+          <p className="drop-text" style={{ fontSize: '1.5rem', fontWeight: '700' }}>Drag & drop files here</p>
+          <span className="drop-subtext" style={{ fontSize: '1rem' }}>or click to browse from folder</span>
+        </div>
+      ) : (
+        <div className="file-list-container">
+          {files.map((f, i) => renderFilePreview(f, i))}
+          
+          {!isSubmitted && (
+            <div {...getRootProps()} className="dropzone-mini" style={{ padding: '1.5rem', borderStyle: 'solid', borderWidth: '2px' }}>
+              <input {...getInputProps()} />
+              <span style={{ fontSize: '1rem' }}>+ Add more files</span>
             </div>
-          ))}
+          )}
+
+          {isSubmitted && (
+            <div className="submit-success" style={{ padding: '1.5rem' }}>
+              <CheckCircle size={24} />
+              <span style={{ fontSize: '1.1rem' }}>All files submitted successfully!</span>
+            </div>
+          )}
         </div>
       )}
     </div>
   )
 }
 
-const MatchResultRow = ({ label, soVal, invVal, isMatch }) => (
-  <tr>
-    <td data-label="Field Identity" className="font-medium text-muted">{label}</td>
-    <td data-label="Master Sheet (SO)">{soVal || '-'}</td>
-    <td data-label="Invoice Data" className={invVal && (soVal !== invVal) ? 'text-error font-medium' : ''}>{invVal || '-'}</td>
-    <td data-label="Verification Status">
-      {isMatch ? 
-        <span className="status-badge success"><CheckCircle size={14}/> Match</span> : 
-        <span className="status-badge error"><AlertTriangle size={14}/> Mismatch</span>
-      }
-    </td>
-  </tr>
-)
-
 const SALES_WEBHOOK_URL = import.meta.env.VITE_SALES_WEBHOOK_URL || 'https://n8n.srv1010832.hstgr.cloud/webhook/365acab8-8d63-48bc-8ac9-0e079ecba8db'
 
 const SalesAudit = () => {
-  const [invoiceFiles, setInvoiceFiles] = useState([])
-  const [isSubmitting, setIsSubmitting] = useState(false)
-  const [submitted, setSubmitted] = useState(false)
-  const [submitError, setSubmitError] = useState(null)
   const [result, setResult] = useState(null)
+  const [activeStep, setActiveStep] = useState(0)
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
+
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [allDone, setAllDone] = useState(false)
+  const [submitError, setSubmitError] = useState(null)
+
+  const [invoiceFiles, setInvoiceFiles] = useState([])
+  const [gatepassFiles, setGatepassFiles] = useState([])
+  const [weightslipFiles, setWeightslipFiles] = useState([])
+  const [purchaseOrderFiles, setPurchaseOrderFiles] = useState([])
+
   const [webhookResponse, setWebhookResponse] = useState(null)
 
   // Paste handler
@@ -85,8 +102,11 @@ const SalesAudit = () => {
         if (item.kind === 'file') {
           const blob = item.getAsFile();
           if (blob && blob.type.startsWith('image/')) {
-            const pastedFile = new File([blob], `Pasted-Invoice-${Date.now()}.png`, { type: blob.type });
-            setInvoiceFiles(prev => [...prev, pastedFile]);
+            const pastedFile = new File([blob], `Pasted-Image-${Date.now()}.png`, { type: blob.type });
+            if (activeStep === 0) setInvoiceFiles(prev => [...prev, pastedFile]);
+            if (activeStep === 1) setGatepassFiles(prev => [...prev, pastedFile]);
+            if (activeStep === 2) setWeightslipFiles(prev => [...prev, pastedFile]);
+            if (activeStep === 3) setPurchaseOrderFiles(prev => [...prev, pastedFile]);
           }
         }
       }
@@ -94,22 +114,30 @@ const SalesAudit = () => {
 
     window.addEventListener('paste', handlePaste);
     return () => window.removeEventListener('paste', handlePaste);
-  }, []);
+  }, [activeStep]);
 
-  const handleSubmit = async () => {
-    if (invoiceFiles.length === 0) return
+  const handleSubmitAll = async () => {
+    let uploads = []
+    invoiceFiles.forEach(f => uploads.push({ file: f, name: 'Invoice' }))
+    gatepassFiles.forEach(f => uploads.push({ file: f, name: 'Gatepass' }))
+    weightslipFiles.forEach(f => uploads.push({ file: f, name: 'Weightslip' }))
+    purchaseOrderFiles.forEach(f => uploads.push({ file: f, name: 'PurchaseOrder' }))
+
+    if (uploads.length === 0) return
     setIsSubmitting(true)
     setSubmitError(null)
-    setWebhookResponse(null)
-    setSubmitted(true)
-
-    console.log('[SalesAudit] Preparing upload of', invoiceFiles.length, 'files');
+    setAllDone(true)
+    setActiveStep(4)
 
     try {
-      const formData = new FormData();
-      invoiceFiles.forEach(file => {
-        formData.append('Invoice', file);
-      });
+      const formData = new FormData()
+      
+      uploads.forEach((item) => {
+        const ext = item.file.name.includes('.') ? '.' + item.file.name.split('.').pop() : ''
+        const fileName = `${item.name}${ext}`
+        const renamed = new File([item.file], fileName, { type: item.file.type })
+        formData.append(item.name, renamed, fileName)
+      })
 
       const res = await fetch(SALES_WEBHOOK_URL, {
         method: 'POST',
@@ -117,14 +145,14 @@ const SalesAudit = () => {
       })
 
       if (!res.ok) {
-        const errorText = await res.text().catch(() => 'No error detail');
-        throw new Error(`Upload failed (${res.status}): ${errorText.slice(0, 100)}`)
+        const text = await res.text().catch(() => '')
+        throw new Error(`HTTP ${res.status} – ${text.slice(0, 200)}`)
       }
 
       const responseText = await res.text();
       let data;
       try {
-        data = responseText ? JSON.parse(responseText) : { status: 'success', message: 'Invoices received' };
+        data = responseText ? JSON.parse(responseText) : { status: 'success', message: 'Documents received' };
       } catch {
         data = { status: 'success', raw: responseText };
       }
@@ -132,14 +160,29 @@ const SalesAudit = () => {
       setWebhookResponse(data)
       if (data && data.status && data.data && !data.raw) setResult(data)
     } catch (err) {
-      setSubmitError(err.message)
-      setSubmitted(false)
+      console.error('[Submit] Error:', err)
+      setSubmitError(err.message || 'Failed to send.')
+      setAllDone(false)
+      setActiveStep(3)
     } finally {
       setIsSubmitting(false)
     }
   }
 
+  const steps = [
+    { label: 'Sales Invoice', files: invoiceFiles, status: invoiceFiles.length > 0 ? 'Ready' : 'Pending', icon: FileText },
+    { label: 'Gatepass', files: gatepassFiles, status: gatepassFiles.length > 0 ? 'Ready' : 'Pending', icon: ClipboardList },
+    { label: 'Weightslip', files: weightslipFiles, status: weightslipFiles.length > 0 ? 'Ready' : 'Pending', icon: Scale },
+    { label: 'Purchase Order', files: purchaseOrderFiles, status: purchaseOrderFiles.length > 0 ? 'Ready' : 'Pending', icon: ShoppingCart }
+  ]
 
+  const nextStep = () => {
+    if (activeStep < 3) setActiveStep(activeStep + 1)
+  }
+
+  const prevStep = () => {
+    if (activeStep > 0) setActiveStep(activeStep - 1)
+  }
 
   const renderWebhookResponse = () => {
     if (!webhookResponse) return null;
@@ -150,10 +193,8 @@ const SalesAudit = () => {
     let notes = null;
 
     try {
-      // Handle array or direct object response
       const dataObj = Array.isArray(webhookResponse) ? webhookResponse[0] : webhookResponse;
       
-      // Discovery helper to extract info from an object
       const extractInfo = (obj) => {
         if (!obj || typeof obj !== 'object') return null;
         const table = obj.comparison_table || (obj.data && obj.data.comparison_table);
@@ -167,10 +208,8 @@ const SalesAudit = () => {
         };
       };
 
-      // Attempt discovery in order of likelihood
       let results = extractInfo(dataObj);
 
-      // 1. Check direct 'raw' or 'data' objects
       if (!results && dataObj.raw && typeof dataObj.raw === 'object') {
         results = extractInfo(dataObj.raw);
       }
@@ -178,7 +217,6 @@ const SalesAudit = () => {
         results = extractInfo(dataObj.data);
       }
 
-      // 2. Check stringified fields
       if (!results) {
         const rawString = dataObj.output || (typeof dataObj.raw === 'string' ? dataObj.raw : null);
         if (rawString) {
@@ -205,7 +243,6 @@ const SalesAudit = () => {
         <div className="webhook-output animate-fade-in" style={{ marginTop: '2.5rem' }}>
           <div className="card" style={{ padding: '0', overflow: 'hidden', boxShadow: 'var(--shadow-lg)', border: '1px solid var(--border)' }}>
             
-            {/* Real Premium Header with Explicit Flexbox */}
             <div style={{ 
               display: 'flex', 
               flexWrap: 'wrap', 
@@ -315,7 +352,6 @@ const SalesAudit = () => {
                     const invVal = String(row.invoice_value || row.actual || '').trim();
                     const resultFlag = String(row.result || row.match || row.status || row.is_match).toUpperCase();
 
-                    // Numeric rounding tolerance: strip currency symbols/commas and compare
                     const parseNum = (s) => {
                       const n = parseFloat(s.replace(/[₹,\s]/g, ''));
                       return isNaN(n) ? null : n;
@@ -422,107 +458,166 @@ const SalesAudit = () => {
   };
 
   return (
-    <div className="audit-module" style={{ marginRight: 0 }}>
+    <div className={`audit-module ${isSidebarCollapsed ? 'sidebar-collapsed' : ''}`} style={result || webhookResponse ? { marginRight: 0 } : {}}>
       <div className="module-header">
         <div>
           <h1 className="module-title">Sales Audit</h1>
-          <p className="module-subtitle">Upload Sales Invoice for AI-powered verification against Sales Order sheet</p>
+          <p className="module-subtitle">Multi-document verification workflow</p>
           <div className="quality-note hover-lift shadow-sm">
             <Info size={16} />
             Accuracy is dependent on the quality of image uploaded
           </div>
         </div>
-        {(result || webhookResponse) && (
-          <button className="btn btn-outline" onClick={() => {
-            setResult(null); setInvoiceFiles([]); setSubmitted(false); setWebhookResponse(null);
-          }}>
-            Reset Audit
-          </button>
-        )}
+        <div className="header-actions">
+          {(result || allDone) && (
+            <button className="btn btn-outline" onClick={() => {
+              setResult(null); setInvoiceFiles([]); setGatepassFiles([]); setWeightslipFiles([]); setPurchaseOrderFiles([]); setAllDone(false); setActiveStep(0); setWebhookResponse(null);
+            }}>
+              Reset Audit
+            </button>
+          )}
+        </div>
       </div>
 
       {!result ? (
-        <div className="upload-stage animate-fade-in">
-          {submitted && (
-            <div className="all-done-banner animate-fade-in" style={{ marginBottom: '1.5rem' }}>
-              <Mail size={22} />
-              <div>
-                <p className="all-done-title">Invoice submitted successfully!</p>
-                <p className="all-done-sub">Your documents are under process. You'll receive a notification via email once the audit is complete!</p>
+        <div className="stepper-section animate-fade-in" style={{ position: 'relative' }}>
+          <div className={`audit-layout ${isSidebarCollapsed ? 'sidebar-collapsed' : ''}`}>
+            <div className="main-upload-area">
+              <div className="step-content-wrapper animate-slide-up">
+                {allDone && (
+                  <div className="all-done-banner animate-fade-in" style={{ marginBottom: '2rem' }}>
+                    <Mail size={24} />
+                    <div>
+                      <p className="all-done-title" style={{ fontSize: '1.1rem' }}>Success! Documents are under process</p>
+                      <p className="all-done-sub">Check your email shortly for the audit results.</p>
+                    </div>
+                  </div>
+                )}
+
+                {submitError && (
+                  <div className="submit-error-banner animate-fade-in" style={{ marginBottom: '2rem' }}>
+                    <XCircle size={20} />
+                    <span>{submitError}</span>
+                    <button className="error-dismiss" onClick={() => setSubmitError(null)}><X size={14}/></button>
+                  </div>
+                )}
+
+                {!allDone && (
+                  <div style={{ minHeight: '500px' }}>
+                    {activeStep === 0 && (
+                      <DocumentUpload 
+                        title="Sales Invoice Upload" 
+                        accepted={{'image/*': ['.png', '.jpg', '.jpeg']}}
+                        onUpload={setInvoiceFiles}
+                        files={invoiceFiles}
+                        multiple={true}
+                      />
+                    )}
+                    {activeStep === 1 && (
+                      <DocumentUpload 
+                        title="Gatepass Upload" 
+                        accepted={{'image/*': ['.png', '.jpg', '.jpeg']}}
+                        onUpload={setGatepassFiles}
+                        files={gatepassFiles}
+                        multiple={true}
+                      />
+                    )}
+                    {activeStep === 2 && (
+                      <DocumentUpload 
+                        title="Weightslip Upload" 
+                        accepted={{'image/*': ['.png', '.jpg', '.jpeg']}}
+                        onUpload={setWeightslipFiles}
+                        files={weightslipFiles}
+                        multiple={true}
+                      />
+                    )}
+                    {activeStep === 3 && (
+                      <DocumentUpload 
+                        title="Purchase Order Upload" 
+                        accepted={{'image/*': ['.png', '.jpg', '.jpeg']}}
+                        onUpload={setPurchaseOrderFiles}
+                        files={purchaseOrderFiles}
+                        multiple={true}
+                      />
+                    )}
+
+                    <div className="paste-hint" style={{ marginTop: '2rem' }}>
+                      <span className="kbd" style={{ padding: '4px 8px' }}>Ctrl</span> + <span className="kbd" style={{ padding: '4px 8px' }}>V</span> to paste screenshots directly
+                    </div>
+
+                    <div className="step-footer">
+                      {activeStep > 0 && (
+                        <button className="btn btn-outline" onClick={prevStep} style={{ borderRadius: '12px', padding: '1rem 2.5rem', fontSize: '1rem' }}>
+                          Back
+                        </button>
+                      )}
+                      {activeStep < 3 ? (
+                        <button 
+                          className="btn btn-primary btn-done" 
+                          onClick={nextStep}
+                          disabled={steps[activeStep].files.length === 0}
+                          style={{ padding: '1rem 4rem' }}
+                        >
+                          Next Stage <ChevronRight size={22} />
+                        </button>
+                      ) : (
+                        <button 
+                          className="btn btn-primary btn-done" 
+                          onClick={handleSubmitAll}
+                          disabled={isSubmitting || purchaseOrderFiles.length === 0}
+                          style={{ background: 'var(--success)', borderColor: 'var(--success)', padding: '1rem 5rem' }}
+                        >
+                          {isSubmitting ? <><Loader2 size={24} className="spin-icon" /> Sending...</> : <><Send size={24} /> Final Submit</>}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
-          )}
 
-          {submitError && (
-            <div className="submit-error-banner animate-fade-in" style={{ marginBottom: '1.5rem' }}>
-              <AlertTriangle size={20} />
-              <span>{submitError}</span>
-              <button className="error-dismiss" onClick={() => setSubmitError(null)}><X size={14}/></button>
-            </div>
-          )}
-
-          <div className="upload-grid" style={{ gridTemplateColumns: '1fr' }}>
-            <DocumentUpload 
-              title="Sales Invoice (Image Upload)" 
-              icon={FileText}
-              accepted={{'image/*': ['.png', '.jpg', '.jpeg']}}
-              onUpload={setInvoiceFiles}
-              files={invoiceFiles}
-            />
-            <div className="paste-hint" style={{ marginTop: '1.5rem' }}>
-              <span className="kbd">Ctrl</span> + <span className="kbd">V</span> to paste screenshots directly
-            </div>
-          </div>
-          
-          <div className="action-bar card" style={{ display: 'flex', justifyContent: 'flex-end', padding: '2rem' }}>
-            <button 
-              className="btn btn-primary" 
-              style={{ padding: '1rem 4rem', fontSize: '1.1rem', borderRadius: '12px' }}
-              onClick={handleSubmit} 
-              disabled={invoiceFiles.length === 0 || isSubmitting}
-            >
-              {isSubmitting ? (
-                <><Loader2 size={20} className="spin-icon" /> Sending documents...</>
-              ) : (
-                <><Send size={20} /> Submit for AI verification</>
+            <div className={`audit-sidebar right-sidebar ${isSidebarCollapsed ? 'collapsed' : ''}`}>
+              <button 
+                className="sidebar-retract-btn" 
+                onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+                title={isSidebarCollapsed ? "Expand Sidebar" : "Collapse Sidebar"}
+              >
+                {isSidebarCollapsed ? <ArrowRight size={18} /> : <X size={18} />}
+              </button>
+              
+              {!isSidebarCollapsed && (
+                <div className="sidebar-content animate-fade-in">
+                  <div style={{ marginBottom: '1.5rem', fontWeight: '800', fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.15em', color: 'var(--text-muted)' }}>
+                    Workflow Stages
+                  </div>
+                  <div className="sidebar-nav-list">
+                    {steps.map((s, idx) => {
+                      const StepIcon = s.icon;
+                      return (
+                        <div 
+                          key={idx} 
+                          className={`sidebar-nav-item ${activeStep === idx ? 'active' : ''} ${s.files.length > 0 ? 'completed' : ''}`}
+                          onClick={() => !allDone && setActiveStep(idx)}
+                        >
+                          <div className="sidebar-step-num">
+                            {s.files.length > 0 ? <Check size={16} /> : <StepIcon size={16} />}
+                          </div>
+                          <div className="sidebar-step-info">
+                            <span className="sidebar-step-name">{s.label}</span>
+                            <span className="sidebar-step-status">{s.files.length > 0 ? 'Uploaded' : 'Waiting...'}</span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
               )}
-            </button>
+            </div>
           </div>
-
-          {renderWebhookResponse()}
         </div>
       ) : (
         <div className="result-stage animate-fade-in">
-          <div className="summary-banner card" style={{ borderLeftColor: 'var(--success)' }}>
-            <div className={`summary-icon success`}>
-              <CheckCircle size={32} />
-            </div>
-            <div className="summary-content">
-              <h2>Audit Result: <span className="text-success">Match Verified</span></h2>
-              <p>All items in the Sales Invoice successfully match the Sales Order sheet.</p>
-            </div>
-          </div>
-
-          <div className="comparison-table-wrapper card">
-            <h3 className="card-title p-6 pb-0 border-b">Extracted Data Comparison</h3>
-            <table className="comparison-table">
-              <thead>
-                <tr>
-                  <th>Field</th>
-                  <th>Sales Order (SO)</th>
-                  <th>Sales Invoice</th>
-                  <th>Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                <MatchResultRow label="Order ID" soVal={result.data.orderId.so} invVal={result.data.orderId.inv} isMatch={result.data.orderId.match} />
-                <MatchResultRow label="Customer" soVal={result.data.customer.so} invVal={result.data.customer.inv} isMatch={result.data.customer.match} />
-                <MatchResultRow label="Product" soVal={result.data.product.so} invVal={result.data.product.inv} isMatch={result.data.product.match} />
-                <MatchResultRow label="Quantity" soVal={result.data.quantity.so} invVal={result.data.quantity.inv} isMatch={result.data.quantity.match} />
-                <MatchResultRow label="Total Price" soVal={result.data.price.so} invVal={result.data.price.inv} isMatch={result.data.price.match} />
-              </tbody>
-            </table>
-          </div>
+          {renderWebhookResponse()}
         </div>
       )}
     </div>

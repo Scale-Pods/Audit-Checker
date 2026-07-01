@@ -707,16 +707,21 @@ const UnifiedAuditModal = ({ audit, onClose, initialView = 'intelligence', onDec
 
 // ── Sales field comparison map ─────────────────────────────────
 const SALES_COMPARE_FIELDS = [
-  { label: 'Order Number',       invoice: 'order_number',        sheet: 'order_number_sheet',        type: 'text' },
-  { label: 'Party Order Number', invoice: 'party_order_number',  sheet: 'party_order_number_sheet',  type: 'text' },
-  { label: 'Broker Name',        invoice: 'broker_name',         sheet: 'broker_name_sheet',         type: 'name' },
-  { label: 'Bill To Name',       invoice: 'bill_to_name',        sheet: 'bill_to_name_sheet',        type: 'name' },
-  { label: 'Rate',               invoice: 'rate',                sheet: 'rate_sheet',                type: 'numeric' },
-  { label: 'Quantity (MT)',      invoice: 'quantity',            sheet: 'quantity_sheet',            type: 'quantity' },
-  { label: 'Payment Terms',      invoice: 'payment_terms',       sheet: 'payment_terms_sheet',       type: 'numeric' },
-  { label: 'Thickness',          invoice: 'thickness',           sheet: 'thickness_sheet',           type: 'numeric' },
-  { label: 'Width',              invoice: 'width',               sheet: 'width_sheet',               type: 'numeric' },
-  { label: 'Length',             invoice: 'length',              sheet: 'length_sheet',              type: 'numeric' },
+  { label: 'Order Number',       invoice: 'inv_order_number',        sheet: 'sheet_order_number',        po: 'po_number',            gp: 'gp_so_number',         ws: null,                   type: 'text' },
+  { label: 'Party Order No.',    invoice: 'inv_party_order_number',  sheet: 'sheet_party_order_number',  po: null,                   gp: null,                   ws: null,                   type: 'text' },
+  { label: 'Customer / Party',   invoice: 'inv_bill_to_name',        sheet: 'sheet_bill_to_name',        po: 'po_customer_name',     gp: 'gp_party_name',        ws: 'ws_party_name',        type: 'name' },
+  { label: 'Broker Name',        invoice: 'inv_broker_name',         sheet: 'sheet_broker_name',         po: null,                   gp: null,                   ws: null,                   type: 'name' },
+  { label: 'Rate',               invoice: 'inv_rate',                sheet: 'sheet_rate',                po: 'po_rate',              gp: null,                   ws: null,                   type: 'numeric' },
+  { label: 'Quantity (MT)',      invoice: 'inv_quantity',            sheet: 'sheet_quantity',            po: 'po_quantity',          gp: 'gp_quantity',          ws: 'ws_net_weight',        type: 'quantity' },
+  { label: 'Payment Terms',      invoice: 'inv_payment_terms',       sheet: 'sheet_payment_terms',       po: 'po_payment_terms',     gp: null,                   ws: null,                   type: 'numeric' },
+  { label: 'Thickness',          invoice: 'inv_thickness',           sheet: 'sheet_thickness',           po: null,                   gp: 'gp_thickness',         ws: null,                   type: 'numeric' },
+  { label: 'Width',              invoice: 'inv_width',               sheet: 'sheet_width',               po: null,                   gp: 'gp_width',             ws: null,                   type: 'numeric' },
+  { label: 'Length',             invoice: 'inv_length',              sheet: 'sheet_length',              po: null,                   gp: 'gp_length',            ws: null,                   type: 'numeric' },
+  { label: 'Weight',             invoice: null,                      sheet: null,                        po: null,                   gp: 'gp_weight',            ws: 'ws_gross_weight',      type: 'quantity' },
+  { label: 'Vehicle Number',     invoice: null,                      sheet: null,                        po: null,                   gp: 'gp_vehicle_number',    ws: 'ws_vehicle_number',    type: 'text' },
+  { label: 'Material / Grade',   invoice: null,                      sheet: null,                        po: 'po_material_grade',    gp: null,                   ws: null,                   type: 'text' },
+  { label: 'HSN Code',           invoice: null,                      sheet: null,                        po: 'po_hsn_code',          gp: null,                   ws: null,                   type: 'text' },
+  { label: 'Notes',              invoice: 'inv_notes',               sheet: null,                        po: null,                   gp: null,                   ws: null,                   type: 'text' },
 ];
 
 // Common abbreviation normalizer for name fuzzy matching
@@ -821,18 +826,51 @@ const salesValuesMatch = (a, b, type = 'text') => {
   return clean(a).toLowerCase() === clean(b).toLowerCase();
 };
 
+const INTELLIGENCE_KEYS = new Set([
+  'audit_score', 'audit_status', 'audit_summary',
+  'customer_match', 'po_match', 'so_match', 'vehicle_match',
+  'weight_slip_match', 'quantity_match', 'material_match',
+  'date_match', 'gst_match', 'amount_match',
+  'dimension_match', 'rate_match', 'payment_terms_match',
+  'delivery_terms_match', 'weight_match', 'coil_match',
+  'critical_mismatches', 'warnings', 'missing_documents'
+]);
+
+const transformSalesRecord = (record) => {
+  const intelligence = {};
+  const rest = {};
+  Object.entries(record).forEach(([key, value]) => {
+    if (INTELLIGENCE_KEYS.has(key)) {
+      intelligence[key] = value;
+    } else {
+      rest[key] = value;
+    }
+  });
+  rest.intelligence = intelligence;
+  return rest;
+};
+
 // ── Sales Record Detail Modal (supports grouped items with swipe) ──
 const SalesRecordModal = ({ records, onClose, invoiceNumber, onDecision, isProcessing, hasDecision, decisionStatus }) => {
   const [currentIndex, setCurrentIndex] = useState(0);
+  const [prevIndex, setPrevIndex] = useState(0);
   const [slideClass, setSlideClass] = useState('');
   const [touchStartX, setTouchStartX] = useState(null);
   const [touchStartY, setTouchStartY] = useState(null);
   const [touchDeltaX, setTouchDeltaX] = useState(0);
   const [touchDeltaY, setTouchDeltaY] = useState(0);
 
+  const record = (records && records.length > 0) ? records[currentIndex] : null;
+  const hasIntelligence = record?.intelligence && record.intelligence.audit_score !== undefined;
+  const [view, setView] = useState(hasIntelligence ? 'intelligence' : 'universal');
+
+  if (currentIndex !== prevIndex) {
+    setPrevIndex(currentIndex);
+    setView(hasIntelligence ? 'intelligence' : 'universal');
+  }
+
   if (!records || records.length === 0) return null;
 
-  const record = records[currentIndex];
   const totalItems = records.length;
   const hasMultiple = totalItems > 1;
 
@@ -862,7 +900,6 @@ const SalesRecordModal = ({ records, onClose, invoiceNumber, onDecision, isProce
   };
   
   const onTouchEnd = () => {
-    // Only swipe if horizontal movement is significantly greater than vertical movement
     if (Math.abs(touchDeltaX) > 70 && Math.abs(touchDeltaX) > Math.abs(touchDeltaY) * 1.5) { 
       touchDeltaX < 0 ? navigateTo('next') : navigateTo('prev'); 
     }
@@ -885,6 +922,9 @@ const SalesRecordModal = ({ records, onClose, invoiceNumber, onDecision, isProce
   const scorePercent = Math.round((matchCount / totalFields) * 100);
   const allMatch = matchCount === totalFields;
 
+  const displayScore = hasIntelligence ? record.intelligence.audit_score : scorePercent;
+  const displayStatus = hasIntelligence ? record.intelligence.audit_status : (allMatch ? 'GOOD MATCH' : scorePercent >= 70 ? 'PARTIAL MATCH' : 'HIGH MISMATCH');
+
   return (
     <div className="modal-overlay animate-fade-in" onClick={onClose}>
       <div className="modal-content animate-slide-up sales-modal" onClick={e => e.stopPropagation()}>
@@ -900,12 +940,21 @@ const SalesRecordModal = ({ records, onClose, invoiceNumber, onDecision, isProce
             {hasMultiple && (
               <span className="swipe-item-counter">Item {currentIndex + 1}/{totalItems}</span>
             )}
+            {hasIntelligence && (
+              <button 
+                className="btn btn-outline btn-sm py-1 font-bold text-[10px] uppercase tracking-wider" 
+                onClick={() => setView(view === 'intelligence' ? 'universal' : 'intelligence')}
+                style={{ height: '32px' }}
+              >
+                {view === 'intelligence' ? '📊 Raw Data' : '🤖 Intelligence'}
+              </button>
+            )}
             <div className="sales-score-pill" style={{
-              background: allMatch ? 'rgba(16,185,129,0.15)' : scorePercent >= 70 ? 'rgba(245,158,11,0.15)' : 'rgba(239,68,68,0.15)',
-              color: allMatch ? '#10b981' : scorePercent >= 70 ? '#f59e0b' : '#ef4444',
-              border: `1px solid ${allMatch ? 'rgba(16,185,129,0.3)' : scorePercent >= 70 ? 'rgba(245,158,11,0.3)' : 'rgba(239,68,68,0.3)'}`,
+              background: displayStatus === 'Approve' || displayStatus === 'PASS' || displayStatus === 'GOOD MATCH' || displayStatus === 'YES' ? 'rgba(16,185,129,0.15)' : displayStatus === 'PARTIAL MATCH' || displayStatus === 'PARTIAL' || displayStatus === 'NEEDS_REVIEW' ? 'rgba(245,158,11,0.15)' : 'rgba(239,68,68,0.15)',
+              color: displayStatus === 'Approve' || displayStatus === 'PASS' || displayStatus === 'GOOD MATCH' || displayStatus === 'YES' ? '#10b981' : displayStatus === 'PARTIAL MATCH' || displayStatus === 'PARTIAL' || displayStatus === 'NEEDS_REVIEW' ? '#f59e0b' : '#ef4444',
+              border: `1px solid ${displayStatus === 'Approve' || displayStatus === 'PASS' || displayStatus === 'GOOD MATCH' || displayStatus === 'YES' ? 'rgba(16,185,129,0.3)' : displayStatus === 'PARTIAL MATCH' || displayStatus === 'PARTIAL' || displayStatus === 'NEEDS_REVIEW' ? 'rgba(245,158,11,0.3)' : 'rgba(239,68,68,0.3)'}`,
             }}>
-              {scorePercent}% Match
+              {displayScore}% Match
             </div>
             <button className="close-btn" onClick={onClose}><X size={20} /></button>
           </div>
@@ -913,49 +962,237 @@ const SalesRecordModal = ({ records, onClose, invoiceNumber, onDecision, isProce
 
         <div
           className={`modal-body swipe-body ${slideClass}`}
-          style={{ padding: '0' }}
+          style={view === 'intelligence' ? { padding: '1.25rem' } : { padding: '0' }}
           onTouchStart={hasMultiple ? onTouchStart : undefined}
           onTouchMove={hasMultiple ? onTouchMove : undefined}
           onTouchEnd={hasMultiple ? onTouchEnd : undefined}
         >
-          <table className="sales-compare-table">
-            <thead>
-              <tr>
-                <th className="sc-field-col">Field</th>
-                <th className="sc-inv-col">📄 Invoice</th>
-                <th className="sc-sheet-col">📊 Sheet</th>
-                <th className="sc-status-col">Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {SALES_COMPARE_FIELDS.map(({ label, invoice, sheet, type }) => {
-                const iv = val(invoice);
-                const sv = val(sheet);
-                const bothPresent = iv && sv;
-                const matched = bothPresent && salesValuesMatch(iv, sv, type);
-                const mismatched = bothPresent && !matched;
-                return (
-                  <tr key={label} className={mismatched ? 'sc-row-mismatch' : matched ? 'sc-row-match' : ''}>
-                    <td className="sc-field-name">{label}</td>
-                    <td className={`sc-cell ${mismatched ? 'sc-val-mismatch' : matched ? 'sc-val-match' : ''}`}>
-                      {iv ?? <span className="sc-empty">—</span>}
-                    </td>
-                    <td className={`sc-cell ${mismatched ? 'sc-val-mismatch' : matched ? 'sc-val-match' : ''}`}>
-                      {sv ?? <span className="sc-empty">—</span>}
-                    </td>
-                    <td className="sc-status-cell">
-                      {bothPresent
-                        ? matched
-                          ? <span className="sc-badge match"><CheckCircle size={12} /> Match</span>
-                          : <span className="sc-badge mismatch"><AlertTriangle size={12} /> Mismatch</span>
-                        : <span className="sc-badge missing">—</span>
-                      }
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+          {view === 'intelligence' ? (
+            <div className="intelligence-grid animate-fade-in premium">
+              <div className="intelligence-main">
+                <div className="integrity-card glass" style={{
+                  background: 'rgba(255, 255, 255, 0.02)',
+                  border: '1px solid var(--border)',
+                  borderRadius: '16px',
+                  padding: '1.5rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '1.5rem',
+                  marginBottom: '1.5rem',
+                  boxShadow: 'inset 0 0 20px rgba(255, 255, 255, 0.02)'
+                }}>
+                  <div className="integrity-viz">
+                    <div className="viz-circle" style={{ 
+                      width: '74px',
+                      height: '74px',
+                      borderRadius: '50%',
+                      border: '6px solid',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      borderColor: (record.intelligence?.audit_score || 0) >= 80 ? 'var(--success)' : ((record.intelligence?.audit_score || 0) >= 60 ? 'var(--warning)' : 'var(--error)')
+                    }}>
+                      <span className="viz-value" style={{ fontSize: '1.4rem', fontWeight: 950, fontFamily: 'Outfit, sans-serif' }}>{record.intelligence?.audit_score || 0}%</span>
+                      <span className="viz-label" style={{ fontSize: '8px', fontWeight: 800, color: 'var(--text-muted)', letterSpacing: '0.05em' }}>SCORE</span>
+                    </div>
+                  </div>
+                  <div className="integrity-info">
+                    <div 
+                      className="status-badge-premium"
+                      style={{
+                        display: 'inline-block',
+                        padding: '4px 16px',
+                        borderRadius: '99px',
+                        fontSize: '0.7rem',
+                        fontWeight: 900,
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.15em',
+                        marginBottom: '0.5rem',
+                        backgroundColor: (record.intelligence?.audit_status || 'FAIL') === 'PASS' ? 'rgba(16,185,129,0.15)' : 'rgba(239,68,68,0.15)',
+                        color: (record.intelligence?.audit_status || 'FAIL') === 'PASS' ? '#10b981' : '#ef4444',
+                        border: `1px solid ${(record.intelligence?.audit_status || 'FAIL') === 'PASS' ? 'rgba(16,185,129,0.3)' : 'rgba(239,68,68,0.3)'}`
+                      }}
+                    >
+                      {record.intelligence?.audit_status || 'FAIL'}
+                    </div>
+                    <p className="integrity-desc" style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: 0 }}>Aggregate sales document audit compliance score.</p>
+                  </div>
+                </div>
+
+                <div className="issues-list-minimal">
+                  <h4 className="section-label" style={{ fontSize: '10px', color: 'var(--text)', textTransform: 'uppercase', letterSpacing: '0.15em', fontWeight: '950', marginBottom: '0.75rem', opacity: 0.6 }}>Intelligence Observations</h4>
+                  <div className="issues-stack-minimal" style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                    {((record.intelligence?.critical_mismatches?.length || 0) + (record.intelligence?.warnings?.length || 0) + (record.intelligence?.missing_documents?.length || 0)) > 0 ? (
+                      <>
+                        {(record.intelligence?.critical_mismatches || []).map((issue, idx) => (
+                          <div key={`crit-${idx}`} className="issue-item-minimal" style={{
+                            display: 'flex',
+                            alignItems: 'flex-start',
+                            gap: '0.5rem',
+                            padding: '0.75rem 1rem',
+                            backgroundColor: 'rgba(239, 68, 68, 0.05)',
+                            border: '1px solid rgba(239, 68, 68, 0.1)',
+                            borderRadius: '10px',
+                            fontSize: '0.8rem',
+                            lineHeight: 1.4
+                          }}>
+                            <AlertTriangle size={14} style={{ color: '#ef4444', marginTop: '2px', flexShrink: 0 }} />
+                            <span style={{ fontWeight: 650, color: '#ef4444' }}>{issue}</span>
+                          </div>
+                        ))}
+                        {(record.intelligence?.warnings || []).map((issue, idx) => (
+                          <div key={`warn-${idx}`} className="issue-item-minimal" style={{
+                            display: 'flex',
+                            alignItems: 'flex-start',
+                            gap: '0.5rem',
+                            padding: '0.75rem 1rem',
+                            backgroundColor: 'rgba(245, 158, 11, 0.05)',
+                            border: '1px solid rgba(245, 158, 11, 0.1)',
+                            borderRadius: '10px',
+                            fontSize: '0.8rem',
+                            lineHeight: 1.4
+                          }}>
+                            <AlertTriangle size={14} style={{ color: '#f59e0b', marginTop: '2px', flexShrink: 0 }} />
+                            <span style={{ color: 'var(--text)' }}>{issue}</span>
+                          </div>
+                        ))}
+                        {(record.intelligence?.missing_documents || []).map((issue, idx) => (
+                          <div key={`miss-${idx}`} className="issue-item-minimal" style={{
+                            display: 'flex',
+                            alignItems: 'flex-start',
+                            gap: '0.5rem',
+                            padding: '0.75rem 1rem',
+                            backgroundColor: 'rgba(100, 116, 139, 0.05)',
+                            border: '1px solid rgba(100, 116, 139, 0.1)',
+                            borderRadius: '10px',
+                            fontSize: '0.8rem',
+                            lineHeight: 1.4
+                          }}>
+                            <Info size={14} style={{ color: '#64748b', marginTop: '2px', flexShrink: 0 }} />
+                            <span style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>Missing: {issue}</span>
+                          </div>
+                        ))}
+                      </>
+                    ) : (
+                      <div className="issue-item-minimal success" style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.5rem',
+                        padding: '0.75rem 1rem',
+                        backgroundColor: 'rgba(16, 185, 129, 0.05)',
+                        border: '1px solid rgba(16, 185, 129, 0.1)',
+                        borderRadius: '10px',
+                        fontSize: '0.8rem',
+                        color: '#10b981'
+                      }}>
+                        <CheckCircle size={14} />
+                        <span>Zero discrepancies found. Integrity verified.</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div className="intelligence-metrics">
+                <h4 className="section-label" style={{ fontSize: '10px', color: 'var(--text)', textTransform: 'uppercase', letterSpacing: '0.15em', fontWeight: '950', marginBottom: '0.75rem', opacity: 0.6 }}>Verification Verticals</h4>
+                <div className="metric-group-premium" style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                  {[
+                    { label: 'Customer Match', value: record.intelligence?.customer_match },
+                    { label: 'PO Match', value: record.intelligence?.po_match },
+                    { label: 'SO Match', value: record.intelligence?.so_match },
+                    { label: 'Vehicle Match', value: record.intelligence?.vehicle_match },
+                    { label: 'Weight Slip Match', value: record.intelligence?.weight_slip_match },
+                    { label: 'Quantity Match', value: record.intelligence?.quantity_match },
+                    { label: 'Material Match', value: record.intelligence?.material_match },
+                    { label: 'GST Match', value: record.intelligence?.gst_match },
+                    { label: 'Amount Match', value: record.intelligence?.amount_match },
+                  ].map((vert, i) => {
+                    const statusClass = vert.value === 'YES' ? 'pass' : vert.value === 'PARTIAL' ? 'partial' : vert.value === 'NO' ? 'fail' : 'pending';
+                    const colorStyle = vert.value === 'YES' ? { color: '#10b981' } : vert.value === 'PARTIAL' ? { color: '#f59e0b' } : vert.value === 'NO' ? { color: '#ef4444' } : { color: '#64748b' };
+                    return (
+                      <div 
+                        key={i} 
+                        className="metric-row-premium" 
+                        style={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          padding: '0.6rem 0.85rem',
+                          background: 'rgba(255, 255, 255, 0.01)',
+                          border: '1px solid var(--border)',
+                          borderRadius: '8px',
+                          fontSize: '0.8rem'
+                        }}
+                      >
+                        <div className="metric-meta" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 650 }}>
+                          <span>{vert.label}</span>
+                        </div>
+                        <span className={`metric-status ${statusClass}`} style={{ ...colorStyle, fontWeight: 800, fontSize: '0.75rem', textTransform: 'uppercase' }}>
+                          {vert.value || 'N/A'}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+                {record.intelligence?.audit_summary && (
+                  <div className="technical-summary-minimal" style={{
+                    marginTop: '1.5rem',
+                    padding: '0.85rem 1rem',
+                    backgroundColor: 'rgba(255, 255, 255, 0.01)',
+                    border: '1px solid var(--border)',
+                    borderRadius: '12px',
+                    fontSize: '0.75rem',
+                    lineHeight: 1.5,
+                    display: 'flex',
+                    gap: '8px',
+                    color: 'var(--text-muted)'
+                  }}>
+                    <Info size={14} style={{ color: 'var(--primary)', flexShrink: 0, marginTop: '2px' }} />
+                    <span>{record.intelligence.audit_summary}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          ) : (
+            <div style={{ overflowX: 'auto' }}>
+            <table className="sales-compare-table">
+              <thead>
+                <tr>
+                  <th className="sc-field-col">Field</th>
+                  <th className="sc-inv-col">📄 Invoice</th>
+                  <th className="sc-sheet-col">📊 SO/Sheet</th>
+                  <th className="sc-po-col">📋 PO</th>
+                  <th className="sc-gp-col">🚛 Gate Pass</th>
+                  <th className="sc-ws-col">⚖️ Wt. Slip</th>
+                </tr>
+              </thead>
+              <tbody>
+                {SALES_COMPARE_FIELDS.map(({ label, invoice, sheet, po, gp, ws, type }) => {
+                  const iv = invoice ? val(invoice) : null;
+                  const sv = sheet ? val(sheet) : null;
+                  const pv = po ? val(po) : null;
+                  const gv = gp ? val(gp) : null;
+                  const wv = ws ? val(ws) : null;
+                  const allVals = [iv, sv, pv, gv, wv].filter(Boolean);
+                  // Check if all present values are consistent
+                  const allConsistent = allVals.length >= 2 && allVals.every(v => salesValuesMatch(v, allVals[0], type));
+                  const hasConflict = allVals.length >= 2 && !allConsistent;
+                  return (
+                    <tr key={label} className={hasConflict ? 'sc-row-mismatch' : ''}>
+                      <td className="sc-field-name">{label}</td>
+                      <td className="sc-cell">{iv ?? <span className="sc-empty">—</span>}</td>
+                      <td className="sc-cell">{sv ?? <span className="sc-empty">—</span>}</td>
+                      <td className="sc-cell">{pv ?? <span className="sc-empty">—</span>}</td>
+                      <td className="sc-cell">{gv ?? <span className="sc-empty">—</span>}</td>
+                      <td className="sc-cell">{wv ?? <span className="sc-empty">—</span>}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+            </div>
+          )}
         </div>
 
         {hasMultiple && (
@@ -1034,7 +1271,7 @@ const AuditHistory = () => {
   const salesGroupDecisions = useMemo(() => {
     const map = {};
     salesHistory.forEach(r => {
-      const inv = r.order_number || r["Invoice Number"] || r.Order_Number || r.invoice_number;
+      const inv = r["Invoice Number"] || r.inv_number || r.order_number || r.Order_Number || r.invoice_number || r.inv_order_number;
       if (!inv) return;
       const raw = r.Result || r.result || r.Status || r.status;
       if (raw === 'Approve' || raw === 'Reject' || raw === 'APPROVED' || raw === 'REJECTED') {
@@ -1062,11 +1299,11 @@ const AuditHistory = () => {
       let targetInvoice = null;
       const record = prev.find(r => r.id === id);
       if (record) {
-        targetInvoice = record.order_number || record["Invoice Number"] || record.Order_Number || record.invoice_number;
+        targetInvoice = record["Invoice Number"] || record.inv_number || record.order_number || record.Order_Number || record.invoice_number || record.inv_order_number;
       }
       if (!targetInvoice) return prev;
       return prev.map(r => {
-        const inv = r.order_number || r["Invoice Number"] || r.Order_Number || r.invoice_number;
+        const inv = r["Invoice Number"] || r.inv_number || r.order_number || r.Order_Number || r.invoice_number || r.inv_order_number;
         if (inv === targetInvoice) {
           return { ...r, Result: decision };
         }
@@ -1196,9 +1433,12 @@ const AuditHistory = () => {
       const data = await response.json()
       const salesData = normalizeArray(data);
       
+      // Transform each record: nest intelligence/match fields under `intelligence`
+      const transformed = salesData.map(transformSalesRecord);
+      
       // Deduplicate by ID to handle potential backend/API duplicates
       const uniqueSales = Array.from(
-        new Map(salesData.map(item => [item.id || JSON.stringify(item), item])).values()
+        new Map(transformed.map(item => [item.id || JSON.stringify(item), item])).values()
       );
       
       setSalesHistory(uniqueSales);
@@ -1250,12 +1490,12 @@ const AuditHistory = () => {
   const groupedSalesHistory = useMemo(() => {
     const groups = {};
     filteredSalesHistory.forEach(record => {
-      const invoiceNum = record.order_number || record["Invoice Number"] || record.Order_Number || record.invoice_number || 'Unknown';
+      const invoiceNum = record["Invoice Number"] || record.inv_number || record.order_number || record.Order_Number || record.invoice_number || record.inv_order_number || 'Unknown';
       if (!groups[invoiceNum]) {
         groups[invoiceNum] = {
           invoiceNumber: invoiceNum,
           records: [],
-          partyName: record.bill_to_name || record.broker_name || 'Unknown Party',
+          partyName: record.inv_bill_to_name || record.sheet_bill_to_name || record.bill_to_name || record.inv_broker_name || record.sheet_broker_name || record.broker_name || 'Unknown Party',
           latestDate: record.created_at
         };
       }
