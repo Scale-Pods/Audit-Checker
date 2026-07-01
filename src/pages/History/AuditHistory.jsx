@@ -707,21 +707,23 @@ const UnifiedAuditModal = ({ audit, onClose, initialView = 'intelligence', onDec
 
 // ── Sales field comparison map ─────────────────────────────────
 const SALES_COMPARE_FIELDS = [
-  { label: 'Order Number',       invoice: 'inv_order_number',        sheet: 'sheet_order_number',        po: 'po_number',            gp: 'gp_so_number',         ws: null,                   type: 'text' },
-  { label: 'Party Order No.',    invoice: 'inv_party_order_number',  sheet: 'sheet_party_order_number',  po: null,                   gp: null,                   ws: null,                   type: 'text' },
-  { label: 'Customer / Party',   invoice: 'inv_bill_to_name',        sheet: 'sheet_bill_to_name',        po: 'po_customer_name',     gp: 'gp_party_name',        ws: 'ws_party_name',        type: 'name' },
-  { label: 'Broker Name',        invoice: 'inv_broker_name',         sheet: 'sheet_broker_name',         po: null,                   gp: null,                   ws: null,                   type: 'name' },
-  { label: 'Rate',               invoice: 'inv_rate',                sheet: 'sheet_rate',                po: 'po_rate',              gp: null,                   ws: null,                   type: 'numeric' },
-  { label: 'Quantity (MT)',      invoice: 'inv_quantity',            sheet: 'sheet_quantity',            po: 'po_quantity',          gp: 'gp_quantity',          ws: 'ws_net_weight',        type: 'quantity' },
-  { label: 'Payment Terms',      invoice: 'inv_payment_terms',       sheet: 'sheet_payment_terms',       po: 'po_payment_terms',     gp: null,                   ws: null,                   type: 'numeric' },
-  { label: 'Thickness',          invoice: 'inv_thickness',           sheet: 'sheet_thickness',           po: null,                   gp: 'gp_thickness',         ws: null,                   type: 'numeric' },
-  { label: 'Width',              invoice: 'inv_width',               sheet: 'sheet_width',               po: null,                   gp: 'gp_width',             ws: null,                   type: 'numeric' },
-  { label: 'Length',             invoice: 'inv_length',              sheet: 'sheet_length',              po: null,                   gp: 'gp_length',            ws: null,                   type: 'numeric' },
-  { label: 'Weight',             invoice: null,                      sheet: null,                        po: null,                   gp: 'gp_weight',            ws: 'ws_gross_weight',      type: 'quantity' },
-  { label: 'Vehicle Number',     invoice: null,                      sheet: null,                        po: null,                   gp: 'gp_vehicle_number',    ws: 'ws_vehicle_number',    type: 'text' },
-  { label: 'Material / Grade',   invoice: null,                      sheet: null,                        po: 'po_material_grade',    gp: null,                   ws: null,                   type: 'text' },
-  { label: 'HSN Code',           invoice: null,                      sheet: null,                        po: 'po_hsn_code',          gp: null,                   ws: null,                   type: 'text' },
-  { label: 'Notes',              invoice: 'inv_notes',               sheet: null,                        po: null,                   gp: null,                   ws: null,                   type: 'text' },
+  { label: 'Order Number',       invoice: 'inv_order_number',        so: 'so_number',            po: null,                    gp: 'gp_so_number',         ws: null,                       type: 'text', nowrap: true },
+  { label: 'PO Number',          invoice: 'inv_party_order_number',  so: 'so_po_number',         po: 'po_number',             gp: 'gp_so_number',         ws: null,                       type: 'text', nowrap: true },
+  { label: 'Customer / Party',   invoice: 'inv_bill_to_name',        so: 'so_customer_name',     po: 'po_customer_name',      gp: 'gp_party_name',        ws: 'ws_party_name',            type: 'name' },
+  { label: 'Supplier',           invoice: null,                      so: null,                   po: 'po_supplier_name',      gp: null,                    ws: null,                       type: 'text', conditional: 'po' },
+  { label: 'Broker',             invoice: 'inv_broker_name',         so: 'so_broker_name',       po: null,                    gp: null,                    ws: null,                       type: 'name' },
+  { label: 'Rate',               invoice: 'inv_rate',                so: 'so_rate',              po: 'po_rate',              gp: null,                    ws: null,                       type: 'numeric' },
+  { label: 'Quantity',           invoice: 'inv_quantity',            so: 'so_quantity',          po: 'po_quantity',          gp: 'gp_quantity',          ws: 'ws_net_weight',            type: 'quantity' },
+  { label: 'Unit',               invoice: 'inv_unit',                so: 'so_unit',              po: 'po_unit',              gp: 'gp_unit',               ws: null,                       type: 'text' },
+  { label: 'Payment Terms',      invoice: 'inv_payment_terms',       so: 'so_payment_terms',     po: 'po_payment_terms',     gp: null,                    ws: null,                       type: 'text' },
+  { label: 'Delivery Terms',     invoice: null,                      so: 'so_delivery_terms',    po: 'po_delivery_terms',    gp: null,                    ws: null,                       type: 'text' },
+  { label: 'Thickness',          invoice: 'inv_thickness',           so: 'so_thickness',         po: 'po_thickness',          gp: 'gp_thickness',          ws: null,                       type: 'numeric', poFallback: 'po_material_description' },
+  { label: 'Width',              invoice: 'inv_width',               so: 'so_width',             po: 'po_width',              gp: 'gp_width',              ws: null,                       type: 'numeric', poFallback: 'po_material_description' },
+  { label: 'Length',             invoice: 'inv_length',              so: 'so_length',            po: 'po_length',             gp: 'gp_length',             ws: null,                       type: 'numeric', poFallback: 'po_material_description' },
+  { label: 'Vehicle Number',     invoice: 'inv_vehicle_number',      so: null,                   po: null,                    gp: 'gp_vehicle_number',    ws: 'ws_vehicle_number',        type: 'text', nowrap: true },
+  { label: 'Material',           invoice: 'inv_product',             so: 'so_product',           po: 'po_material_grade',     gp: 'gp_product',            ws: 'ws_material_description',  type: 'text', poFallback: 'po_material_description' },
+  { label: 'Coil Number',        invoice: null,                      so: 'so_coil_number',       po: null,                    gp: 'gp_coil_number',        ws: null,                       type: 'text', nowrap: true },
+  { label: 'GSTIN',              invoice: 'inv_gstin',               so: null,                   po: 'po_gstin',              gp: null,                    ws: null,                       type: 'text' },
 ];
 
 // Common abbreviation normalizer for name fuzzy matching
@@ -836,6 +838,31 @@ const INTELLIGENCE_KEYS = new Set([
   'critical_mismatches', 'warnings', 'missing_documents'
 ]);
 
+const SCORE_COLOR = (score) => {
+  if (score === null || score === undefined) return { bg: 'rgba(100,116,139,0.1)', text: '#64748b', border: 'rgba(100,116,139,0.2)' };
+  const s = Number(score);
+  if (s >= 90) return { bg: 'rgba(16,185,129,0.12)', text: '#10b981', border: 'rgba(16,185,129,0.25)' };
+  if (s >= 75) return { bg: 'rgba(245,158,11,0.12)', text: '#eab308', border: 'rgba(245,158,11,0.25)' };
+  return { bg: 'rgba(239,68,68,0.12)', text: '#ef4444', border: 'rgba(239,68,68,0.25)' };
+};
+
+const MATCH_BADGE = (val) => {
+  if (!val || val === 'N/A') return { label: 'N/A', bg: 'rgba(100,116,139,0.08)', text: '#64748b', border: 'rgba(100,116,139,0.15)' };
+  const v = String(val).toUpperCase();
+  if (v === 'YES' || v === 'MATCH' || v === 'TRUE' || v === 'PASS') return { label: 'YES', bg: 'rgba(16,185,129,0.12)', text: '#10b981', border: 'rgba(16,185,129,0.25)' };
+  if (v === 'PARTIAL' || v === 'NEEDS_REVIEW') return { label: 'PARTIAL', bg: 'rgba(245,158,11,0.12)', text: '#f59e0b', border: 'rgba(245,158,11,0.25)' };
+  if (v === 'NO' || v === 'MISMATCH' || v === 'FAIL') return { label: 'NO', bg: 'rgba(239,68,68,0.12)', text: '#ef4444', border: 'rgba(239,68,68,0.25)' };
+  return { label: v, bg: 'rgba(100,116,139,0.08)', text: '#64748b', border: 'rgba(100,116,139,0.15)' };
+};
+
+const fmt = (v) => (v !== null && v !== undefined && v !== '') ? v.toString() : null;
+
+const fmtCurrency = (v) => {
+  if (v === null || v === undefined || v === '') return '—';
+  const n = parseFloat(v.toString().replace(/[₹,]/g, ''));
+  return isNaN(n) ? v : `₹${n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+};
+
 const transformSalesRecord = (record) => {
   const intelligence = {};
   const rest = {};
@@ -850,395 +877,571 @@ const transformSalesRecord = (record) => {
   return rest;
 };
 
-// ── Sales Record Detail Modal (supports grouped items with swipe) ──
+// ── Sales Record Detail Modal (redesigned audit dashboard) ──
 const SalesRecordModal = ({ records, onClose, invoiceNumber, onDecision, isProcessing, hasDecision, decisionStatus }) => {
   const [currentIndex, setCurrentIndex] = useState(0);
-  const [prevIndex, setPrevIndex] = useState(0);
-  const [slideClass, setSlideClass] = useState('');
-  const [touchStartX, setTouchStartX] = useState(null);
-  const [touchStartY, setTouchStartY] = useState(null);
-  const [touchDeltaX, setTouchDeltaX] = useState(0);
-  const [touchDeltaY, setTouchDeltaY] = useState(0);
-
-  const record = (records && records.length > 0) ? records[currentIndex] : null;
-  const hasIntelligence = record?.intelligence && record.intelligence.audit_score !== undefined;
-  const [view, setView] = useState(hasIntelligence ? 'intelligence' : 'universal');
-
-  if (currentIndex !== prevIndex) {
-    setPrevIndex(currentIndex);
-    setView(hasIntelligence ? 'intelligence' : 'universal');
-  }
+  const [expandedSections, setExpandedSections] = useState({ 'Document Comparison Matrix': true });
 
   if (!records || records.length === 0) return null;
 
   const totalItems = records.length;
   const hasMultiple = totalItems > 1;
+  const record = records[currentIndex];
+  const I = record?.intelligence || {};
 
-  const navigateTo = (dir) => {
-    const next = dir === 'next' ? currentIndex + 1 : currentIndex - 1;
-    if (next < 0 || next >= totalItems) return;
-    setSlideClass(dir === 'next' ? 'slide-out-left' : 'slide-out-right');
-    setTimeout(() => {
-      setCurrentIndex(next);
-      setSlideClass(dir === 'next' ? 'slide-in-right' : 'slide-in-left');
-      setTimeout(() => setSlideClass(''), 300);
-    }, 200);
+  const toggleSection = (key) => setExpandedSections(prev => ({ ...prev, [key]: !prev[key] }));
+
+  const v = (key) => fmt(record[key]);
+
+  const SectionHeader = ({ title, defaultOpen = true }) => (
+    <div
+      onClick={() => toggleSection(title)}
+      style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        padding: '0.85rem 1.25rem', cursor: 'pointer', userSelect: 'none',
+        borderBottom: '1px solid var(--border)', background: 'rgba(0,0,0,0.02)'
+      }}
+    >
+      <h3 style={{ margin: 0, fontSize: '0.8rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--text)' }}>{title}</h3>
+      <ChevronRight size={16} style={{ transform: expandedSections[title] ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform 0.2s', color: 'var(--text-muted)' }} />
+    </div>
+  );
+
+  const Badge = ({ value, green, yellow, red }) => {
+    const score = value !== null && value !== undefined && value !== '' ? Number(value) : null;
+    if (score === null) return <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748b' }}>—</span>;
+    let colors;
+    if (green && score >= green) colors = { bg: 'rgba(16,185,129,0.12)', text: '#10b981' };
+    else if (yellow && score >= yellow) colors = { bg: 'rgba(245,158,11,0.12)', text: '#eab308' };
+    else if (red) colors = { bg: 'rgba(239,68,68,0.12)', text: '#ef4444' };
+    else colors = { bg: 'rgba(100,116,139,0.08)', text: '#64748b' };
+    return <span style={{ padding: '0.2rem 0.6rem', borderRadius: '6px', fontSize: '0.85rem', fontWeight: 800, backgroundColor: colors.bg, color: colors.text }}>{score}</span>;
   };
 
-  const onTouchStart = (e) => { 
-    setTouchStartX(e.touches[0].clientX); 
-    setTouchStartY(e.touches[0].clientY);
-    setTouchDeltaX(0); 
-    setTouchDeltaY(0);
-  };
-  
-  const onTouchMove = (e) => { 
-    if (touchStartX !== null && touchStartY !== null) {
-      setTouchDeltaX(e.touches[0].clientX - touchStartX);
-      setTouchDeltaY(e.touches[0].clientY - touchStartY);
+  const CollapseSection = ({ title, children }) => (
+    <div style={{ border: '1px solid var(--border)', borderRadius: '10px', overflow: 'hidden', marginBottom: '1rem', background: 'white' }}>
+      <SectionHeader title={title} />
+      {expandedSections[title] && <div style={{ padding: '1rem 1.25rem' }}>{children}</div>}
+    </div>
+  );
+
+  const getCellVal = (field, doc) => {
+    if (doc === 'ws' && field.label === 'Unit') return 'KG';
+    const key = field[doc];
+    if (!key) return null;
+    const primary = v(key);
+    if (primary) return primary;
+    if (doc === 'po' && field.poFallback) {
+      const fallback = v(field.poFallback);
+      if (fallback) return fallback;
     }
-  };
-  
-  const onTouchEnd = () => {
-    if (Math.abs(touchDeltaX) > 70 && Math.abs(touchDeltaX) > Math.abs(touchDeltaY) * 1.5) { 
-      touchDeltaX < 0 ? navigateTo('next') : navigateTo('prev'); 
-    }
-    setTouchStartX(null); 
-    setTouchStartY(null);
-    setTouchDeltaX(0); 
-    setTouchDeltaY(0);
+    return null;
   };
 
-  const val = (key) => {
-    const v = record[key];
-    return (v !== null && v !== undefined && v !== '') ? v.toString() : null;
+  const DocBadge = ({ val, nowrap }) => {
+    const display = val ?? '—';
+    const isEmpty = display === '—';
+    return (
+      <span style={{
+        display: 'block', fontSize: '0.78rem', fontWeight: 600, fontFamily: 'monospace',
+        color: isEmpty ? '#94a3b8' : 'var(--text)',
+        padding: '0.25rem 0', lineHeight: 1.4,
+        whiteSpace: nowrap ? 'nowrap' : undefined,
+        overflow: nowrap ? 'hidden' : undefined,
+        textOverflow: nowrap ? 'ellipsis' : undefined
+      }}>
+        {display}
+      </span>
+    );
   };
 
-  const totalFields = SALES_COMPARE_FIELDS.length;
-  const matchCount = SALES_COMPARE_FIELDS.filter(f => {
-    const iv = val(f.invoice), sv = val(f.sheet);
-    return iv && sv && salesValuesMatch(iv, sv, f.type);
-  }).length;
-  const scorePercent = Math.round((matchCount / totalFields) * 100);
-  const allMatch = matchCount === totalFields;
+  const MatchBadge = ({ value }) => {
+    const b = MATCH_BADGE(value);
+    return (
+      <span style={{
+        display: 'inline-flex', alignItems: 'center', gap: '0.3rem',
+        padding: '0.2rem 0.65rem', borderRadius: '6px', fontSize: '0.7rem', fontWeight: 800,
+        backgroundColor: b.bg, color: b.text, border: `1px solid ${b.border}`,
+        textTransform: 'uppercase', letterSpacing: '0.04em'
+      }}>
+        {b.label === 'YES' && <CheckCircle size={10} />}
+        {b.label === 'PARTIAL' && <AlertTriangle size={10} />}
+        {b.label === 'NO' && <X size={10} />}
+        {b.label}
+      </span>
+    );
+  };
 
-  const displayScore = hasIntelligence ? record.intelligence.audit_score : scorePercent;
-  const displayStatus = hasIntelligence ? record.intelligence.audit_status : (allMatch ? 'GOOD MATCH' : scorePercent >= 70 ? 'PARTIAL MATCH' : 'HIGH MISMATCH');
+  const DetailRow = ({ label, value, highlight }) => (
+    <div style={{
+      display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+      padding: '0.4rem 0', borderBottom: '1px solid rgba(0,0,0,0.04)',
+      fontSize: '0.8rem'
+    }}>
+      <span style={{ fontWeight: 600, color: 'var(--text-muted)' }}>{label}</span>
+      <span style={{
+        fontWeight: 700, color: highlight ? '#ef4444' : 'var(--text)',
+        textAlign: 'right', maxWidth: '60%', wordBreak: 'break-word'
+      }}>{fmt(value) ?? '—'}</span>
+    </div>
+  );
+
+  const score = I.audit_score !== undefined ? Number(I.audit_score) : null;
+  const sc = SCORE_COLOR(score);
 
   return (
     <div className="modal-overlay animate-fade-in" onClick={onClose}>
-      <div className="modal-content animate-slide-up sales-modal" onClick={e => e.stopPropagation()}>
-        <div className="modal-header">
-          <div className="header-text-group">
-            <h2 className="modal-title">
-              <FileText className="text-primary" size={22} />
-              Sales Comparison Ledger
-            </h2>
-            <p className="modal-subtitle">Invoice: {invoiceNumber || '—'}</p>
-          </div>
-          <div className="flex items-center gap-3">
-            {hasMultiple && (
-              <span className="swipe-item-counter">Item {currentIndex + 1}/{totalItems}</span>
-            )}
-            {hasIntelligence && (
-              <button 
-                className="btn btn-outline btn-sm py-1 font-bold text-[10px] uppercase tracking-wider" 
-                onClick={() => setView(view === 'intelligence' ? 'universal' : 'intelligence')}
-                style={{ height: '32px' }}
-              >
-                {view === 'intelligence' ? '📊 Raw Data' : '🤖 Intelligence'}
-              </button>
-            )}
-            <div className="sales-score-pill" style={{
-              background: displayStatus === 'Approve' || displayStatus === 'PASS' || displayStatus === 'GOOD MATCH' || displayStatus === 'YES' ? 'rgba(16,185,129,0.15)' : displayStatus === 'PARTIAL MATCH' || displayStatus === 'PARTIAL' || displayStatus === 'NEEDS_REVIEW' ? 'rgba(245,158,11,0.15)' : 'rgba(239,68,68,0.15)',
-              color: displayStatus === 'Approve' || displayStatus === 'PASS' || displayStatus === 'GOOD MATCH' || displayStatus === 'YES' ? '#10b981' : displayStatus === 'PARTIAL MATCH' || displayStatus === 'PARTIAL' || displayStatus === 'NEEDS_REVIEW' ? '#f59e0b' : '#ef4444',
-              border: `1px solid ${displayStatus === 'Approve' || displayStatus === 'PASS' || displayStatus === 'GOOD MATCH' || displayStatus === 'YES' ? 'rgba(16,185,129,0.3)' : displayStatus === 'PARTIAL MATCH' || displayStatus === 'PARTIAL' || displayStatus === 'NEEDS_REVIEW' ? 'rgba(245,158,11,0.3)' : 'rgba(239,68,68,0.3)'}`,
-            }}>
-              {displayScore}% Match
+      <div className="modal-content animate-slide-up" onClick={e => e.stopPropagation()}
+        style={{ maxWidth: '1100px', width: '95%', borderRadius: '16px', padding: 0, overflow: 'hidden' }}
+      >
+        {/* ── Header ── */}
+        <div style={{
+          padding: '1.25rem 1.5rem', borderBottom: '1px solid var(--border)',
+          background: 'white'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: '1rem' }}>
+            <div>
+              <h2 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <FileText size={20} style={{ color: 'var(--primary)' }} />
+                Sales Comparison Ledger
+              </h2>
+              {hasMultiple && (
+                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>
+                  Item {currentIndex + 1} of {totalItems}
+                </span>
+              )}
             </div>
-            <button className="close-btn" onClick={onClose}><X size={20} /></button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
+              <div style={{ textAlign: 'right' }}>
+                <div style={{ fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-muted)', marginBottom: '0.15rem' }}>Audit Score</div>
+                <Badge value={score} green={90} yellow={75} red={0} />
+              </div>
+              <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '0.25rem', color: 'var(--text-muted)', display: 'flex' }}>
+                <X size={20} />
+              </button>
+            </div>
+          </div>
+
+          {/* Document Number Strip */}
+          <div style={{
+            display: 'flex', flexWrap: 'wrap', gap: '1.25rem', marginTop: '0.75rem',
+            padding: '0.65rem 0.85rem', background: 'rgba(0,0,0,0.02)', borderRadius: '8px',
+            fontSize: '0.75rem', alignItems: 'center'
+          }}>
+            {[
+              { label: 'Invoice #', value: invoiceNumber || v('inv_order_number') },
+              { label: 'SO #', value: v('so_number') },
+              { label: 'PO #', value: v('po_number') },
+              { label: 'GP #', value: v('gp_number') },
+              { label: 'WS #', value: v('ws_number') },
+            ].map((item, idx) => (
+              <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                <span style={{ fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', fontSize: '0.65rem', letterSpacing: '0.05em' }}>{item.label}</span>
+                <span style={{ fontWeight: 700, color: 'var(--text)', fontSize: '0.8rem' }}>{item.value || '—'}</span>
+              </div>
+            ))}
           </div>
         </div>
 
-        <div
-          className={`modal-body swipe-body ${slideClass}`}
-          style={view === 'intelligence' ? { padding: '1.25rem' } : { padding: '0' }}
-          onTouchStart={hasMultiple ? onTouchStart : undefined}
-          onTouchMove={hasMultiple ? onTouchMove : undefined}
-          onTouchEnd={hasMultiple ? onTouchEnd : undefined}
-        >
-          {view === 'intelligence' ? (
-            <div className="intelligence-grid animate-fade-in premium">
-              <div className="intelligence-main">
-                <div className="integrity-card glass" style={{
-                  background: 'rgba(255, 255, 255, 0.02)',
-                  border: '1px solid var(--border)',
-                  borderRadius: '16px',
-                  padding: '1.5rem',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '1.5rem',
-                  marginBottom: '1.5rem',
-                  boxShadow: 'inset 0 0 20px rgba(255, 255, 255, 0.02)'
-                }}>
-                  <div className="integrity-viz">
-                    <div className="viz-circle" style={{ 
-                      width: '74px',
-                      height: '74px',
-                      borderRadius: '50%',
-                      border: '6px solid',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      borderColor: (record.intelligence?.audit_score || 0) >= 80 ? 'var(--success)' : ((record.intelligence?.audit_score || 0) >= 60 ? 'var(--warning)' : 'var(--error)')
-                    }}>
-                      <span className="viz-value" style={{ fontSize: '1.4rem', fontWeight: 950, fontFamily: 'Outfit, sans-serif' }}>{record.intelligence?.audit_score || 0}%</span>
-                      <span className="viz-label" style={{ fontSize: '8px', fontWeight: 800, color: 'var(--text-muted)', letterSpacing: '0.05em' }}>SCORE</span>
-                    </div>
-                  </div>
-                  <div className="integrity-info">
-                    <div 
-                      className="status-badge-premium"
-                      style={{
-                        display: 'inline-block',
-                        padding: '4px 16px',
-                        borderRadius: '99px',
-                        fontSize: '0.7rem',
-                        fontWeight: 900,
-                        textTransform: 'uppercase',
-                        letterSpacing: '0.15em',
-                        marginBottom: '0.5rem',
-                        backgroundColor: (record.intelligence?.audit_status || 'FAIL') === 'PASS' ? 'rgba(16,185,129,0.15)' : 'rgba(239,68,68,0.15)',
-                        color: (record.intelligence?.audit_status || 'FAIL') === 'PASS' ? '#10b981' : '#ef4444',
-                        border: `1px solid ${(record.intelligence?.audit_status || 'FAIL') === 'PASS' ? 'rgba(16,185,129,0.3)' : 'rgba(239,68,68,0.3)'}`
-                      }}
-                    >
-                      {record.intelligence?.audit_status || 'FAIL'}
-                    </div>
-                    <p className="integrity-desc" style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: 0 }}>Aggregate sales document audit compliance score.</p>
-                  </div>
-                </div>
+        {/* ── Scrollable Body ── */}
+        <div style={{ padding: '1.25rem 1.5rem', maxHeight: '70vh', overflowY: 'auto' }}>
+          
+          {/* ─── Section 1: Document Comparison Matrix ─── */}
+          <CollapseSection title="Document Comparison Matrix">
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{
+                width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem',
+                border: '1px solid var(--border)', borderRadius: '8px', overflow: 'hidden'
+              }}>
+                <thead>
+                  <tr style={{ background: 'rgba(0,0,0,0.03)' }}>
+                    <th style={thStyle}>Field</th>
+                    <th style={thStyle}>Invoice</th>
+                    <th style={thStyle}>SO</th>
+                    <th style={thStyle}>PO</th>
+                    <th style={thStyle}>Gate Pass</th>
+                    <th style={thStyle}>Weight Slip</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {SALES_COMPARE_FIELDS
+                    .filter(f => !f.conditional || getCellVal(f, f.conditional))
+                    .map(({ label, invoice, so, po, gp, ws, type, nowrap, conditional }) => {
+                    const rawVals = [
+                      invoice ? v(invoice) : null,
+                      so ? v(so) : null,
+                      po ? v(po) : null,
+                      gp ? v(gp) : null,
+                      ws ? v(ws) : null
+                    ];
+                    const [iv, sv, pv, gv, wv] = rawVals;
+                    const allVals = rawVals.filter(Boolean);
 
-                <div className="issues-list-minimal">
-                  <h4 className="section-label" style={{ fontSize: '10px', color: 'var(--text)', textTransform: 'uppercase', letterSpacing: '0.15em', fontWeight: '950', marginBottom: '0.75rem', opacity: 0.6 }}>Intelligence Observations</h4>
-                  <div className="issues-stack-minimal" style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                    {((record.intelligence?.critical_mismatches?.length || 0) + (record.intelligence?.warnings?.length || 0) + (record.intelligence?.missing_documents?.length || 0)) > 0 ? (
-                      <>
-                        {(record.intelligence?.critical_mismatches || []).map((issue, idx) => (
-                          <div key={`crit-${idx}`} className="issue-item-minimal" style={{
-                            display: 'flex',
-                            alignItems: 'flex-start',
-                            gap: '0.5rem',
-                            padding: '0.75rem 1rem',
-                            backgroundColor: 'rgba(239, 68, 68, 0.05)',
-                            border: '1px solid rgba(239, 68, 68, 0.1)',
-                            borderRadius: '10px',
-                            fontSize: '0.8rem',
-                            lineHeight: 1.4
-                          }}>
-                            <AlertTriangle size={14} style={{ color: '#ef4444', marginTop: '2px', flexShrink: 0 }} />
-                            <span style={{ fontWeight: 650, color: '#ef4444' }}>{issue}</span>
-                          </div>
-                        ))}
-                        {(record.intelligence?.warnings || []).map((issue, idx) => (
-                          <div key={`warn-${idx}`} className="issue-item-minimal" style={{
-                            display: 'flex',
-                            alignItems: 'flex-start',
-                            gap: '0.5rem',
-                            padding: '0.75rem 1rem',
-                            backgroundColor: 'rgba(245, 158, 11, 0.05)',
-                            border: '1px solid rgba(245, 158, 11, 0.1)',
-                            borderRadius: '10px',
-                            fontSize: '0.8rem',
-                            lineHeight: 1.4
-                          }}>
-                            <AlertTriangle size={14} style={{ color: '#f59e0b', marginTop: '2px', flexShrink: 0 }} />
-                            <span style={{ color: 'var(--text)' }}>{issue}</span>
-                          </div>
-                        ))}
-                        {(record.intelligence?.missing_documents || []).map((issue, idx) => (
-                          <div key={`miss-${idx}`} className="issue-item-minimal" style={{
-                            display: 'flex',
-                            alignItems: 'flex-start',
-                            gap: '0.5rem',
-                            padding: '0.75rem 1rem',
-                            backgroundColor: 'rgba(100, 116, 139, 0.05)',
-                            border: '1px solid rgba(100, 116, 139, 0.1)',
-                            borderRadius: '10px',
-                            fontSize: '0.8rem',
-                            lineHeight: 1.4
-                          }}>
-                            <Info size={14} style={{ color: '#64748b', marginTop: '2px', flexShrink: 0 }} />
-                            <span style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>Missing: {issue}</span>
-                          </div>
-                        ))}
-                      </>
-                    ) : (
-                      <div className="issue-item-minimal success" style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '0.5rem',
-                        padding: '0.75rem 1rem',
-                        backgroundColor: 'rgba(16, 185, 129, 0.05)',
-                        border: '1px solid rgba(16, 185, 129, 0.1)',
-                        borderRadius: '10px',
-                        fontSize: '0.8rem',
-                        color: '#10b981'
-                      }}>
-                        <CheckCircle size={14} />
-                        <span>Zero discrepancies found. Integrity verified.</span>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
+                    // For quantity, normalize units to KG for comparison
+                    let compareValsForConflict;
+                    if (type === 'quantity') {
+                      const unitKeys = ['inv_unit', 'so_unit', 'po_unit', 'gp_unit', null];
+                      const unitMap = unitKeys.map(k => k ? v(k) : 'KG');
+                      const toKg = (val, unit) => {
+                        if (val == null) return null;
+                        const u = (unit || '').toString().toLowerCase().trim();
+                        const num = parseFloat(val.toString().replace(/,/g, ''));
+                        if (isNaN(num)) return null;
+                        return (u === 'mt' || u === 'ton' || u === 'tons') ? num * 1000 : num;
+                      };
+                      compareValsForConflict = rawVals.map((val, i) => toKg(val, unitMap[i])).filter(v => v != null);
+                    } else {
+                      compareValsForConflict = allVals;
+                    }
 
-              <div className="intelligence-metrics">
-                <h4 className="section-label" style={{ fontSize: '10px', color: 'var(--text)', textTransform: 'uppercase', letterSpacing: '0.15em', fontWeight: '950', marginBottom: '0.75rem', opacity: 0.6 }}>Verification Verticals</h4>
-                <div className="metric-group-premium" style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                  {[
-                    { label: 'Customer Match', value: record.intelligence?.customer_match },
-                    { label: 'PO Match', value: record.intelligence?.po_match },
-                    { label: 'SO Match', value: record.intelligence?.so_match },
-                    { label: 'Vehicle Match', value: record.intelligence?.vehicle_match },
-                    { label: 'Weight Slip Match', value: record.intelligence?.weight_slip_match },
-                    { label: 'Quantity Match', value: record.intelligence?.quantity_match },
-                    { label: 'Material Match', value: record.intelligence?.material_match },
-                    { label: 'GST Match', value: record.intelligence?.gst_match },
-                    { label: 'Amount Match', value: record.intelligence?.amount_match },
-                  ].map((vert, i) => {
-                    const statusClass = vert.value === 'YES' ? 'pass' : vert.value === 'PARTIAL' ? 'partial' : vert.value === 'NO' ? 'fail' : 'pending';
-                    const colorStyle = vert.value === 'YES' ? { color: '#10b981' } : vert.value === 'PARTIAL' ? { color: '#f59e0b' } : vert.value === 'NO' ? { color: '#ef4444' } : { color: '#64748b' };
+                    const hasConflict = compareValsForConflict.length >= 2 && !compareValsForConflict.every(x => {
+                      if (type === 'quantity') return Math.abs(x - compareValsForConflict[0]) <= 250;
+                      return salesValuesMatch(x, compareValsForConflict[0], type);
+                    });
+                    const hasPartial = compareValsForConflict.length >= 2 && !hasConflict && compareValsForConflict.some(x =>
+                      compareValsForConflict.some(y => x !== y && (
+                        type === 'quantity' ? Math.abs(x - y) > 250 : !salesValuesMatch(x, y, type)
+                      ))
+                    );
                     return (
-                      <div 
-                        key={i} 
-                        className="metric-row-premium" 
-                        style={{
-                          display: 'flex',
-                          justifyContent: 'space-between',
-                          alignItems: 'center',
-                          padding: '0.6rem 0.85rem',
-                          background: 'rgba(255, 255, 255, 0.01)',
-                          border: '1px solid var(--border)',
-                          borderRadius: '8px',
-                          fontSize: '0.8rem'
-                        }}
-                      >
-                        <div className="metric-meta" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 650 }}>
-                          <span>{vert.label}</span>
-                        </div>
-                        <span className={`metric-status ${statusClass}`} style={{ ...colorStyle, fontWeight: 800, fontSize: '0.75rem', textTransform: 'uppercase' }}>
-                          {vert.value || 'N/A'}
-                        </span>
-                      </div>
+                      <tr key={label} style={{
+                        borderBottom: '1px solid var(--border)',
+                        background: hasConflict ? 'rgba(239,68,68,0.04)' : hasPartial ? 'rgba(245,158,11,0.04)' : 'transparent'
+                      }}>
+                        <td style={{ ...tdStyle, fontWeight: 700, color: 'var(--text)', whiteSpace: 'nowrap' }}>{label}</td>
+                        <td style={{ ...tdStyle, background: hasConflict && iv ? 'rgba(239,68,68,0.06)' : hasPartial && iv ? 'rgba(245,158,11,0.06)' : 'transparent' }}><DocBadge val={iv} nowrap={nowrap} /></td>
+                        <td style={{ ...tdStyle, background: hasConflict && sv ? 'rgba(239,68,68,0.06)' : hasPartial && sv ? 'rgba(245,158,11,0.06)' : 'transparent' }}><DocBadge val={sv} nowrap={nowrap} /></td>
+                        <td style={{ ...tdStyle, background: hasConflict && pv ? 'rgba(239,68,68,0.06)' : hasPartial && pv ? 'rgba(245,158,11,0.06)' : 'transparent' }}><DocBadge val={pv} nowrap={nowrap} /></td>
+                        <td style={{ ...tdStyle, background: hasConflict && gv ? 'rgba(239,68,68,0.06)' : hasPartial && gv ? 'rgba(245,158,11,0.06)' : 'transparent' }}><DocBadge val={gv} nowrap={nowrap} /></td>
+                        <td style={{ ...tdStyle, background: hasConflict && wv ? 'rgba(239,68,68,0.06)' : hasPartial && wv ? 'rgba(245,158,11,0.06)' : 'transparent' }}><DocBadge val={wv} nowrap={nowrap} /></td>
+                      </tr>
                     );
                   })}
-                </div>
-                {record.intelligence?.audit_summary && (
-                  <div className="technical-summary-minimal" style={{
-                    marginTop: '1.5rem',
-                    padding: '0.85rem 1rem',
-                    backgroundColor: 'rgba(255, 255, 255, 0.01)',
-                    border: '1px solid var(--border)',
-                    borderRadius: '12px',
-                    fontSize: '0.75rem',
-                    lineHeight: 1.5,
-                    display: 'flex',
-                    gap: '8px',
-                    color: 'var(--text-muted)'
-                  }}>
-                    <Info size={14} style={{ color: 'var(--primary)', flexShrink: 0, marginTop: '2px' }} />
-                    <span>{record.intelligence.audit_summary}</span>
-                  </div>
-                )}
-              </div>
+                </tbody>
+              </table>
             </div>
-          ) : (
-            <div style={{ overflowX: 'auto' }}>
-            <table className="sales-compare-table">
-              <thead>
-                <tr>
-                  <th className="sc-field-col">Field</th>
-                  <th className="sc-inv-col">📄 Invoice</th>
-                  <th className="sc-sheet-col">📊 SO/Sheet</th>
-                  <th className="sc-po-col">📋 PO</th>
-                  <th className="sc-gp-col">🚛 Gate Pass</th>
-                  <th className="sc-ws-col">⚖️ Wt. Slip</th>
-                </tr>
-              </thead>
-              <tbody>
-                {SALES_COMPARE_FIELDS.map(({ label, invoice, sheet, po, gp, ws, type }) => {
-                  const iv = invoice ? val(invoice) : null;
-                  const sv = sheet ? val(sheet) : null;
-                  const pv = po ? val(po) : null;
-                  const gv = gp ? val(gp) : null;
-                  const wv = ws ? val(ws) : null;
-                  const allVals = [iv, sv, pv, gv, wv].filter(Boolean);
-                  // Check if all present values are consistent
-                  const allConsistent = allVals.length >= 2 && allVals.every(v => salesValuesMatch(v, allVals[0], type));
-                  const hasConflict = allVals.length >= 2 && !allConsistent;
-                  return (
-                    <tr key={label} className={hasConflict ? 'sc-row-mismatch' : ''}>
-                      <td className="sc-field-name">{label}</td>
-                      <td className="sc-cell">{iv ?? <span className="sc-empty">—</span>}</td>
-                      <td className="sc-cell">{sv ?? <span className="sc-empty">—</span>}</td>
-                      <td className="sc-cell">{pv ?? <span className="sc-empty">—</span>}</td>
-                      <td className="sc-cell">{gv ?? <span className="sc-empty">—</span>}</td>
-                      <td className="sc-cell">{wv ?? <span className="sc-empty">—</span>}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+          </CollapseSection>
+
+          {/* ─── Section 2: Estimated SO Amount ─── */}
+          <CollapseSection title="Estimated SO Amount">
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.83rem' }}>
+                <thead>
+                  <tr style={{ borderBottom: '2px solid var(--border)' }}>
+                    <th style={{ textAlign: 'left', padding: '0.5rem 0.75rem', fontWeight: 700, color: 'var(--text-muted)', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Field</th>
+                    <th style={{ textAlign: 'right', padding: '0.5rem 0.75rem', fontWeight: 700, color: 'var(--text-muted)', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Value</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(() => {
+                    const rawRate = record['so_rate'];
+                    const rawQty = record['so_quantity'];
+                    const rawInvFinal = record['inv_final_amount'];
+                    const rawPoTotal = record['po_total_amount'];
+                    const stripCommas = s => s.toString().replace(/,/g, '');
+                    const soRate = rawRate ? Number(stripCommas(rawRate)) : null;
+                    const soQty = rawQty ? Number(stripCommas(rawQty)) : null;
+                    const estimatedSOAmount = soRate && soQty ? soRate * soQty : null;
+                    const invTaxable = record['inv_taxable_value'] ? Number(stripCommas(record['inv_taxable_value'])) : null;
+                    const invFinal = rawInvFinal ? Number(stripCommas(rawInvFinal)) : null;
+                    const poTotal = rawPoTotal ? Number(stripCommas(rawPoTotal)) : null;
+                    const diff = estimatedSOAmount != null && invTaxable != null ? Math.abs(estimatedSOAmount - invTaxable) : null;
+                    const pct = diff != null && estimatedSOAmount ? (diff / estimatedSOAmount) * 100 : null;
+                    let pctColor = 'var(--text)';
+                    if (pct != null) {
+                      if (pct <= 2) pctColor = '#10b981';
+                      else if (pct <= 5) pctColor = '#f59e0b';
+                      else pctColor = '#ef4444';
+                    }
+
+                    const currency = v => {
+                      if (v === null || v === undefined) return '—';
+                      return `₹${Math.round(Number(v)).toLocaleString('en-IN')}`;
+                    };
+
+                    return (
+                      <>
+                        <tr style={{ borderBottom: '1px solid var(--border)' }}>
+                          <td style={{ padding: '0.6rem 0.75rem', fontWeight: 700, color: 'var(--text)' }}>
+                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
+                              SO Estimated Amount (Reference)
+                              <span title="Estimated using SO Rate × SO Quantity. This is a reference value only and is not taken from any document." style={{ cursor: 'pointer', display: 'inline-flex', verticalAlign: 'middle' }}>
+                                <Info size={13} style={{ color: 'var(--text-muted)' }} />
+                              </span>
+                            </span>
+                          </td>
+                          <td style={{ padding: '0.6rem 0.75rem', textAlign: 'right', fontWeight: 700, fontFamily: 'monospace', color: estimatedSOAmount != null ? 'var(--text)' : '#94a3b8' }}>{currency(estimatedSOAmount)}</td>
+                        </tr>
+                        <tr style={{ borderBottom: '1px solid var(--border)' }}>
+                          <td style={{ padding: '0.6rem 0.75rem', fontWeight: 600, color: 'var(--text-muted)' }}>Invoice Taxable Value</td>
+                          <td style={{ padding: '0.6rem 0.75rem', textAlign: 'right', fontWeight: 700, fontFamily: 'monospace', color: v('inv_taxable_value') ? 'var(--text)' : '#94a3b8' }}>{currency(invTaxable)}</td>
+                        </tr>
+                        <tr style={{ borderBottom: '1px solid var(--border)' }}>
+                          <td style={{ padding: '0.6rem 0.75rem', fontWeight: 600, color: 'var(--text-muted)' }}>Invoice Final Amount</td>
+                          <td style={{ padding: '0.6rem 0.75rem', textAlign: 'right', fontWeight: 700, fontFamily: 'monospace', color: v('inv_final_amount') ? 'var(--text)' : '#94a3b8' }}>{currency(invFinal)}</td>
+                        </tr>
+                        <tr style={{ borderBottom: '1px solid var(--border)' }}>
+                          <td style={{ padding: '0.6rem 0.75rem', fontWeight: 600, color: 'var(--text-muted)' }}>PO Total Amount</td>
+                          <td style={{ padding: '0.6rem 0.75rem', textAlign: 'right', fontWeight: 700, fontFamily: 'monospace', color: v('po_total_amount') ? 'var(--text)' : '#94a3b8' }}>{currency(poTotal)}</td>
+                        </tr>
+                        {diff != null && pct != null && (
+                          <tr style={{ background: 'rgba(0,0,0,0.015)' }}>
+                            <td colSpan={2} style={{ padding: '0.6rem 0.75rem' }}>
+                              <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '1.5rem', fontSize: '0.78rem' }}>
+                                <span style={{ fontWeight: 600, color: 'var(--text-muted)' }}>
+                                  Difference: <span style={{ fontFamily: 'monospace', fontWeight: 800, color: 'var(--text)' }}>{currency(diff)}</span>
+                                </span>
+                                <span style={{ fontWeight: 600, color: 'var(--text-muted)' }}>
+                                  Deviation: <span style={{ fontFamily: 'monospace', fontWeight: 800, color: pctColor }}>{pct.toFixed(2)}%</span>
+                                </span>
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </>
+                    );
+                  })()}
+                </tbody>
+              </table>
+            </div>
+          </CollapseSection>
+
+          {/* ─── Section 3: Financial Summary ─── */}
+          <CollapseSection title="Financial Summary">
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '0.75rem' }}>
+              {[
+                { label: 'Invoice Final Amount', value: fmtCurrency(v('inv_final_amount')) },
+                { label: 'Invoice Taxable Value', value: fmtCurrency(v('inv_taxable_value')) },
+                { label: 'PO Total Amount', value: fmtCurrency(v('po_total_amount')) },
+                { label: 'Invoice CGST', value: fmtCurrency(v('inv_cgst_amount')) },
+                { label: 'Invoice SGST', value: fmtCurrency(v('inv_sgst_amount')) },
+                { label: 'Invoice IGST', value: fmtCurrency(v('inv_igst_amount')) },
+              ].map((item, idx) => (
+                <div key={idx} style={{
+                  padding: '0.85rem 1rem', borderRadius: '10px',
+                  border: '1px solid var(--border)', background: 'rgba(0,0,0,0.015)'
+                }}>
+                  <div style={{ fontSize: '0.65rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)', marginBottom: '0.35rem' }}>{item.label}</div>
+                  <div style={{ fontSize: '1rem', fontWeight: 800, fontFamily: 'monospace', color: item.value === '—' ? '#94a3b8' : 'var(--text)' }}>{item.value}</div>
+                </div>
+              ))}
+            </div>
+          </CollapseSection>
+
+          {/* ─── Section 4: Material Information ─── */}
+          <CollapseSection title="Material Information">
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '0 1.5rem' }}>
+              {[
+                { label: 'Product', value: v('so_product') },
+                { label: 'Material Grade', value: v('po_material_grade') },
+                { label: 'Thickness', value: v('so_thickness') },
+                { label: 'Width', value: v('so_width') },
+                { label: 'Length', value: v('so_length') },
+                { label: 'Packing', value: v('so_packing') },
+                { label: 'Production Type', value: v('so_production_type') },
+                { label: 'Make / Coil Grade', value: v('so_make') },
+              ].map((item, idx) => (
+                <DetailRow key={idx} label={item.label} value={item.value} />
+              ))}
+            </div>
+          </CollapseSection>
+
+          {/* ─── Section 5: Logistics ─── */}
+          <CollapseSection title="Logistics">
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '0 1.5rem' }}>
+              {[
+                { label: 'Gate Pass Number', value: v('gp_number') },
+                { label: 'Gate Pass Date', value: v('gp_date') },
+                { label: 'Weight Slip Number', value: v('ws_number') },
+                { label: 'Weight Slip Date', value: v('ws_date') },
+                { label: 'Weight Slip Time', value: v('ws_time') },
+                { label: 'Vehicle', value: v('gp_vehicle_number') },
+                { label: 'Gross Weight', value: v('ws_gross_weight') },
+                { label: 'Tare Weight', value: v('ws_tare_weight') },
+                { label: 'Net Weight', value: v('ws_net_weight') },
+                { label: 'Driver', value: v('gp_driver_name') },
+              ].map((item, idx) => (
+                <DetailRow key={idx} label={item.label} value={item.value} />
+              ))}
+            </div>
+          </CollapseSection>
+
+          {/* ─── Section 6: Match Results ─── */}
+          <CollapseSection title="Match Results">
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+              {[
+                { label: 'Customer', key: 'customer_match' },
+                { label: 'SO', key: 'so_match' },
+                { label: 'PO', key: 'po_match' },
+                { label: 'Vehicle', key: 'vehicle_match' },
+                { label: 'Weight Slip', key: 'weight_slip_match' },
+                { label: 'Quantity', key: 'quantity_match' },
+                { label: 'Material', key: 'material_match' },
+                { label: 'Dimensions', key: 'dimension_match' },
+                { label: 'GST', key: 'gst_match' },
+                { label: 'Amount', key: 'amount_match' },
+                { label: 'Rate', key: 'rate_match' },
+                { label: 'Payment Terms', key: 'payment_terms_match' },
+                { label: 'Delivery Terms', key: 'delivery_terms_match' },
+                { label: 'Weight', key: 'weight_match' },
+                { label: 'Coil', key: 'coil_match' },
+              ].map((item, idx) => (
+                <div key={idx} style={{
+                  display: 'flex', alignItems: 'center', gap: '0.5rem',
+                  padding: '0.4rem 0.75rem', borderRadius: '8px',
+                  border: '1px solid var(--border)', background: 'rgba(0,0,0,0.015)'
+                }}>
+                  <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)' }}>{item.label}</span>
+                  <MatchBadge value={I[item.key]} />
+                </div>
+              ))}
+            </div>
+          </CollapseSection>
+
+          {/* ─── Section 7: Audit Findings ─── */}
+          <CollapseSection title="Audit Findings">
+            {/* Critical Mismatches */}
+            {(I.critical_mismatches?.length || 0) > 0 && (
+              <div style={{ marginBottom: '0.75rem' }}>
+                <div style={{ fontSize: '0.7rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#ef4444', marginBottom: '0.4rem' }}>Critical Mismatches</div>
+                {I.critical_mismatches.map((item, idx) => (
+                  <div key={idx} style={{
+                    display: 'flex', alignItems: 'flex-start', gap: '0.5rem',
+                    padding: '0.6rem 0.85rem', borderRadius: '8px', marginBottom: '0.35rem',
+                    backgroundColor: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.15)',
+                    fontSize: '0.8rem', color: '#ef4444', fontWeight: 600
+                  }}>
+                    <AlertTriangle size={14} style={{ flexShrink: 0, marginTop: '2px' }} />
+                    <span>{item}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Warnings */}
+            {(I.warnings?.length || 0) > 0 && (
+              <div style={{ marginBottom: '0.75rem' }}>
+                <div style={{ fontSize: '0.7rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#f59e0b', marginBottom: '0.4rem' }}>Warnings</div>
+                {I.warnings.map((item, idx) => (
+                  <div key={idx} style={{
+                    display: 'flex', alignItems: 'flex-start', gap: '0.5rem',
+                    padding: '0.6rem 0.85rem', borderRadius: '8px', marginBottom: '0.35rem',
+                    backgroundColor: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.15)',
+                    fontSize: '0.8rem', color: 'var(--text)', fontWeight: 500
+                  }}>
+                    <AlertTriangle size={14} style={{ flexShrink: 0, marginTop: '2px', color: '#f59e0b' }} />
+                    <span>{item}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Missing Documents */}
+            {(I.missing_documents?.length || 0) > 0 && (
+              <div style={{ marginBottom: '0.75rem' }}>
+                <div style={{ fontSize: '0.7rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#64748b', marginBottom: '0.4rem' }}>Missing Documents</div>
+                {I.missing_documents.map((item, idx) => (
+                  <div key={idx} style={{
+                    display: 'flex', alignItems: 'flex-start', gap: '0.5rem',
+                    padding: '0.6rem 0.85rem', borderRadius: '8px', marginBottom: '0.35rem',
+                    backgroundColor: 'rgba(100,116,139,0.06)', border: '1px solid rgba(100,116,139,0.15)',
+                    fontSize: '0.8rem', color: '#64748b', fontStyle: 'italic'
+                  }}>
+                    <Info size={14} style={{ flexShrink: 0, marginTop: '2px' }} />
+                    <span>Missing: {item}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Audit Summary */}
+            {I.audit_summary && (
+              <div style={{
+                padding: '0.85rem 1rem', borderRadius: '10px', marginTop: '0.5rem',
+                backgroundColor: 'rgba(37,99,235,0.04)', border: '1px solid rgba(37,99,235,0.1)',
+                display: 'flex', gap: '0.6rem', alignItems: 'flex-start'
+              }}>
+                <Info size={16} style={{ color: 'var(--primary)', flexShrink: 0, marginTop: '2px' }} />
+                <div>
+                  <div style={{ fontSize: '0.65rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--primary)', marginBottom: '0.25rem' }}>Audit Summary</div>
+                  <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--text)', lineHeight: 1.5, fontStyle: 'italic' }}>"{I.audit_summary}"</p>
+                </div>
+              </div>
+            )}
+
+            {(!I.critical_mismatches?.length && !I.warnings?.length && !I.missing_documents?.length && !I.audit_summary) && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.75rem', color: '#10b981', fontSize: '0.85rem', fontWeight: 600 }}>
+                <CheckCircle size={16} />
+                No issues found. All checks passed.
+              </div>
+            )}
+          </CollapseSection>
+
+          {/* ─── Multiple Record Navigation ─── */}
+          {hasMultiple && (
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.75rem', padding: '0.75rem 0' }}>
+              <button
+                onClick={() => setCurrentIndex(Math.max(0, currentIndex - 1))}
+                disabled={currentIndex === 0}
+                style={{ ...navBtnStyle, opacity: currentIndex === 0 ? 0.4 : 1 }}
+              >
+                <ChevronLeft size={16} /> Prev
+              </button>
+              <div style={{ display: 'flex', gap: '0.35rem' }}>
+                {records.map((_, i) => (
+                  <span
+                    key={i}
+                    onClick={() => setCurrentIndex(i)}
+                    style={{
+                      width: '8px', height: '8px', borderRadius: '50%', cursor: 'pointer',
+                      background: i === currentIndex ? 'var(--primary)' : 'var(--border)',
+                      transition: 'all 0.2s'
+                    }}
+                  />
+                ))}
+              </div>
+              <button
+                onClick={() => setCurrentIndex(Math.min(totalItems - 1, currentIndex + 1))}
+                disabled={currentIndex === totalItems - 1}
+                style={{ ...navBtnStyle, opacity: currentIndex === totalItems - 1 ? 0.4 : 1 }}
+              >
+                Next <ChevronRight size={16} />
+              </button>
             </div>
           )}
         </div>
 
-        {hasMultiple && (
-          <div className="swipe-nav-bar">
-            <button className="swipe-nav-btn" onClick={() => navigateTo('prev')} disabled={currentIndex === 0}>
-              <ChevronLeft size={16} /> Prev
-            </button>
-            <div className="swipe-dots">
-              {records.map((_, i) => (
-                <span key={i} className={`swipe-dot ${i === currentIndex ? 'active' : ''}`} onClick={() => setCurrentIndex(i)} />
-              ))}
-            </div>
-            <button className="swipe-nav-btn" onClick={() => navigateTo('next')} disabled={currentIndex === totalItems - 1}>
-              Next <ChevronRight size={16} />
-            </button>
+        {/* ── Footer ── */}
+        <div style={{
+          padding: '1rem 1.5rem', borderTop: '1px solid var(--border)',
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.75rem',
+          background: 'white'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+            <span style={{ fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-muted)' }}>Overall Score</span>
+            <Badge value={score} green={90} yellow={75} red={0} />
           </div>
-        )}
-
-        <div className="modal-footer">
-          <p className="footer-hint">{matchCount}/{totalFields} fields match · Invoice vs Sheet comparison</p>
-          <div className="flex action-group" style={{ gap: '0.75rem' }}>
-            <button className="btn btn-outline" onClick={onClose}>Close</button>
+          <div style={{ display: 'flex', gap: '0.6rem', alignItems: 'center' }}>
+            <button className="btn btn-outline" onClick={onClose} style={{ fontSize: '0.8rem', padding: '0.5rem 1.25rem' }}>Close</button>
             {hasDecision ? (
-              <span className="sales-decision-badge" style={{
-                background: decisionStatus === 'Approve' ? 'rgba(16,185,129,0.15)' : 'rgba(239,68,68,0.15)',
+              <span style={{
+                display: 'inline-flex', alignItems: 'center', gap: '0.35rem',
+                padding: '0.5rem 1rem', borderRadius: '8px', fontSize: '0.8rem', fontWeight: 700,
+                background: decisionStatus === 'Approve' ? 'rgba(16,185,129,0.12)' : 'rgba(239,68,68,0.12)',
                 color: decisionStatus === 'Approve' ? '#10b981' : '#ef4444',
-                border: `1px solid ${decisionStatus === 'Approve' ? 'rgba(16,185,129,0.3)' : 'rgba(239,68,68,0.3)'}`,
-                padding: '0.5rem 1rem', borderRadius: '6px', fontSize: '0.8rem', fontWeight: 700
+                border: `1px solid ${decisionStatus === 'Approve' ? 'rgba(16,185,129,0.25)' : 'rgba(239,68,68,0.25)'}`
               }}>
-                {decisionStatus === 'Approve' ? <CheckCircle size={14} /> : <AlertTriangle size={14} />}
-                {' '}{decisionStatus === 'Approve' ? 'Approved' : 'Rejected'}
+                {decisionStatus === 'Approve' ? <CheckCircle size={14} /> : <X size={14} />}
+                {decisionStatus === 'Approve' ? 'Approved' : 'Rejected'}
               </span>
             ) : onDecision && (
               <>
-                <button 
-                  className="btn btn-reject"
-                  onClick={() => onDecision(record.id, 'Reject')}
-                  disabled={isProcessing}
-                >
+                <button className="btn btn-reject" onClick={() => onDecision(record.id, 'Reject')} disabled={isProcessing}
+                  style={{ fontSize: '0.8rem', padding: '0.5rem 1.25rem' }}>
                   Reject Match
                 </button>
-                <button 
-                  className="btn btn-approve"
-                  onClick={() => onDecision(record.id, 'Approve')}
-                  disabled={isProcessing}
-                >
+                <button className="btn btn-approve" onClick={() => onDecision(record.id, 'Approve')} disabled={isProcessing}
+                  style={{ fontSize: '0.8rem', padding: '0.5rem 1.25rem' }}>
                   Approve Match
                 </button>
               </>
@@ -1248,6 +1451,24 @@ const SalesRecordModal = ({ records, onClose, invoiceNumber, onDecision, isProce
       </div>
     </div>
   );
+};
+
+const thStyle = {
+  padding: '0.6rem 0.75rem', textAlign: 'left', fontWeight: 700, fontSize: '0.7rem',
+  textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)',
+  borderBottom: '2px solid var(--border)', position: 'sticky', top: 0, background: 'rgba(0,0,0,0.03)',
+  whiteSpace: 'nowrap'
+};
+
+const tdStyle = {
+  padding: '0.5rem 0.75rem', borderBottom: '1px solid var(--border)', verticalAlign: 'top'
+};
+
+const navBtnStyle = {
+  display: 'inline-flex', alignItems: 'center', gap: '0.25rem',
+  padding: '0.4rem 0.85rem', borderRadius: '8px', border: '1px solid var(--border)',
+  background: 'white', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 600,
+  color: 'var(--text)'
 };
 
 const AuditHistory = () => {

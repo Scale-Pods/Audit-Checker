@@ -1,18 +1,53 @@
 import React, { useState, useCallback, useEffect } from 'react'
 import { useDropzone } from 'react-dropzone'
+import * as pdfjsLib from 'pdfjs-dist'
+import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
 import { UploadCloud, File as FileIcon, FileText, CheckCircle, AlertTriangle, ArrowRight, X, Send, Mail, Loader2, XCircle, Info, ChevronRight, Check, ClipboardList, Scale, ShoppingCart, FileSpreadsheet } from 'lucide-react'
 import '../Purchase/PurchaseAudit.css'
 
+pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl
+
+const convertPdfToImage = async (file) => {
+  const arrayBuffer = await file.arrayBuffer()
+  const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise
+  const page = await pdf.getPage(1)
+  const viewport = page.getViewport({ scale: 2 })
+  const canvas = document.createElement('canvas')
+  canvas.width = viewport.width
+  canvas.height = viewport.height
+  const ctx = canvas.getContext('2d')
+  await page.render({ canvasContext: ctx, viewport }).promise
+  page.cleanup()
+  const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'))
+  return new File([blob], file.name.replace(/\.pdf$/i, '.png'), { type: 'image/png' })
+}
+
 const DocumentUpload = ({ title, accepted, onUpload, files, isSubmitted }) => {
+  const [converting, setConverting] = useState(false)
+
   const onDrop = useCallback(acceptedFiles => {
     if (acceptedFiles.length > 0) {
-      onUpload([acceptedFiles[0]])
+      const file = acceptedFiles[0]
+      if (file.type === 'application/pdf') {
+        setConverting(true)
+        convertPdfToImage(file).then(img => {
+          setConverting(false)
+          onUpload([img])
+        }).catch(err => {
+          console.error('PDF conversion failed:', err)
+          setConverting(false)
+        })
+      } else {
+        onUpload([file])
+      }
     }
   }, [onUpload])
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({ 
     onDrop,
-    accept: accepted
+    accept: accepted,
+    noClick: converting,
+    noDrag: converting
   })
 
   const renderFilePreview = (f, index) => (
@@ -21,6 +56,9 @@ const DocumentUpload = ({ title, accepted, onUpload, files, isSubmitted }) => {
       <div className="file-info">
         <span className="file-name" style={{ fontSize: '1.1rem' }}>{f.name}</span>
         <span className="file-size">{(f.size / 1024).toFixed(2)} KB</span>
+        {f.name.endsWith('.png') && !f.name.startsWith('Pasted-Image') && (
+          <span className="file-badge" style={{ fontSize: '10px', fontWeight: '700', padding: '1px 6px', borderRadius: '4px', backgroundColor: 'rgba(37, 99, 235, 0.1)', color: 'var(--primary)', marginLeft: '0.5rem' }}>converted</span>
+        )}
       </div>
       {!isSubmitted && (
         <button className="remove-btn" onClick={(e) => {
@@ -42,11 +80,21 @@ const DocumentUpload = ({ title, accepted, onUpload, files, isSubmitted }) => {
       </h3>
       
       {!hasFiles ? (
-        <div {...getRootProps()} className={`dropzone ${isDragActive ? 'active' : ''}`}>
+        <div {...getRootProps()} className={`dropzone ${isDragActive ? 'active' : ''}`} style={{ position: 'relative' }}>
           <input {...getInputProps()} />
-          <UploadCloud size={80} className="drop-icon" style={{ opacity: 0.7, marginBottom: '1.5rem' }} />
-          <p className="drop-text" style={{ fontSize: '1.5rem', fontWeight: '700' }}>Drag & drop files here</p>
-          <span className="drop-subtext" style={{ fontSize: '1rem' }}>or click to browse from folder</span>
+          {converting ? (
+            <>
+              <Loader2 size={48} className="spin-icon" style={{ opacity: 0.7, marginBottom: '1.5rem', color: 'var(--primary)' }} />
+              <p className="drop-text" style={{ fontSize: '1.25rem', fontWeight: '700' }}>Converting PDF to image...</p>
+              <span className="drop-subtext" style={{ fontSize: '0.9rem' }}>Please wait while we process your document</span>
+            </>
+          ) : (
+            <>
+              <UploadCloud size={80} className="drop-icon" style={{ opacity: 0.7, marginBottom: '1.5rem' }} />
+              <p className="drop-text" style={{ fontSize: '1.5rem', fontWeight: '700' }}>Drag & drop files here</p>
+              <span className="drop-subtext" style={{ fontSize: '1rem' }}>Images or PDF — PDFs are converted to images automatically</span>
+            </>
+          )}
         </div>
       ) : (
         <div className="file-list-container">
@@ -498,7 +546,7 @@ const SalesAudit = () => {
                     {activeStep === 0 && (
                       <DocumentUpload 
                         title="Purchase Order Upload" 
-                        accepted={{'image/*': ['.png', '.jpg', '.jpeg']}}
+                        accepted={{'image/*': ['.png', '.jpg', '.jpeg'], 'application/pdf': ['.pdf']}}
                         onUpload={setPurchaseOrderFiles}
                         files={purchaseOrderFiles}
                       />
@@ -517,7 +565,7 @@ const SalesAudit = () => {
                     {activeStep === 2 && (
                       <DocumentUpload 
                         title="Weightslip Upload" 
-                        accepted={{'image/*': ['.png', '.jpg', '.jpeg']}}
+                        accepted={{'image/*': ['.png', '.jpg', '.jpeg'], 'application/pdf': ['.pdf']}}
                         onUpload={setWeightslipFiles}
                         files={weightslipFiles}
                       />
@@ -525,7 +573,7 @@ const SalesAudit = () => {
                     {activeStep === 3 && (
                       <DocumentUpload 
                         title="Gatepass Upload" 
-                        accepted={{'image/*': ['.png', '.jpg', '.jpeg']}}
+                        accepted={{'image/*': ['.png', '.jpg', '.jpeg'], 'application/pdf': ['.pdf']}}
                         onUpload={setGatepassFiles}
                         files={gatepassFiles}
                       />
@@ -533,7 +581,7 @@ const SalesAudit = () => {
                     {activeStep === 4 && (
                       <DocumentUpload 
                         title="Invoice Upload" 
-                        accepted={{'image/*': ['.png', '.jpg', '.jpeg']}}
+                        accepted={{'image/*': ['.png', '.jpg', '.jpeg'], 'application/pdf': ['.pdf']}}
                         onUpload={setInvoiceFiles}
                         files={invoiceFiles}
                       />
