@@ -113,6 +113,7 @@ const DocumentUpload = ({ title, accepted, onUpload, files, isSubmitted }) => {
 }
 
 const SALES_WEBHOOK_URL = import.meta.env.VITE_SALES_WEBHOOK_URL || 'https://n8n.srv1010832.hstgr.cloud/webhook/365acab8-8d63-48bc-8ac9-0e079ecba8db'
+const QUICK_CHECK_WEBHOOK_URL = 'https://n8n.srv1010832.hstgr.cloud/webhook/e3e27664-0f1a-46ea-8ca8-87db346e2a99'
 
 const SalesAudit = () => {
   const [result, setResult] = useState(null)
@@ -129,6 +130,8 @@ const SalesAudit = () => {
   const [purchaseOrderFiles, setPurchaseOrderFiles] = useState([])
 
   const [webhookResponse, setWebhookResponse] = useState(null)
+  const [quickCheckResult, setQuickCheckResult] = useState(null)
+  const [quickCheckLoading, setQuickCheckLoading] = useState(false)
 
   // Paste handler (single file per section)
   useEffect(() => {
@@ -204,6 +207,45 @@ const SalesAudit = () => {
       setActiveStep(4)
     } finally {
       setIsSubmitting(false)
+    }
+  }
+
+  const handleQuickCheck = async () => {
+    if (purchaseOrderFiles.length === 0) return
+    setQuickCheckLoading(true)
+    setSubmitError(null)
+    try {
+      const formData = new FormData()
+      purchaseOrderFiles.forEach(f => {
+        const ext = f.name.includes('.') ? '.' + f.name.split('.').pop() : ''
+        const fileName = `PurchaseOrder${ext}`
+        const renamed = new File([f], fileName, { type: f.type })
+        formData.append('PurchaseOrder', renamed, fileName)
+      })
+
+      const res = await fetch(QUICK_CHECK_WEBHOOK_URL, {
+        method: 'POST',
+        body: formData,
+      })
+
+      if (!res.ok) {
+        const text = await res.text().catch(() => '')
+        throw new Error(`HTTP ${res.status} – ${text.slice(0, 200)}`)
+      }
+
+      const responseText = await res.text()
+      let data
+      try {
+        data = responseText ? JSON.parse(responseText) : { status: 'success', message: 'Documents received' }
+      } catch {
+        data = { status: 'success', raw: responseText }
+      }
+      setQuickCheckResult(data)
+    } catch (err) {
+      console.error('[QuickCheck] Error:', err)
+      setSubmitError(err.message || 'Quick check failed.')
+    } finally {
+      setQuickCheckLoading(false)
     }
   }
 
@@ -496,6 +538,172 @@ const SalesAudit = () => {
     );
   };
 
+  const renderQuickCheckResult = () => {
+    if (!quickCheckResult) return null
+
+    let tableData = null
+    let overallStatus = null
+
+    try {
+      const dataObj = Array.isArray(quickCheckResult) ? quickCheckResult[0] : quickCheckResult
+      const extractInfo = (obj) => {
+        if (!obj || typeof obj !== 'object') return null
+        const table = obj.comparison_table || (obj.data && obj.data.comparison_table)
+        if (!table) return null
+        return {
+          table,
+          status: obj.status || (obj.data && obj.data.status),
+        }
+      }
+
+      let results = extractInfo(dataObj)
+      if (!results && dataObj.raw && typeof dataObj.raw === 'object') {
+        results = extractInfo(dataObj.raw)
+      }
+      if (!results && dataObj.data && typeof dataObj.data === 'object') {
+        results = extractInfo(dataObj.data)
+      }
+      if (!results) {
+        const rawString = dataObj.output || (typeof dataObj.raw === 'string' ? dataObj.raw : null)
+        if (rawString) {
+          const cleanJson = rawString.replace(/```json\n?|```/g, '').trim()
+          const parsed = JSON.parse(cleanJson)
+          results = extractInfo(parsed)
+        }
+      }
+      if (results) {
+        tableData = results.table
+        overallStatus = results.status
+      }
+    } catch (e) {
+      console.warn('[QuickCheck] Parse error:', e)
+    }
+
+    if (tableData && Array.isArray(tableData) && tableData.length > 0) {
+      const isFullMatch = overallStatus?.includes('MATCH') && !overallStatus?.includes('PARTIAL')
+
+      return (
+        <div className="webhook-output animate-fade-in" style={{ marginTop: '2rem' }}>
+          <div className="card" style={{ padding: '0', overflow: 'hidden', boxShadow: 'var(--shadow-lg)', border: '1px solid var(--border)' }}>
+            <div style={{
+              display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: '1.5rem',
+              padding: '1.75rem', borderBottom: '1px solid var(--border)',
+              background: isFullMatch ? 'linear-gradient(135deg, rgba(16, 185, 129, 0.08) 0%, transparent 100%)' : 'linear-gradient(135deg, rgba(245, 158, 11, 0.08) 0%, transparent 100%)'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '1.25rem' }}>
+                <div style={{
+                  padding: '0.85rem', borderRadius: '14px',
+                  backgroundColor: isFullMatch ? 'rgba(16, 185, 129, 0.15)' : 'rgba(245, 158, 11, 0.15)',
+                  color: isFullMatch ? 'var(--success)' : 'var(--warning)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center'
+                }}>
+                  <CheckCircle size={32} />
+                </div>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: '1.4rem', fontWeight: '800', fontFamily: 'Outfit, sans-serif', color: 'var(--text)' }}>
+                    Quick Check - SO vs PO
+                  </h3>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginTop: '0.4rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', color: 'var(--text-muted)', fontSize: '0.8rem', fontWeight: '500' }}>
+                      <FileText size={14} style={{ color: 'var(--primary)' }} /> Purchase Order vs Sales Order
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div style={{ fontSize: '11px', fontWeight: '800', padding: '0.5rem 1.5rem', borderRadius: '50px', textTransform: 'uppercase', letterSpacing: '0.08em', display: 'flex', alignItems: 'center', gap: '0.6rem', backgroundColor: isFullMatch ? 'var(--success)' : 'var(--error)', color: 'white', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}>
+                {isFullMatch ? <CheckCircle size={14} /> : <AlertTriangle size={14} />}
+                {overallStatus?.replace(/_/g, ' ')}
+              </div>
+            </div>
+
+            <div className="comparison-table-wrapper" style={{ overflowX: 'auto' }}>
+              <table className="comparison-table">
+                <thead>
+                  <tr>
+                    <th>Field Identity</th>
+                    <th>Sales Order (SO)</th>
+                    <th>Purchase Order (PO)</th>
+                    <th style={{ textAlign: 'right' }}>Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {tableData.filter(row => {
+                    const sheetVal = String(row.sheet_value || row.expected || '').trim()
+                    const invVal = String(row.invoice_value || row.actual || '').trim()
+                    return sheetVal && invVal
+                  }).map((row, idx) => {
+                    const sheetVal = String(row.sheet_value || row.expected || '').trim()
+                    const invVal = String(row.invoice_value || row.actual || '').trim()
+                    const resultFlag = String(row.result || row.match || row.status || row.is_match).toUpperCase()
+
+                    const parseNum = (s) => {
+                      const n = parseFloat(s.replace(/[₹,\s]/g, ''))
+                      return isNaN(n) ? null : n
+                    }
+                    const numSheet = parseNum(sheetVal)
+                    const numInv = parseNum(invVal)
+                    const withinRoundingTolerance =
+                      numSheet !== null && numInv !== null && Math.abs(numSheet - numInv) <= 1.0
+
+                    const isMatch =
+                      resultFlag === 'MATCH' ||
+                      resultFlag === 'TRUE' ||
+                      row.match === true ||
+                      row.is_match === true ||
+                      withinRoundingTolerance ||
+                      (sheetVal !== '' && sheetVal === invVal)
+
+                    return (
+                      <tr key={idx}>
+                        <td data-label="Field Identity" className="field-label-cell">
+                          <FileText size={14} style={{ color: 'var(--primary)', opacity: 0.7 }} />
+                          {(row.field || row.label || '').replace(/_/g, ' ')}
+                        </td>
+                        <td data-label="Sales Order (SO)" className="data-cell" style={{ fontFamily: 'monospace' }}>
+                          {sheetVal || '—'}
+                        </td>
+                        <td data-label="Purchase Order (PO)" className={`data-cell ${isMatch ? 'val-match' : 'val-mismatch'}`} style={{ fontFamily: 'monospace' }}>
+                          {invVal || '—'}
+                        </td>
+                        <td data-label="Verification" className="status-cell" style={{ textAlign: 'right' }}>
+                          <span className={`match-badge ${isMatch ? 'success' : 'danger'}`}>
+                            {isMatch ? <CheckCircle size={14} /> : <AlertTriangle size={14} />}
+                            {isMatch ? 'Match' : 'Mismatch'}
+                          </span>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )
+    }
+
+    return (
+      <div className="webhook-output animate-fade-in" style={{ marginTop: '2rem' }}>
+        <div className="card" style={{ padding: '0', overflow: 'hidden' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '1.25rem 1.5rem', borderBottom: '1px solid var(--border)', background: 'linear-gradient(to right, rgba(0, 0, 0, 0.02), transparent)' }}>
+            <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', margin: 0, fontSize: '1rem', fontWeight: '700', color: 'var(--text)' }}>
+              <FileText size={18} style={{ color: 'var(--primary)' }} /> Quick Check Result
+            </h3>
+          </div>
+          <div style={{ padding: '1.5rem', backgroundColor: '#0d1117' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '1.25rem' }}>
+              <div style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: 'var(--success)', boxShadow: '0 0 10px var(--success)' }}></div>
+              <span style={{ fontSize: '10px', color: 'var(--success)', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '0.2em' }}>Scan Complete</span>
+            </div>
+            <pre style={{ margin: 0, fontSize: '0.85rem', color: '#e6edf3', overflowX: 'auto', fontFamily: 'monospace', maxHeight: '400px', lineHeight: '1.6' }}>
+              {JSON.stringify(quickCheckResult, null, 2)}
+            </pre>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className={`audit-module ${isSidebarCollapsed ? 'sidebar-collapsed' : ''}`} style={result || webhookResponse ? { marginRight: 0 } : {}}>
       <div className="module-header">
@@ -510,7 +718,7 @@ const SalesAudit = () => {
         <div className="header-actions">
           {(result || allDone) && (
             <button className="btn btn-outline" onClick={() => {
-              setResult(null); setInvoiceFiles([]); setGatepassFiles([]); setWeightslipFiles([]); setPurchaseOrderFiles([]); setAllDone(false); setActiveStep(0); setWebhookResponse(null);
+              setResult(null); setInvoiceFiles([]); setGatepassFiles([]); setWeightslipFiles([]); setPurchaseOrderFiles([]); setAllDone(false); setActiveStep(0); setWebhookResponse(null); setQuickCheckResult(null);
             }}>
               New Entry
             </button>
@@ -560,6 +768,25 @@ const SalesAudit = () => {
                         <p style={{ fontSize: '1rem', color: 'var(--text-muted)', maxWidth: '400px', margin: '0 auto', lineHeight: '1.6' }}>
                           Sales Order sheet has been added and will be included in the audit.
                         </p>
+                        {purchaseOrderFiles.length > 0 && !quickCheckResult && (
+                          <button
+                            className="btn btn-primary"
+                            onClick={handleQuickCheck}
+                            disabled={quickCheckLoading}
+                            style={{ marginTop: '1.5rem', padding: '0.75rem 2.5rem', fontSize: '1rem', fontWeight: 700 }}
+                          >
+                            {quickCheckLoading ? <><Loader2 size={20} className="spin-icon" /> Checking...</> : 'Quick Check'}
+                          </button>
+                        )}
+                        {quickCheckResult && (
+                          <>
+                            <div style={{ marginTop: '1.5rem', display: 'inline-flex', alignItems: 'center', gap: '0.75rem', padding: '0.75rem 2rem', borderRadius: '12px', backgroundColor: 'rgba(16, 185, 129, 0.1)', color: 'var(--success)', fontWeight: 700, fontSize: '1rem' }}>
+                              <CheckCircle size={22} />
+                              Quick Check Done
+                            </div>
+                            {renderQuickCheckResult()}
+                          </>
+                        )}
                       </div>
                     )}
                     {activeStep === 2 && (

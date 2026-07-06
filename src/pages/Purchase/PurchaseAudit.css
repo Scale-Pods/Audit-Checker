@@ -420,6 +420,10 @@
   background: rgba(0, 0, 0, 0.02);
 }
 
+[data-theme="dark"] .comparison-table tbody tr:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+
 .field-label-cell {
   font-weight: 700;
   color: var(--text);

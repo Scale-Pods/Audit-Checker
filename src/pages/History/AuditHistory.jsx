@@ -877,6 +877,12 @@ const transformSalesRecord = (record) => {
   return rest;
 };
 
+const isRecordQuickEntry = (record) =>
+  !Object.keys(record).some(k =>
+    (k.startsWith('inv_') || k.startsWith('gp_') || k.startsWith('ws_')) &&
+    record[k] !== null && record[k] !== undefined && record[k] !== ''
+  );
+
 // ── Sales Record Detail Modal (redesigned audit dashboard) ──
 const SalesRecordModal = ({ records, onClose, invoiceNumber, onDecision, isProcessing, hasDecision, decisionStatus }) => {
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -892,6 +898,14 @@ const SalesRecordModal = ({ records, onClose, invoiceNumber, onDecision, isProce
   const toggleSection = (key) => setExpandedSections(prev => ({ ...prev, [key]: !prev[key] }));
 
   const v = (key) => fmt(record[key]);
+
+  const hasDocData = (prefix) =>
+    Object.keys(record).some(k => k.startsWith(prefix) && record[k] !== null && record[k] !== undefined && record[k] !== '');
+
+  const hasInvoiceData = hasDocData('inv_');
+  const hasGPData = hasDocData('gp_');
+  const hasWSData = hasDocData('ws_');
+  const isQuickEntry = !hasInvoiceData && !hasGPData && !hasWSData;
 
   const SectionHeader = ({ title, defaultOpen = true }) => (
     <div
@@ -919,7 +933,7 @@ const SalesRecordModal = ({ records, onClose, invoiceNumber, onDecision, isProce
   };
 
   const CollapseSection = ({ title, children }) => (
-    <div style={{ border: '1px solid var(--border)', borderRadius: '10px', overflow: 'hidden', marginBottom: '1rem', background: 'white' }}>
+    <div style={{ border: '1px solid var(--border)', borderRadius: '10px', overflow: 'hidden', marginBottom: '1rem', background: 'var(--surface)' }}>
       <SectionHeader title={title} />
       {expandedSections[title] && <div style={{ padding: '1rem 1.25rem' }}>{children}</div>}
     </div>
@@ -997,13 +1011,23 @@ const SalesRecordModal = ({ records, onClose, invoiceNumber, onDecision, isProce
         {/* ── Header ── */}
         <div style={{
           padding: '1.25rem 1.5rem', borderBottom: '1px solid var(--border)',
-          background: 'white'
+          background: 'var(--surface)'
         }}>
           <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: '1rem' }}>
             <div>
               <h2 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                 <FileText size={20} style={{ color: 'var(--primary)' }} />
                 Sales Comparison Ledger
+                {isQuickEntry && (
+                  <span style={{
+                    fontSize: '0.65rem', fontWeight: 800, textTransform: 'uppercase',
+                    letterSpacing: '0.08em', padding: '0.2rem 0.6rem', borderRadius: '6px',
+                    background: 'rgba(245,158,11,0.12)', color: '#f59e0b',
+                    border: '1px solid rgba(245,158,11,0.25)', verticalAlign: 'middle'
+                  }}>
+                    Quick Entry
+                  </span>
+                )}
               </h2>
               {hasMultiple && (
                 <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>
@@ -1056,11 +1080,11 @@ const SalesRecordModal = ({ records, onClose, invoiceNumber, onDecision, isProce
                 <thead>
                   <tr style={{ background: 'rgba(0,0,0,0.03)' }}>
                     <th style={thStyle}>Field</th>
-                    <th style={thStyle}>Invoice</th>
+                    {hasInvoiceData && <th style={thStyle}>Invoice</th>}
                     <th style={thStyle}>SO</th>
                     <th style={thStyle}>PO</th>
-                    <th style={thStyle}>Gate Pass</th>
-                    <th style={thStyle}>Weight Slip</th>
+                    {hasGPData && <th style={thStyle}>Gate Pass</th>}
+                    {hasWSData && <th style={thStyle}>Weight Slip</th>}
                   </tr>
                 </thead>
                 <tbody>
@@ -1109,11 +1133,11 @@ const SalesRecordModal = ({ records, onClose, invoiceNumber, onDecision, isProce
                         background: hasConflict ? 'rgba(239,68,68,0.04)' : hasPartial ? 'rgba(245,158,11,0.04)' : 'transparent'
                       }}>
                         <td style={{ ...tdStyle, fontWeight: 700, color: 'var(--text)', whiteSpace: 'nowrap' }}>{label}</td>
-                        <td style={{ ...tdStyle, background: hasConflict && iv ? 'rgba(239,68,68,0.06)' : hasPartial && iv ? 'rgba(245,158,11,0.06)' : 'transparent' }}><DocBadge val={iv} nowrap={nowrap} /></td>
+                        {hasInvoiceData && <td style={{ ...tdStyle, background: hasConflict && iv ? 'rgba(239,68,68,0.06)' : hasPartial && iv ? 'rgba(245,158,11,0.06)' : 'transparent' }}><DocBadge val={iv} nowrap={nowrap} /></td>}
                         <td style={{ ...tdStyle, background: hasConflict && sv ? 'rgba(239,68,68,0.06)' : hasPartial && sv ? 'rgba(245,158,11,0.06)' : 'transparent' }}><DocBadge val={sv} nowrap={nowrap} /></td>
                         <td style={{ ...tdStyle, background: hasConflict && pv ? 'rgba(239,68,68,0.06)' : hasPartial && pv ? 'rgba(245,158,11,0.06)' : 'transparent' }}><DocBadge val={pv} nowrap={nowrap} /></td>
-                        <td style={{ ...tdStyle, background: hasConflict && gv ? 'rgba(239,68,68,0.06)' : hasPartial && gv ? 'rgba(245,158,11,0.06)' : 'transparent' }}><DocBadge val={gv} nowrap={nowrap} /></td>
-                        <td style={{ ...tdStyle, background: hasConflict && wv ? 'rgba(239,68,68,0.06)' : hasPartial && wv ? 'rgba(245,158,11,0.06)' : 'transparent' }}><DocBadge val={wv} nowrap={nowrap} /></td>
+                        {hasGPData && <td style={{ ...tdStyle, background: hasConflict && gv ? 'rgba(239,68,68,0.06)' : hasPartial && gv ? 'rgba(245,158,11,0.06)' : 'transparent' }}><DocBadge val={gv} nowrap={nowrap} /></td>}
+                        {hasWSData && <td style={{ ...tdStyle, background: hasConflict && wv ? 'rgba(239,68,68,0.06)' : hasPartial && wv ? 'rgba(245,158,11,0.06)' : 'transparent' }}><DocBadge val={wv} nowrap={nowrap} /></td>}
                       </tr>
                     );
                   })}
@@ -1415,7 +1439,7 @@ const SalesRecordModal = ({ records, onClose, invoiceNumber, onDecision, isProce
         <div style={{
           padding: '1rem 1.5rem', borderTop: '1px solid var(--border)',
           display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.75rem',
-          background: 'white'
+          background: 'var(--surface)'
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
             <span style={{ fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-muted)' }}>Overall Score</span>
@@ -1467,7 +1491,7 @@ const tdStyle = {
 const navBtnStyle = {
   display: 'inline-flex', alignItems: 'center', gap: '0.25rem',
   padding: '0.4rem 0.85rem', borderRadius: '8px', border: '1px solid var(--border)',
-  background: 'white', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 600,
+  background: 'var(--surface)', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 600,
   color: 'var(--text)'
 };
 
@@ -1711,12 +1735,12 @@ const AuditHistory = () => {
   const groupedSalesHistory = useMemo(() => {
     const groups = {};
     filteredSalesHistory.forEach(record => {
-      const invoiceNum = record["Invoice Number"] || record.inv_number || record.order_number || record.Order_Number || record.invoice_number || record.inv_order_number || 'Unknown';
+      const invoiceNum = record.so_number || record["Invoice Number"] || record.inv_number || record.order_number || record.Order_Number || record.invoice_number || record.inv_order_number || 'Unknown';
       if (!groups[invoiceNum]) {
         groups[invoiceNum] = {
           invoiceNumber: invoiceNum,
           records: [],
-          partyName: record.inv_bill_to_name || record.sheet_bill_to_name || record.bill_to_name || record.inv_broker_name || record.sheet_broker_name || record.broker_name || 'Unknown Party',
+          partyName: record.so_customer_name || record.so_broker_name || record.po_customer_name || record.po_supplier_name || record.inv_bill_to_name || record.sheet_bill_to_name || record.bill_to_name || record.inv_broker_name || record.sheet_broker_name || record.broker_name || 'Unknown Party',
           latestDate: record.created_at
         };
       }
@@ -1937,6 +1961,7 @@ const AuditHistory = () => {
           <div className="sales-records-list animate-fade-in">
               {groupedSalesHistory.map((group, idx) => {
                 const groupDecision = salesGroupDecisions[group.invoiceNumber];
+                const isQuickEntry = group.records.every(isRecordQuickEntry);
                 const cardBg = groupDecision === 'Approve' ? 'rgba(16, 185, 129, 0.12)' :
                                groupDecision === 'Reject' ? 'rgba(239, 68, 68, 0.12)' : '';
                 return (
@@ -1951,6 +1976,9 @@ const AuditHistory = () => {
                       <h3 className="sales-order-id">{group.invoiceNumber}</h3>
                       {group.records.length > 1 && (
                         <span className="item-count-badge">{group.records.length} items</span>
+                      )}
+                      {isQuickEntry && (
+                        <span className="quick-entry-badge">Quick Entry</span>
                       )}
                     </div>
                     <div className="sales-meta">
