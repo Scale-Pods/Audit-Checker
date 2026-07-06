@@ -760,7 +760,7 @@ const SalesAudit = () => {
                       />
                     )}
                     {activeStep === 1 && (
-                      <div className="upload-box card" style={{ textAlign: 'center', padding: '3rem 2rem' }}>
+                      <div className="upload-box card" style={{ textAlign: 'center', padding: '3rem 2rem', alignItems: 'center' }}>
                         <FileSpreadsheet size={64} style={{ opacity: 0.5, marginBottom: '1.5rem', color: 'var(--primary)' }} />
                         <h3 className="upload-title text-primary" style={{ fontSize: '1.25rem', marginBottom: '0.75rem' }}>
                           Sales Order
@@ -768,16 +768,6 @@ const SalesAudit = () => {
                         <p style={{ fontSize: '1rem', color: 'var(--text-muted)', maxWidth: '400px', margin: '0 auto', lineHeight: '1.6' }}>
                           Sales Order sheet has been added and will be included in the audit.
                         </p>
-                        {purchaseOrderFiles.length > 0 && !quickCheckResult && (
-                          <button
-                            className="btn btn-primary"
-                            onClick={handleQuickCheck}
-                            disabled={quickCheckLoading}
-                            style={{ marginTop: '1.5rem', padding: '0.75rem 2.5rem', fontSize: '1rem', fontWeight: 700 }}
-                          >
-                            {quickCheckLoading ? <><Loader2 size={20} className="spin-icon" /> Checking...</> : 'Quick Check'}
-                          </button>
-                        )}
                         {quickCheckResult && (
                           <>
                             <div style={{ marginTop: '1.5rem', display: 'inline-flex', alignItems: 'center', gap: '0.75rem', padding: '0.75rem 2rem', borderRadius: '12px', backgroundColor: 'rgba(16, 185, 129, 0.1)', color: 'var(--success)', fontWeight: 700, fontSize: '1rem' }}>
@@ -826,25 +816,38 @@ const SalesAudit = () => {
                           Back
                         </button>
                       )}
-                      {activeStep < 4 ? (
-                        <button 
-                          className="btn btn-primary btn-done" 
-                          onClick={nextStep}
-                          disabled={activeStep === 0 ? purchaseOrderFiles.length === 0 : activeStep !== 1 && steps[activeStep].files.length === 0}
-                          style={{ padding: '1rem 4rem' }}
-                        >
-                          Next Stage <ChevronRight size={22} />
-                        </button>
-                      ) : (
-                        <button 
-                          className="btn btn-primary btn-done" 
-                          onClick={handleSubmitAll}
-                          disabled={isSubmitting || invoiceFiles.length === 0}
-                          style={{ background: 'var(--success)', borderColor: 'var(--success)', padding: '1rem 5rem' }}
-                        >
-                          {isSubmitting ? <><Loader2 size={24} className="spin-icon" /> Sending...</> : <><Send size={24} /> Final Submit</>}
-                        </button>
-                      )}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                        {activeStep === 1 && purchaseOrderFiles.length > 0 && !quickCheckResult && (
+                          <button
+                            className="btn btn-primary"
+                            onClick={handleQuickCheck}
+                            disabled={quickCheckLoading}
+                            style={{ padding: '1rem 4rem', fontSize: '0.85rem', fontWeight: 800, borderRadius: '12px', display: 'flex', flexDirection: 'column', gap: '0.1rem', lineHeight: 1.15 }}
+                          >
+                            <span>{quickCheckLoading ? <><Loader2 size={18} className="spin-icon" /> Sending...</> : 'Quick Check'}</span>
+                            <span style={{ fontSize: '0.5rem', fontWeight: 600, opacity: 0.8 }}>Will be matched with just SO Sheet</span>
+                          </button>
+                        )}
+                        {activeStep < 4 ? (
+                          <button 
+                            className="btn btn-primary" 
+                            onClick={nextStep}
+                            disabled={activeStep === 0 ? purchaseOrderFiles.length === 0 : activeStep !== 1 && steps[activeStep].files.length === 0}
+                            style={{ padding: '1rem 4rem', fontSize: '1.1rem', fontWeight: 800, borderRadius: '12px', display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+                          >
+                            Next Stage <ChevronRight size={22} />
+                          </button>
+                        ) : (
+                          <button 
+                            className="btn btn-primary" 
+                            onClick={handleSubmitAll}
+                            disabled={isSubmitting || invoiceFiles.length === 0}
+                            style={{ background: 'var(--success)', borderColor: 'var(--success)', padding: '1rem 5rem', fontSize: '1.1rem', fontWeight: 800, borderRadius: '12px', display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+                          >
+                            {isSubmitting ? <><Loader2 size={24} className="spin-icon" /> Sending...</> : <><Send size={24} /> Final Submit</>}
+                          </button>
+                        )}
+                      </div>
                     </div>
                   </div>
                 )}
