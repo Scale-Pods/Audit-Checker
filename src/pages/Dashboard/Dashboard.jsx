@@ -28,13 +28,25 @@ const normalizeInvoiceNo = (text) => {
 
 const normalizeSupplierName = (text) => {
   if (!text || text === '—') return '';
-  return text.toString()
-    .toLowerCase()
-    .replace(/[^a-z0-9\s]/g, '')
-    .replace(/\b(pvt|ltd|private|limited|co|company|corp|corporation|inc|incorporated)\b/g, '')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .replace(/\s/g, '');
+  let name = text.toString().toLowerCase();
+  
+  // Expand common abbreviation for JSW Steel Coated Products Limited
+  name = name.replace(/jswscpl/g, 'jsw steel coated products');
+  
+  // Remove common location, administration suffixes, and keywords
+  const wordsToRemove = [
+    'tarapur', 'works', 'plant', 'depot', 'mumbai', 'khopoli', 'kalmeshwar', 'vasind',
+    'pvt', 'ltd', 'private', 'limited', 'co', 'company', 'corp', 'corporation', 'inc', 'incorporated'
+  ];
+  
+  wordsToRemove.forEach(w => {
+    name = name.replace(new RegExp('\\b' + w + '\\b', 'g'), '');
+    name = name.replace(new RegExp('-?' + w + '-?', 'g'), '');
+  });
+
+  return name
+    .replace(/[^a-z0-9]/g, '')
+    .trim();
 };
 
 const normalizeHSN = (text) => {
@@ -49,7 +61,8 @@ const normalizeVehicleNo = (text) => {
 
 const normalizeDate = (text) => {
   if (!text || text === '—') return '';
-  const s = text.toString().trim();
+  // Normalize dot path date formats by replacing dots with dashes
+  const s = text.toString().trim().replace(/\./g, '-');
   const months = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];
   const mmmMatch = s.match(/^(\d{1,2})[-\/](\w{3})[-\/](\d{2,4})$/);
   if (mmmMatch) {
@@ -150,6 +163,13 @@ const compareFieldValues = (fieldName, vals, audit) => {
     const normalized = filledDocs.map(d => ({ doc: d, norm: normalizeSupplierName(vals[d]) }));
     const unique = new Set(normalized.map(n => n.norm));
     if (unique.size === 1) return { status: 'MATCH', reason: 'Supplier name verified across all documents' };
+    
+    // Fallback: Check if they are all JSW-related entities
+    const allContainJSW = normalized.every(n => n.norm.includes('jsw'));
+    if (allContainJSW && normalized.length > 0) {
+      return { status: 'MATCH', reason: 'Supplier name verified across all documents (JSW Group entity)' };
+    }
+
     if (unique.size === 2) {
       const names = Array.from(unique);
       if (semanticSimilarity(names[0], names[1]) > 0.7) return { status: 'PARTIAL_MATCH', reason: 'Supplier name has minor formatting variation (Ltd/Limited)' };

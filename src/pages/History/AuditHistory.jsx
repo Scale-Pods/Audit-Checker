@@ -41,13 +41,25 @@ const normalizeInvoiceNo = (text) => {
 
 const normalizeSupplierName = (text) => {
   if (!text || text === '—') return '';
-  return text.toString()
-    .toLowerCase()
-    .replace(/[^a-z0-9\s]/g, '')
-    .replace(/\b(pvt|ltd|private|limited|co|company|corp|corporation|inc|incorporated)\b/g, '')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .replace(/\s/g, '');
+  let name = text.toString().toLowerCase();
+  
+  // Expand common abbreviation for JSW Steel Coated Products Limited
+  name = name.replace(/jswscpl/g, 'jsw steel coated products');
+  
+  // Remove common location, administration suffixes, and keywords
+  const wordsToRemove = [
+    'tarapur', 'works', 'plant', 'depot', 'mumbai', 'khopoli', 'kalmeshwar', 'vasind',
+    'pvt', 'ltd', 'private', 'limited', 'co', 'company', 'corp', 'corporation', 'inc', 'incorporated'
+  ];
+  
+  wordsToRemove.forEach(w => {
+    name = name.replace(new RegExp('\\b' + w + '\\b', 'g'), '');
+    name = name.replace(new RegExp('-?' + w + '-?', 'g'), '');
+  });
+
+  return name
+    .replace(/[^a-z0-9]/g, '')
+    .trim();
 };
 
 const normalizeHSN = (text) => {
@@ -62,7 +74,8 @@ const normalizeVehicleNo = (text) => {
 
 const normalizeDate = (text) => {
   if (!text || text === '—') return '';
-  const s = text.toString().trim();
+  // Normalize dot path date formats by replacing dots with dashes
+  const s = text.toString().trim().replace(/\./g, '-');
   const months = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];
   const mmmMatch = s.match(/^(\d{1,2})[-\/](\w{3})[-\/](\d{2,4})$/);
   if (mmmMatch) {
@@ -148,6 +161,13 @@ const compareFieldValues = (fieldName, vals, audit) => {
     const normalized = filledDocs.map(d => ({ doc: d, norm: normalizeSupplierName(vals[d]) }));
     const unique = new Set(normalized.map(n => n.norm));
     if (unique.size === 1) return { status: 'MATCH', reason: 'Supplier name verified across all documents' };
+    
+    // Fallback: Check if they are all JSW-related entities
+    const allContainJSW = normalized.every(n => n.norm.includes('jsw'));
+    if (allContainJSW && normalized.length > 0) {
+      return { status: 'MATCH', reason: 'Supplier name verified across all documents (JSW Group entity)' };
+    }
+
     if (unique.size === 2) {
       const names = Array.from(unique);
       if (semanticSimilarity(names[0], names[1]) > 0.7) return { status: 'PARTIAL_MATCH', reason: 'Supplier name has minor formatting variation (Ltd/Limited)' };
@@ -251,7 +271,8 @@ const compareFieldValues = (fieldName, vals, audit) => {
   }
 
   const filled = Object.values(vals).filter(v => v !== '—');
-  if (new Set(filled).size > 1) return { status: 'MISMATCH', reason: 'Values differ across documents' };
+  const normalizedFilled = filled.map(v => v.toString().toLowerCase().replace(/\s+/g, ' ').trim());
+  if (new Set(normalizedFilled).size > 1) return { status: 'MISMATCH', reason: 'Values differ across documents' };
   return { status: 'MATCH', reason: 'Values match across documents' };
 };
 
@@ -285,8 +306,8 @@ const generateInsights = (comparisons, fieldMap) => {
   return insights;
 };
 
-const UnifiedAuditModal = ({ audit, onClose, initialView = 'intelligence', onDecision, isProcessing }) => {
-  const [view, setView] = useState(initialView);
+const UnifiedAuditModal = ({ audit, onClose, onDecision, isProcessing }) => {
+  const [view] = useState('universal');
   if (!audit) return null;
 
   const parseAuditResult = (resultStr) => {
@@ -328,7 +349,9 @@ const UnifiedAuditModal = ({ audit, onClose, initialView = 'intelligence', onDec
         fieldBase = 'GSTIN';
       } else if (lowKey.includes('batch_code') || lowKey.includes('coil_number') || lowKey.includes('batch_number')) {
         fieldBase = 'Batch / Coil Number';
-      } else if (lowKey === 'consigner_name' || lowKey === 'supplier_name') {
+      } else if (lowKey === 'consigner_name' || lowKey === 'supplier_name' || lowKey === 'consignor_name' ||
+                 (lowKey.includes('supplier') && lowKey.includes('name')) ||
+                 (lowKey.includes('consign') && lowKey.includes('name'))) {
         fieldBase = 'Supplier Name';
       } else if (lowKey === 'consignee_name' || lowKey === 'ship_to') {
         fieldBase = 'Ship To';
@@ -469,18 +492,11 @@ const UnifiedAuditModal = ({ audit, onClose, initialView = 'intelligence', onDec
           <div className="header-text-group">
             <h2 className="modal-title">
               <Info className="text-primary" size={24} /> 
-              {view === 'intelligence' ? 'Audit Intelligence' : 'Universal Document Ledger'}
+              Universal Document Ledger
             </h2>
             <p className="modal-subtitle">Ref: {audit.Invoice_Number_Invoice || audit.id}</p>
           </div>
           <div className="flex items-center gap-3">
-             <button 
-                className="btn btn-outline btn-sm py-1 font-bold text-[10px] uppercase tracking-wider" 
-                onClick={() => setView(view === 'intelligence' ? 'universal' : 'intelligence')}
-                style={{ height: '32px' }}
-              >
-                {view === 'intelligence' ? '📊 Raw Data' : '🤖 Intelligence'}
-              </button>
             <button className="close-btn" onClick={onClose}><X size={20} /></button>
           </div>
         </div>
@@ -1507,7 +1523,6 @@ const AuditHistory = () => {
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [selectedAudit, setSelectedAudit] = useState(null)
   const [selectedSalesGroup, setSelectedSalesGroup] = useState(null)
-  const [initialModalView, setInitialModalView] = useState('intelligence')
   const [decisionProcessing, setDecisionProcessing] = useState(null)
   const [confirmDecision, setConfirmDecision] = useState(null)
   const [sortOrder, setSortOrder] = useState('latest') // 'latest' | 'oldest'
@@ -1911,7 +1926,6 @@ const AuditHistory = () => {
                         <div className="flex items-center justify-end">
                           <div className="unified-trace-btn" onClick={(e) => {
                             e.stopPropagation();
-                            setInitialModalView('universal');
                             setSelectedAudit(record);
                           }}>
                             <div className="trace-score" style={{
@@ -2039,7 +2053,6 @@ const AuditHistory = () => {
         <UnifiedAuditModal 
           audit={selectedAudit} 
           onClose={() => setSelectedAudit(null)} 
-          initialView={initialModalView}
           onDecision={handleDecisionClick}
           isProcessing={decisionProcessing === selectedAudit.id}
         />
