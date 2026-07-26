@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useMemo } from 'react'
-import { FileText, Filter, CheckCircle, AlertTriangle, Eye, Download, RefreshCw, Loader2, Search, Truck, Hash, X, Info, IndianRupee, Activity, ChevronLeft, ChevronRight, Check, Shield, TrendingUp, BarChart3 } from 'lucide-react'
+import { FileText, Filter, CheckCircle, AlertTriangle, Eye, Download, RefreshCw, Loader2, Search, Truck, Hash, X, Info, IndianRupee, Activity, ChevronLeft, ChevronRight, Check, Shield, TrendingUp, BarChart3, UploadCloud, FileUp } from 'lucide-react'
 import './AuditHistory.css'
 
 const AUDITS_WEBHOOK_URL = import.meta.env.VITE_AUDITS_HISTORY_URL || 'https://n8n.srv1010832.hstgr.cloud/webhook/40a6351a-d510-492f-918b-7ec9bae2bd2a'
 const SALES_WEBHOOK_URL = 'https://n8n.srv1010832.hstgr.cloud/webhook/10916618-e795-416f-9d0a-6646da9aba06'
 const SALES_DECISION_WEBHOOK_URL = 'https://n8n.srv1010832.hstgr.cloud/webhook/0c5dfbd4-db17-4d71-87ab-96fa2fb7369e'
+const PENDING_DOCS_UPLOAD_WEBHOOK = 'https://n8n.srv1010832.hstgr.cloud/webhook/9f099219-ec9c-465d-83f4-6a048fa7dc85'
 
 // Known ZV Steels address tokens for fuzzy checking
 const BILL_TO_TOKENS = ['zv steels', 'zvsteels', 'zv metal', 'aaacz0915c', 'gupta bhavan', 'masjid', 'carnac bunder', 'masjid bandar', '400009', 'mumbai', 'maharashtra']
@@ -899,6 +900,327 @@ const isRecordQuickEntry = (record) =>
     record[k] !== null && record[k] !== undefined && record[k] !== ''
   );
 
+// Detect records that have PO/SO/GP data but missing Invoice or Weightslip uploads
+const isRecordPendingDocuments = (record) => {
+  const hasPO = record.po_number && record.po_number !== '';
+  const hasSO = record.so_number && record.so_number !== '';
+  const hasGP = record.gp_number && record.gp_number !== '';
+  if (!hasPO || !hasSO || !hasGP) return { pending: false, missingInvoice: false, missingWS: false };
+  // Check if invoice fields are empty
+  const hasInvoice = Object.keys(record).some(k =>
+    k.startsWith('inv_') && record[k] !== null && record[k] !== undefined && record[k] !== ''
+  );
+  // Check if weightslip fields are empty
+  const hasWS = Object.keys(record).some(k =>
+    k.startsWith('ws_') && record[k] !== null && record[k] !== undefined && record[k] !== ''
+  );
+  const pending = !hasInvoice || !hasWS;
+  return { pending, missingInvoice: !hasInvoice, missingWS: !hasWS };
+};
+
+// ── Single File Picker for Pending Docs Modal ────────────────────
+const SingleFilePicker = ({ label, file, onSelectFile, isPending }) => {
+  const inputRef = React.useRef(null);
+
+  return (
+    <div style={{ marginBottom: '1.25rem' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.4rem' }}>
+        <span style={{ fontSize: '0.75rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)' }}>
+          {label} Document
+        </span>
+        {isPending && (
+          <span style={{ fontSize: '0.65rem', fontWeight: 800, color: '#ef4444', background: 'rgba(239,68,68,0.1)', padding: '2px 6px', borderRadius: '4px' }}>
+            Pending Upload
+          </span>
+        )}
+      </div>
+
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/*,.pdf"
+        style={{ display: 'none' }}
+        onChange={onSelectFile}
+      />
+
+      <div
+        onClick={() => inputRef.current?.click()}
+        onDragOver={(e) => e.preventDefault()}
+        onDrop={(e) => {
+          e.preventDefault();
+          if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+            onSelectFile({ target: { files: e.dataTransfer.files } });
+          }
+        }}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justify: 'space-between',
+          padding: '0.9rem 1.2rem',
+          borderRadius: '12px',
+          border: `2px dashed ${file ? 'var(--success)' : isPending ? 'rgba(245,158,11,0.5)' : 'var(--border)'}`,
+          background: file ? 'rgba(16,185,129,0.04)' : isPending ? 'rgba(245,158,11,0.03)' : 'rgba(0,0,0,0.02)',
+          cursor: 'pointer',
+          transition: 'all 0.2s ease-in-out'
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', overflow: 'hidden' }}>
+          <div style={{
+            padding: '0.5rem',
+            borderRadius: '8px',
+            background: file ? 'rgba(16,185,129,0.12)' : 'rgba(37,99,235,0.1)',
+            color: file ? 'var(--success)' : 'var(--primary)',
+            display: 'flex'
+          }}>
+            {file ? <CheckCircle size={20} /> : <UploadCloud size={20} />}
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+            <span style={{ fontSize: '0.85rem', fontWeight: 700, color: file ? 'var(--success)' : 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              {file ? file.name : `Choose or drop ${label} file...`}
+            </span>
+            <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
+              {file ? `${(file.size / 1024).toFixed(1)} KB` : 'Supports PNG, JPG, JPEG, PDF'}
+            </span>
+          </div>
+        </div>
+
+        {file ? (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onSelectFile({ target: { files: [] } });
+            }}
+            style={{
+              background: 'rgba(239,68,68,0.1)',
+              border: 'none',
+              borderRadius: '6px',
+              color: '#ef4444',
+              cursor: 'pointer',
+              padding: '4px 8px',
+              fontSize: '0.72rem',
+              fontWeight: 700,
+              display: 'flex',
+              alignItems: 'center',
+              gap: '4px'
+            }}
+          >
+            <X size={14} /> Clear
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              inputRef.current?.click();
+            }}
+            style={{
+              background: 'var(--primary)',
+              color: 'white',
+              border: 'none',
+              borderRadius: '8px',
+              padding: '0.4rem 0.85rem',
+              fontSize: '0.75rem',
+              fontWeight: 700,
+              cursor: 'pointer',
+              whiteSpace: 'nowrap'
+            }}
+          >
+            Browse
+          </button>
+        )}
+      </div>
+    </div>
+  );
+};
+
+// ── Pending Documents Upload Modal ──────────────────────────────
+const PendingDocsUploadModal = ({ group, onClose, onUploadSuccess }) => {
+  const record = group.records[0];
+  const pendingInfo = isRecordPendingDocuments(record);
+  const [invoiceFile, setInvoiceFile] = useState(null);
+  const [weightslipFile, setWeightslipFile] = useState(null);
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadError, setUploadError] = useState(null);
+  const [uploadSuccess, setUploadSuccess] = useState(false);
+
+  const convertPdfToImg = async (file) => {
+    const pdfjsLib = await import('pdfjs-dist');
+    const workerUrl = (await import('pdfjs-dist/build/pdf.worker.min.mjs?url')).default;
+    pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
+    const arrayBuffer = await file.arrayBuffer();
+    const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+    const page = await pdf.getPage(1);
+    const viewport = page.getViewport({ scale: 2 });
+    const canvas = document.createElement('canvas');
+    canvas.width = viewport.width;
+    canvas.height = viewport.height;
+    await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+    page.cleanup();
+    const blob = await new Promise(r => canvas.toBlob(r, 'image/png'));
+    return new File([blob], file.name.replace(/\.pdf$/i, '.png'), { type: 'image/png' });
+  };
+
+  const handleFile = async (e, setter) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    if (file.type === 'application/pdf') {
+      try {
+        const img = await convertPdfToImg(file);
+        setter(img);
+      } catch { setter(file); }
+    } else {
+      setter(file);
+    }
+  };
+
+  const handleSubmit = async () => {
+    if (!invoiceFile && !weightslipFile) {
+      setUploadError('Please select at least one file (Invoice or Weightslip) to upload.');
+      return;
+    }
+    setIsUploading(true);
+    setUploadError(null);
+    try {
+      const formData = new FormData();
+      // Attach SO/PO/GP context
+      const soNum = record.so_number || record.inv_order_number || record.order_number || record["Invoice Number"] || group.invoiceNumber || '';
+      formData.append('so_number', soNum);
+      formData.append('so_no', soNum);
+      formData.append('SO Number', soNum);
+      formData.append('po_number', record.po_number || '');
+      formData.append('gp_number', record.gp_number || '');
+      formData.append('record_id', record.id?.toString() || '');
+      if (invoiceFile) {
+        const ext = invoiceFile.name.includes('.') ? invoiceFile.name.split('.').pop() : 'png';
+        const renamed = new File([invoiceFile], `Invoice.${ext}`, { type: invoiceFile.type });
+        formData.append('Invoice', renamed, renamed.name);
+      }
+      if (weightslipFile) {
+        const ext = weightslipFile.includes?.('.') ? weightslipFile.name.split('.').pop() : 'png';
+        const renamed = new File([weightslipFile], `Weightslip.${ext}`, { type: weightslipFile.type });
+        formData.append('Weightslip', renamed, renamed.name);
+      }
+      const res = await fetch(PENDING_DOCS_UPLOAD_WEBHOOK, { method: 'POST', body: formData });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      setUploadSuccess(true);
+      setTimeout(() => { onUploadSuccess?.(); onClose(); }, 1800);
+    } catch (err) {
+      setUploadError(err.message || 'Upload failed. Please try again.');
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  return (
+    <div className="modal-overlay animate-fade-in" style={{ zIndex: 9998 }} onClick={onClose}>
+      <div className="modal-content animate-slide-up" onClick={e => e.stopPropagation()}
+        style={{ maxWidth: '540px', width: '95%', borderRadius: '16px', padding: 0, overflow: 'hidden' }}
+      >
+        {/* Header */}
+        <div style={{
+          padding: '1.25rem 1.5rem', borderBottom: '1px solid var(--border)',
+          background: 'linear-gradient(135deg, rgba(245,158,11,0.06) 0%, transparent 100%)'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+              <div style={{ padding: '0.6rem', borderRadius: '10px', background: 'rgba(245,158,11,0.12)', color: '#f59e0b', display: 'flex' }}>
+                <FileUp size={18} />
+              </div>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 800, color: 'var(--text)' }}>Upload Pending Documents</h3>
+                <p style={{ margin: '0.15rem 0 0', fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 600 }}>
+                  SO: {record.so_number || group.invoiceNumber || '—'} · PO: {record.po_number || '—'} · GP: {record.gp_number || '—'}
+                </p>
+              </div>
+            </div>
+            <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', display: 'flex', padding: '4px' }}>
+              <X size={18} />
+            </button>
+          </div>
+        </div>
+
+        {/* Missing doc info badges */}
+        <div style={{ padding: '1rem 1.5rem 0' }}>
+          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '1rem' }}>
+            <span style={{
+              display: 'inline-flex', alignItems: 'center', gap: '0.35rem',
+              padding: '0.3rem 0.75rem', borderRadius: '6px', fontSize: '0.72rem', fontWeight: 700,
+              background: pendingInfo.missingInvoice ? 'rgba(239,68,68,0.1)' : 'rgba(16,185,129,0.1)',
+              color: pendingInfo.missingInvoice ? '#ef4444' : '#10b981',
+              border: `1px solid ${pendingInfo.missingInvoice ? 'rgba(239,68,68,0.2)' : 'rgba(16,185,129,0.2)'}`
+            }}>
+              {pendingInfo.missingInvoice ? <AlertTriangle size={11} /> : <CheckCircle size={11} />}
+              Invoice {pendingInfo.missingInvoice ? '— Pending' : '— Present'}
+            </span>
+            <span style={{
+              display: 'inline-flex', alignItems: 'center', gap: '0.35rem',
+              padding: '0.3rem 0.75rem', borderRadius: '6px', fontSize: '0.72rem', fontWeight: 700,
+              background: pendingInfo.missingWS ? 'rgba(239,68,68,0.1)' : 'rgba(16,185,129,0.1)',
+              color: pendingInfo.missingWS ? '#ef4444' : '#10b981',
+              border: `1px solid ${pendingInfo.missingWS ? 'rgba(239,68,68,0.2)' : 'rgba(16,185,129,0.2)'}`
+            }}>
+              {pendingInfo.missingWS ? <AlertTriangle size={11} /> : <CheckCircle size={11} />}
+              Weightslip {pendingInfo.missingWS ? '— Pending' : '— Present'}
+            </span>
+          </div>
+        </div>
+
+        {/* Upload form */}
+        <div style={{ padding: '0 1.5rem 1.5rem' }}>
+          <SingleFilePicker
+            label="Invoice"
+            file={invoiceFile}
+            isPending={pendingInfo.missingInvoice}
+            onSelectFile={(e) => handleFile(e, setInvoiceFile)}
+          />
+
+          <SingleFilePicker
+            label="Weightslip"
+            file={weightslipFile}
+            isPending={pendingInfo.missingWS}
+            onSelectFile={(e) => handleFile(e, setWeightslipFile)}
+          />
+
+          {uploadError && (
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.75rem 1rem',
+              borderRadius: '8px', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)',
+              color: '#ef4444', fontSize: '0.8rem', fontWeight: 600, marginBottom: '1rem'
+            }}>
+              <AlertTriangle size={14} />
+              {uploadError}
+            </div>
+          )}
+
+          {uploadSuccess && (
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.75rem 1rem',
+              borderRadius: '8px', background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.2)',
+              color: '#10b981', fontSize: '0.8rem', fontWeight: 700, marginBottom: '1rem'
+            }}>
+              <CheckCircle size={14} />
+              Documents uploaded successfully!
+            </div>
+          )}
+
+          <div style={{ display: 'flex', gap: '0.6rem', justifyContent: 'flex-end', marginTop: '0.5rem' }}>
+            <button className="btn btn-outline" onClick={onClose} style={{ fontSize: '0.8rem', padding: '0.55rem 1.25rem' }}>Cancel</button>
+            <button
+              className="btn btn-primary"
+              onClick={handleSubmit}
+              disabled={isUploading || uploadSuccess}
+              style={{ fontSize: '0.8rem', padding: '0.55rem 1.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+            >
+              {isUploading ? <><Loader2 size={14} className="spin-icon" /> Uploading...</> : <><UploadCloud size={14} /> Upload Data</>}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 // ── Sales Record Detail Modal (redesigned audit dashboard) ──
 const SalesRecordModal = ({ records, onClose, invoiceNumber, onDecision, isProcessing, hasDecision, decisionStatus }) => {
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -1513,6 +1835,7 @@ const navBtnStyle = {
 
 const AuditHistory = () => {
   const [activeSide, setActiveSide] = useState('purchase') // 'purchase' | 'sales'
+  const [pendingUploadGroup, setPendingUploadGroup] = useState(null)
   const [history, setHistory] = useState([])
   const [salesHistory, setSalesHistory] = useState([])
   const [isLoading, setIsLoading] = useState(true)
@@ -1976,13 +2299,27 @@ const AuditHistory = () => {
               {groupedSalesHistory.map((group, idx) => {
                 const groupDecision = salesGroupDecisions[group.invoiceNumber];
                 const isQuickEntry = group.records.every(isRecordQuickEntry);
+                // Check if any record in the group has pending documents
+                const pendingDocStatus = group.records.reduce((acc, r) => {
+                  const s = isRecordPendingDocuments(r);
+                  return {
+                    pending: acc.pending || s.pending,
+                    missingInvoice: acc.missingInvoice || s.missingInvoice,
+                    missingWS: acc.missingWS || s.missingWS,
+                  };
+                }, { pending: false, missingInvoice: false, missingWS: false });
+                const hasPendingDocs = pendingDocStatus.pending;
                 const cardBg = groupDecision === 'Approve' ? 'rgba(16, 185, 129, 0.12)' :
-                               groupDecision === 'Reject' ? 'rgba(239, 68, 68, 0.12)' : '';
+                               groupDecision === 'Reject' ? 'rgba(239, 68, 68, 0.12)' :
+                               hasPendingDocs ? 'rgba(245,158,11,0.06)' : '';
                 return (
                 <div 
                   key={group.invoiceNumber || idx} 
                   className="sales-record-card"
-                  style={cardBg ? { backgroundColor: cardBg } : {}}
+                  style={{
+                    ...(cardBg ? { backgroundColor: cardBg } : {}),
+                    ...(hasPendingDocs && !groupDecision ? { borderLeft: '3px solid #f59e0b' } : {})
+                  }}
                   onClick={() => setSelectedSalesGroup(group)}
                 >
                   <div className="sales-record-info">
@@ -1993,6 +2330,21 @@ const AuditHistory = () => {
                       )}
                       {isQuickEntry && (
                         <span className="quick-entry-badge">Quick Entry</span>
+                      )}
+                      {hasPendingDocs && !groupDecision && (
+                        <span style={{
+                          display: 'inline-flex', alignItems: 'center', gap: '0.3rem',
+                          padding: '0.2rem 0.6rem', borderRadius: '5px', fontSize: '0.65rem', fontWeight: 800,
+                          background: 'rgba(245,158,11,0.15)', color: '#f59e0b',
+                          border: '1px solid rgba(245,158,11,0.3)', textTransform: 'uppercase', letterSpacing: '0.05em'
+                        }}>
+                          <AlertTriangle size={10} />
+                          {pendingDocStatus.missingInvoice && pendingDocStatus.missingWS
+                            ? 'Invoice & Weightslip Pending'
+                            : pendingDocStatus.missingInvoice
+                            ? 'Invoice Pending'
+                            : 'Weightslip Pending'}
+                        </span>
                       )}
                     </div>
                     <div className="sales-meta">
@@ -2013,6 +2365,21 @@ const AuditHistory = () => {
                         {groupDecision === 'Approve' ? <CheckCircle size={12} /> : <AlertTriangle size={12} />}
                         {groupDecision === 'Approve' ? 'Approved' : 'Rejected'}
                       </span>
+                    )}
+                    {hasPendingDocs && !groupDecision && (
+                      <button
+                        className="btn btn-outline btn-sm"
+                        onClick={(e) => { e.stopPropagation(); setPendingUploadGroup(group); }}
+                        style={{
+                          display: 'inline-flex', alignItems: 'center', gap: '0.35rem',
+                          fontSize: '0.72rem', fontWeight: 700, padding: '0.4rem 0.85rem',
+                          borderColor: '#f59e0b', color: '#f59e0b',
+                          background: 'rgba(245,158,11,0.08)'
+                        }}
+                      >
+                        <UploadCloud size={13} />
+                        <span className="hide-mobile">Upload Docs</span>
+                      </button>
                     )}
                     <button className="btn-action-view">
                       <Eye size={16} />
@@ -2046,6 +2413,14 @@ const AuditHistory = () => {
           isProcessing={!!decisionProcessing}
           hasDecision={!!salesGroupDecisions[selectedSalesGroup.invoiceNumber]}
           decisionStatus={salesGroupDecisions[selectedSalesGroup.invoiceNumber]}
+        />
+      )}
+
+      {pendingUploadGroup && (
+        <PendingDocsUploadModal
+          group={pendingUploadGroup}
+          onClose={() => setPendingUploadGroup(null)}
+          onUploadSuccess={() => { setPendingUploadGroup(null); fetchSalesHistory(false); }}
         />
       )}
 
