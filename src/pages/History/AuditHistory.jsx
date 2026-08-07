@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { FileText, Filter, CheckCircle, AlertTriangle, Eye, Download, RefreshCw, Loader2, Search, Truck, Hash, X, Info, IndianRupee, Activity, ChevronLeft, ChevronRight, Check, Shield, TrendingUp, BarChart3, UploadCloud, FileUp } from 'lucide-react'
 import './AuditHistory.css'
 
@@ -838,11 +839,37 @@ const salesValuesMatch = (a, b, type = 'text') => {
   }
 
   if (type === 'numeric') {
-    if (!isNaN(na) && !isNaN(nb)) return Math.abs(na - nb) < 0.01;
+    if (!isNaN(na) && !isNaN(nb)) {
+      if (Math.abs(na - nb) < 0.01) return true;
+      // Handle rate scale differences (e.g. 68.5 per KG vs 68500 per MT)
+      const raKg = na > 500 ? na / 1000 : na;
+      const rbKg = nb > 500 ? nb / 1000 : nb;
+      if (Math.abs(raKg - rbKg) < 0.5) return true;
+    }
   }
 
-  // text / fallback
-  return clean(a).toLowerCase() === clean(b).toLowerCase();
+  const ca = clean(a).toLowerCase();
+  const cb = clean(b).toLowerCase();
+  if (ca === cb) return true;
+  if (ca.includes(cb) || cb.includes(ca)) return true;
+
+  // Token overlap matching for material descriptions, products, and text
+  const stopWords = new Set(['x', 'mm', 'tolerance', 'to', 'and', 'the', 'of', 'for', 'with', 'in']);
+  const getTokens = (str) =>
+    str.replace(/[^a-z0-9\s]/g, ' ')
+       .split(/\s+/)
+       .filter(t => t.length >= 2 && !stopWords.has(t) && !/^\d+(\.\d+)?$/.test(t));
+
+  const ta = getTokens(ca);
+  const tb = getTokens(cb);
+  if (ta.length > 0 && tb.length > 0) {
+    const shorter = ta.length <= tb.length ? ta : tb;
+    const longer = ta.length <= tb.length ? tb : ta;
+    const matches = shorter.filter(st => longer.some(lt => lt === st || lt.includes(st) || st.includes(lt)));
+    if (matches.length / shorter.length >= 0.6) return true;
+  }
+
+  return false;
 };
 
 const INTELLIGENCE_KEYS = new Set([
@@ -1279,25 +1306,86 @@ const SalesRecordModal = ({ records, onClose, invoiceNumber, onDecision, isProce
 
   const getCellVal = (field, doc) => {
     if (doc === 'ws' && field.label === 'Unit') return 'KG';
+    
     const key = field[doc];
-    if (!key) return null;
-    const primary = v(key);
-    if (primary) return primary;
-    if (doc === 'po' && field.poFallback) {
-      const fallback = v(field.poFallback);
-      if (fallback) return fallback;
+    if (key) {
+      const primary = v(key);
+      if (primary !== null && primary !== undefined && primary !== '') return primary;
+    }
+
+    if (doc === 'po') {
+      if (field.label === 'Material') {
+        const poMatKeys = ['po_material_grade', 'po_product', 'po_material', 'po_material_description'];
+        for (const k of poMatKeys) {
+          const val = v(k);
+          if (val !== null && val !== undefined && val !== '') return val;
+        }
+      }
+      if (field.poFallback) {
+        const fallback = v(field.poFallback);
+        if (fallback) return fallback;
+      }
     }
     return null;
   };
 
-  const DocBadge = ({ val, nowrap }) => {
+  const formatDocVal = (field, doc, val) => {
+    if (val === null || val === undefined || val === '') return null;
+
+    let docUnit = null;
+    if (doc === 'invoice') docUnit = v('inv_unit');
+    else if (doc === 'so') docUnit = v('so_unit') || 'MT';
+    else if (doc === 'po') docUnit = v('po_unit');
+    else if (doc === 'gp') docUnit = v('gp_unit');
+    else if (doc === 'ws') docUnit = 'KG';
+
+    const u = (docUnit || '').toString().toLowerCase().trim();
+    const isKgs = u.includes('kg');
+    const isMt = u.includes('mt') || u.includes('ton');
+
+    if (field.label === 'Quantity') {
+      const num = parseFloat(val.toString().replace(/,/g, ''));
+      if (!isNaN(num)) {
+        if (isKgs || num >= 500) {
+          const mtVal = num / 1000;
+          return `${mtVal} MT (${num.toLocaleString('en-IN')} KGS)`;
+        } else if (isMt || num < 500) {
+          const kgVal = num * 1000;
+          return `${num} MT (${kgVal.toLocaleString('en-IN')} KGS)`;
+        }
+      }
+    }
+
+    if (field.label === 'Rate') {
+      const num = parseFloat(val.toString().replace(/,/g, ''));
+      if (!isNaN(num)) {
+        if (isKgs || num <= 500) {
+          const perMt = num * 1000;
+          return `₹${perMt.toLocaleString('en-IN')}/MT (₹${num}/KG)`;
+        } else {
+          const perKg = num / 1000;
+          return `₹${num.toLocaleString('en-IN')}/MT (₹${perKg}/KG)`;
+        }
+      }
+    }
+
+    if (field.label === 'Unit') {
+      if (isKgs) return `MT (${val})`;
+      if (isMt) return `MT`;
+    }
+
+    return val;
+  };
+
+  const DocBadge = ({ val, nowrap, align = 'center', color }) => {
     const display = val ?? '—';
     const isEmpty = display === '—';
     return (
       <span style={{
         display: 'block', fontSize: '0.78rem', fontWeight: 600, fontFamily: 'monospace',
-        color: isEmpty ? '#94a3b8' : 'var(--text)',
+        color: isEmpty ? '#94a3b8' : (color || 'var(--text)'),
         padding: '0.25rem 0', lineHeight: 1.4,
+        textAlign: align,
         whiteSpace: nowrap ? 'nowrap' : undefined,
         overflow: nowrap ? 'hidden' : undefined,
         textOverflow: nowrap ? 'ellipsis' : undefined
@@ -1374,6 +1462,37 @@ const SalesRecordModal = ({ records, onClose, invoiceNumber, onDecision, isProce
               )}
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
+              {hasMultiple && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                  <button
+                    onClick={() => setCurrentIndex(Math.max(0, currentIndex - 1))}
+                    disabled={currentIndex === 0}
+                    style={{ ...navBtnStyle, opacity: currentIndex === 0 ? 0.4 : 1 }}
+                  >
+                    <ChevronLeft size={16} /> Prev
+                  </button>
+                  <div style={{ display: 'flex', gap: '0.35rem', alignItems: 'center' }}>
+                    {records.map((_, i) => (
+                      <span
+                        key={i}
+                        onClick={() => setCurrentIndex(i)}
+                        style={{
+                          width: '8px', height: '8px', borderRadius: '50%', cursor: 'pointer',
+                          background: i === currentIndex ? 'var(--primary)' : 'var(--border)',
+                          transition: 'all 0.2s'
+                        }}
+                      />
+                    ))}
+                  </div>
+                  <button
+                    onClick={() => setCurrentIndex(Math.min(totalItems - 1, currentIndex + 1))}
+                    disabled={currentIndex === totalItems - 1}
+                    style={{ ...navBtnStyle, opacity: currentIndex === totalItems - 1 ? 0.4 : 1 }}
+                  >
+                    Next <ChevronRight size={16} />
+                  </button>
+                </div>
+              )}
               <div style={{ textAlign: 'right' }}>
                 <div style={{ fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-muted)', marginBottom: '0.15rem' }}>Audit Score</div>
                 <Badge value={score} green={90} yellow={75} red={0} />
@@ -1418,64 +1537,129 @@ const SalesRecordModal = ({ records, onClose, invoiceNumber, onDecision, isProce
                 <thead>
                   <tr style={{ background: 'rgba(0,0,0,0.03)' }}>
                     <th style={thStyle}>Field</th>
-                    {hasInvoiceData && <th style={thStyle}>Invoice</th>}
-                    <th style={thStyle}>SO</th>
-                    <th style={thStyle}>PO</th>
-                    {hasGPData && <th style={thStyle}>Gate Pass</th>}
-                    {hasWSData && <th style={thStyle}>Weight Slip</th>}
+                    {hasInvoiceData && <th style={{ ...thStyle, textAlign: 'center' }}>Invoice</th>}
+                    <th style={{ ...thStyle, textAlign: 'center' }}>SO</th>
+                    <th style={{ ...thStyle, textAlign: 'center' }}>PO</th>
+                    {hasGPData && <th style={{ ...thStyle, textAlign: 'center' }}>Gate Pass</th>}
+                    {hasWSData && <th style={{ ...thStyle, textAlign: 'center' }}>Weight Slip</th>}
                   </tr>
                 </thead>
                 <tbody>
                   {SALES_COMPARE_FIELDS
                     .filter(f => !f.conditional || getCellVal(f, f.conditional))
-                    .map(({ label, invoice, so, po, gp, ws, type, nowrap, conditional }) => {
-                    const rawVals = [
-                      invoice ? v(invoice) : null,
-                      so ? v(so) : null,
-                      po ? v(po) : null,
-                      gp ? v(gp) : null,
-                      ws ? v(ws) : null
-                    ];
-                    const [iv, sv, pv, gv, wv] = rawVals;
+                    .map((field) => {
+                    const { label, type, nowrap } = field;
+                    const iv = getCellVal(field, 'invoice');
+                    const sv = getCellVal(field, 'so');
+                    const pv = getCellVal(field, 'po');
+                    const gv = getCellVal(field, 'gp');
+                    const wv = getCellVal(field, 'ws');
+                    const rawVals = [iv, sv, pv, gv, wv];
                     const allVals = rawVals.filter(Boolean);
 
-                    // For quantity, normalize units to KG for comparison
+                    // For rate & quantity, normalize units for conflict comparison
                     let compareValsForConflict;
                     if (type === 'quantity') {
                       const unitKeys = ['inv_unit', 'so_unit', 'po_unit', 'gp_unit', null];
-                      const unitMap = unitKeys.map(k => k ? v(k) : 'KG');
+                      const unitMap = unitKeys.map(k => k ? v(k) : null);
                       const toKg = (val, unit) => {
                         if (val == null) return null;
                         const u = (unit || '').toString().toLowerCase().trim();
                         const num = parseFloat(val.toString().replace(/,/g, ''));
                         if (isNaN(num)) return null;
-                        return (u === 'mt' || u === 'ton' || u === 'tons') ? num * 1000 : num;
+                        if (u.includes('mt') || u.includes('ton')) return num * 1000;
+                        if (u.includes('kg')) return num;
+                        return num < 500 ? num * 1000 : num;
                       };
                       compareValsForConflict = rawVals.map((val, i) => toKg(val, unitMap[i])).filter(v => v != null);
+                    } else if (label === 'Rate') {
+                      const unitKeys = ['inv_unit', 'so_unit', 'po_unit', 'gp_unit', null];
+                      const unitMap = unitKeys.map(k => k ? v(k) : null);
+                      const toRateKg = (val, unit) => {
+                        if (val == null) return null;
+                        const u = (unit || '').toString().toLowerCase().trim();
+                        const num = parseFloat(val.toString().replace(/,/g, ''));
+                        if (isNaN(num)) return null;
+                        if (u.includes('mt') || u.includes('ton')) return num / 1000;
+                        if (u.includes('kg')) return num;
+                        return num > 500 ? num / 1000 : num;
+                      };
+                      compareValsForConflict = rawVals.map((val, i) => toRateKg(val, unitMap[i])).filter(v => v != null);
                     } else {
                       compareValsForConflict = allVals;
                     }
 
                     const hasConflict = compareValsForConflict.length >= 2 && !compareValsForConflict.every(x => {
                       if (type === 'quantity') return Math.abs(x - compareValsForConflict[0]) <= 250;
+                      if (label === 'Rate') return Math.abs(x - compareValsForConflict[0]) <= 0.5;
                       return salesValuesMatch(x, compareValsForConflict[0], type);
                     });
                     const hasPartial = compareValsForConflict.length >= 2 && !hasConflict && compareValsForConflict.some(x =>
                       compareValsForConflict.some(y => x !== y && (
-                        type === 'quantity' ? Math.abs(x - y) > 250 : !salesValuesMatch(x, y, type)
+                        type === 'quantity' ? Math.abs(x - y) > 250 :
+                        label === 'Rate' ? Math.abs(x - y) > 0.5 :
+                        !salesValuesMatch(x, y, type)
                       ))
                     );
+                    // Determine per-cell status for individual green/red coloring
+                    const getCompareVal = (rawVal, docIdx) => {
+                      if (rawVal == null) return null;
+                      if (type === 'quantity') {
+                        const unitKeys = ['inv_unit', 'so_unit', 'po_unit', 'gp_unit', null];
+                        const unit = unitKeys[docIdx] ? v(unitKeys[docIdx]) : null;
+                        const u = (unit || '').toLowerCase();
+                        const num = parseFloat(rawVal.toString().replace(/,/g, ''));
+                        if (isNaN(num)) return null;
+                        if (u.includes('mt') || u.includes('ton')) return num * 1000;
+                        if (u.includes('kg')) return num;
+                        return num < 500 ? num * 1000 : num;
+                      } else if (label === 'Rate') {
+                        const unitKeys = ['inv_unit', 'so_unit', 'po_unit', 'gp_unit', null];
+                        const unit = unitKeys[docIdx] ? v(unitKeys[docIdx]) : null;
+                        const u = (unit || '').toLowerCase();
+                        const num = parseFloat(rawVal.toString().replace(/,/g, ''));
+                        if (isNaN(num)) return null;
+                        if (u.includes('mt') || u.includes('ton')) return num / 1000;
+                        if (u.includes('kg')) return num;
+                        return num > 500 ? num / 1000 : num;
+                      }
+                      return rawVal;
+                    };
+                    const consensus = compareValsForConflict.length > 0 ? compareValsForConflict[0] : null;
+                    const getCellBg = (rawVal, docIdx) => {
+                      if (!rawVal) return 'transparent';
+                      if (compareValsForConflict.length < 2) return 'transparent';
+                      const cval = getCompareVal(rawVal, docIdx);
+                      if (cval == null) return 'transparent';
+                      let matches;
+                      if (type === 'quantity') matches = Math.abs(cval - consensus) <= 250;
+                      else if (label === 'Rate') matches = Math.abs(cval - consensus) <= 0.5;
+                      else matches = salesValuesMatch(cval, consensus, type);
+                      if (matches) return 'rgba(16,185,129,0.10)';
+                      return 'rgba(239,68,68,0.10)';
+                    };
+                    const getCellColor = (rawVal, docIdx) => {
+                      if (!rawVal) return 'var(--text)';
+                      if (compareValsForConflict.length < 2) return 'var(--text)';
+                      const cval = getCompareVal(rawVal, docIdx);
+                      if (cval == null) return 'var(--text)';
+                      let matches;
+                      if (type === 'quantity') matches = Math.abs(cval - consensus) <= 250;
+                      else if (label === 'Rate') matches = Math.abs(cval - consensus) <= 0.5;
+                      else matches = salesValuesMatch(cval, consensus, type);
+                      return matches ? '#10b981' : '#ef4444';
+                    };
                     return (
                       <tr key={label} style={{
                         borderBottom: '1px solid var(--border)',
-                        background: hasConflict ? 'rgba(239,68,68,0.04)' : hasPartial ? 'rgba(245,158,11,0.04)' : 'transparent'
+                        background: hasConflict ? 'rgba(239,68,68,0.03)' : hasPartial ? 'rgba(245,158,11,0.03)' : 'transparent'
                       }}>
                         <td style={{ ...tdStyle, fontWeight: 700, color: 'var(--text)', whiteSpace: 'nowrap' }}>{label}</td>
-                        {hasInvoiceData && <td style={{ ...tdStyle, background: hasConflict && iv ? 'rgba(239,68,68,0.06)' : hasPartial && iv ? 'rgba(245,158,11,0.06)' : 'transparent' }}><DocBadge val={iv} nowrap={nowrap} /></td>}
-                        <td style={{ ...tdStyle, background: hasConflict && sv ? 'rgba(239,68,68,0.06)' : hasPartial && sv ? 'rgba(245,158,11,0.06)' : 'transparent' }}><DocBadge val={sv} nowrap={nowrap} /></td>
-                        <td style={{ ...tdStyle, background: hasConflict && pv ? 'rgba(239,68,68,0.06)' : hasPartial && pv ? 'rgba(245,158,11,0.06)' : 'transparent' }}><DocBadge val={pv} nowrap={nowrap} /></td>
-                        {hasGPData && <td style={{ ...tdStyle, background: hasConflict && gv ? 'rgba(239,68,68,0.06)' : hasPartial && gv ? 'rgba(245,158,11,0.06)' : 'transparent' }}><DocBadge val={gv} nowrap={nowrap} /></td>}
-                        {hasWSData && <td style={{ ...tdStyle, background: hasConflict && wv ? 'rgba(239,68,68,0.06)' : hasPartial && wv ? 'rgba(245,158,11,0.06)' : 'transparent' }}><DocBadge val={wv} nowrap={nowrap} /></td>}
+                        {hasInvoiceData && <td style={{ ...tdStyle, textAlign: 'center', background: getCellBg(iv, 0) }}><DocBadge val={formatDocVal(field, 'invoice', iv)} nowrap={nowrap} align="center" color={getCellColor(iv, 0)} /></td>}
+                        <td style={{ ...tdStyle, textAlign: 'center', background: getCellBg(sv, 1) }}><DocBadge val={formatDocVal(field, 'so', sv)} nowrap={nowrap} align="center" color={getCellColor(sv, 1)} /></td>
+                        <td style={{ ...tdStyle, textAlign: 'center', background: getCellBg(pv, 2) }}><DocBadge val={formatDocVal(field, 'po', pv)} nowrap={nowrap} align="center" color={getCellColor(pv, 2)} /></td>
+                        {hasGPData && <td style={{ ...tdStyle, textAlign: 'center', background: getCellBg(gv, 3) }}><DocBadge val={formatDocVal(field, 'gp', gv)} nowrap={nowrap} align="center" color={getCellColor(gv, 3)} /></td>}
+                        {hasWSData && <td style={{ ...tdStyle, textAlign: 'center', background: getCellBg(wv, 4) }}><DocBadge val={formatDocVal(field, 'ws', wv)} nowrap={nowrap} align="center" color={getCellColor(wv, 4)} /></td>}
                       </tr>
                     );
                   })}
@@ -1496,14 +1680,32 @@ const SalesRecordModal = ({ records, onClose, invoiceNumber, onDecision, isProce
                 </thead>
                 <tbody>
                   {(() => {
-                    const rawRate = record['so_rate'];
-                    const rawQty = record['so_quantity'];
+                    const rawRate = record['so_rate'] || record['po_rate'] || record['inv_rate'];
+                    const rawQty = record['so_quantity'] || record['po_quantity'] || record['inv_quantity'];
+                    const rawUnit = record['so_unit'] || record['po_unit'] || record['inv_unit'];
                     const rawInvFinal = record['inv_final_amount'];
                     const rawPoTotal = record['po_total_amount'];
-                    const stripCommas = s => s.toString().replace(/,/g, '');
-                    const soRate = rawRate ? Number(stripCommas(rawRate)) : null;
-                    const soQty = rawQty ? Number(stripCommas(rawQty)) : null;
-                    const estimatedSOAmount = soRate && soQty ? soRate * soQty : null;
+                    const stripCommas = s => s ? s.toString().replace(/,/g, '') : '';
+                    
+                    const numRate = rawRate ? Number(stripCommas(rawRate)) : null;
+                    const numQty = rawQty ? Number(stripCommas(rawQty)) : null;
+                    const unitStr = (rawUnit || '').toString().toLowerCase();
+
+                    let rateKg = numRate;
+                    if (numRate !== null && !isNaN(numRate)) {
+                      if (unitStr.includes('mt') || unitStr.includes('ton')) rateKg = numRate / 1000;
+                      else if (unitStr.includes('kg')) rateKg = numRate;
+                      else rateKg = numRate > 500 ? numRate / 1000 : numRate;
+                    }
+
+                    let qtyKg = numQty;
+                    if (numQty !== null && !isNaN(numQty)) {
+                      if (unitStr.includes('mt') || unitStr.includes('ton')) qtyKg = numQty * 1000;
+                      else if (unitStr.includes('kg')) qtyKg = numQty;
+                      else qtyKg = numQty < 500 ? numQty * 1000 : numQty;
+                    }
+
+                    const estimatedSOAmount = rateKg != null && qtyKg != null ? rateKg * qtyKg : null;
                     const invTaxable = record['inv_taxable_value'] ? Number(stripCommas(record['inv_taxable_value'])) : null;
                     const invFinal = rawInvFinal ? Number(stripCommas(rawInvFinal)) : null;
                     const poTotal = rawPoTotal ? Number(stripCommas(rawPoTotal)) : null;
@@ -1594,11 +1796,11 @@ const SalesRecordModal = ({ records, onClose, invoiceNumber, onDecision, isProce
           <CollapseSection title="Material Information">
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '0 1.5rem' }}>
               {[
-                { label: 'Product', value: v('so_product') },
-                { label: 'Material Grade', value: v('po_material_grade') },
-                { label: 'Thickness', value: v('so_thickness') },
-                { label: 'Width', value: v('so_width') },
-                { label: 'Length', value: v('so_length') },
+                { label: 'Product (SO)', value: v('so_product') },
+                { label: 'Material Grade / Desc (PO)', value: v('po_material_grade') || v('po_material_description') || v('po_product') || v('po_material') },
+                { label: 'Thickness', value: v('so_thickness') || v('po_thickness') },
+                { label: 'Width', value: v('so_width') || v('po_width') },
+                { label: 'Length', value: v('so_length') || v('po_length') },
                 { label: 'Packing', value: v('so_packing') },
                 { label: 'Production Type', value: v('so_production_type') },
                 { label: 'Make / Coil Grade', value: v('so_make') },
@@ -1739,38 +1941,7 @@ const SalesRecordModal = ({ records, onClose, invoiceNumber, onDecision, isProce
             )}
           </CollapseSection>
 
-          {/* ─── Multiple Record Navigation ─── */}
-          {hasMultiple && (
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.75rem', padding: '0.75rem 0' }}>
-              <button
-                onClick={() => setCurrentIndex(Math.max(0, currentIndex - 1))}
-                disabled={currentIndex === 0}
-                style={{ ...navBtnStyle, opacity: currentIndex === 0 ? 0.4 : 1 }}
-              >
-                <ChevronLeft size={16} /> Prev
-              </button>
-              <div style={{ display: 'flex', gap: '0.35rem' }}>
-                {records.map((_, i) => (
-                  <span
-                    key={i}
-                    onClick={() => setCurrentIndex(i)}
-                    style={{
-                      width: '8px', height: '8px', borderRadius: '50%', cursor: 'pointer',
-                      background: i === currentIndex ? 'var(--primary)' : 'var(--border)',
-                      transition: 'all 0.2s'
-                    }}
-                  />
-                ))}
-              </div>
-              <button
-                onClick={() => setCurrentIndex(Math.min(totalItems - 1, currentIndex + 1))}
-                disabled={currentIndex === totalItems - 1}
-                style={{ ...navBtnStyle, opacity: currentIndex === totalItems - 1 ? 0.4 : 1 }}
-              >
-                Next <ChevronRight size={16} />
-              </button>
-            </div>
-          )}
+
         </div>
 
         {/* ── Footer ── */}
@@ -1834,6 +2005,7 @@ const navBtnStyle = {
 };
 
 const AuditHistory = () => {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [activeSide, setActiveSide] = useState('purchase') // 'purchase' | 'sales'
   const [pendingUploadGroup, setPendingUploadGroup] = useState(null)
   const [history, setHistory] = useState([])
@@ -2038,6 +2210,43 @@ const AuditHistory = () => {
   useEffect(() => {
     fetchHistory()
   }, [])
+
+  // Deep-link: auto-open sales modal from ?so= URL param
+  useEffect(() => {
+    const soParam = searchParams.get('so');
+    if (!soParam) return;
+    // Switch to sales tab and load sales data if needed
+    if (activeSide !== 'sales') {
+      setActiveSide('sales');
+    }
+    if (salesHistory.length === 0 && !isSalesLoading) {
+      fetchSalesHistory();
+    }
+  }, [searchParams]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Once salesHistory is loaded, match and open the group from the URL param
+  useEffect(() => {
+    const soParam = searchParams.get('so');
+    if (!soParam || salesHistory.length === 0) return;
+    const decoded = decodeURIComponent(soParam);
+    const groups = {};
+    salesHistory.forEach(record => {
+      const invoiceNum = record.so_number || record['Invoice Number'] || record.inv_number || record.order_number || record.Order_Number || record.invoice_number || record.inv_order_number || 'Unknown';
+      if (!groups[invoiceNum]) {
+        groups[invoiceNum] = {
+          invoiceNumber: invoiceNum,
+          records: [],
+          partyName: record.so_customer_name || record.so_broker_name || record.inv_bill_to_name || 'Unknown Party',
+          latestDate: record.created_at
+        };
+      }
+      groups[invoiceNum].records.push(record);
+    });
+    const match = groups[decoded];
+    if (match && !selectedSalesGroup) {
+      setSelectedSalesGroup(match);
+    }
+  }, [salesHistory, searchParams]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleSideToggle = (side) => {
     setActiveSide(side);
@@ -2320,7 +2529,11 @@ const AuditHistory = () => {
                     ...(cardBg ? { backgroundColor: cardBg } : {}),
                     ...(hasPendingDocs && !groupDecision ? { borderLeft: '3px solid #f59e0b' } : {})
                   }}
-                  onClick={() => setSelectedSalesGroup(group)}
+                  onClick={() => {
+                    const encoded = encodeURIComponent(group.invoiceNumber);
+                    setSearchParams({ so: encoded });
+                    setSelectedSalesGroup(group);
+                  }}
                 >
                   <div className="sales-record-info">
                     <div className="sales-invoice-header">
@@ -2408,7 +2621,7 @@ const AuditHistory = () => {
         <SalesRecordModal
           records={selectedSalesGroup.records}
           invoiceNumber={selectedSalesGroup.invoiceNumber}
-          onClose={() => setSelectedSalesGroup(null)}
+          onClose={() => { setSelectedSalesGroup(null); setSearchParams({}); }}
           onDecision={handleDecisionClick}
           isProcessing={!!decisionProcessing}
           hasDecision={!!salesGroupDecisions[selectedSalesGroup.invoiceNumber]}

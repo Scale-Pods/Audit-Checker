@@ -684,21 +684,24 @@ const SalesAudit = () => {
 
     return (
       <div className="webhook-output animate-fade-in" style={{ marginTop: '2rem' }}>
-        <div className="card" style={{ padding: '0', overflow: 'hidden' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '1.25rem 1.5rem', borderBottom: '1px solid var(--border)', background: 'linear-gradient(to right, rgba(0, 0, 0, 0.02), transparent)' }}>
-            <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', margin: 0, fontSize: '1rem', fontWeight: '700', color: 'var(--text)' }}>
-              <FileText size={18} style={{ color: 'var(--primary)' }} /> Quick Check Result
-            </h3>
+        <div className="card" style={{ padding: '2rem', textAlign: 'center', border: '1px solid rgba(16,185,129,0.25)', background: 'rgba(16,185,129,0.04)' }}>
+          <div style={{
+            width: '52px', height: '52px', borderRadius: '50%',
+            background: 'rgba(16,185,129,0.15)', border: '2px solid rgba(16,185,129,0.35)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            margin: '0 auto 1rem'
+          }}>
+            <CheckCircle size={26} style={{ color: '#10b981' }} />
           </div>
-          <div style={{ padding: '1.5rem', backgroundColor: '#0d1117' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '1.25rem' }}>
-              <div style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: 'var(--success)', boxShadow: '0 0 10px var(--success)' }}></div>
-              <span style={{ fontSize: '10px', color: 'var(--success)', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '0.2em' }}>Scan Complete</span>
-            </div>
-            <pre style={{ margin: 0, fontSize: '0.85rem', color: '#e6edf3', overflowX: 'auto', fontFamily: 'monospace', maxHeight: '400px', lineHeight: '1.6' }}>
-              {JSON.stringify(quickCheckResult, null, 2)}
-            </pre>
-          </div>
+          <h3 style={{ margin: '0 0 0.5rem', fontSize: '1.05rem', fontWeight: 800, color: '#10b981' }}>
+            Document Received
+          </h3>
+          <p style={{ margin: '0 0 0.35rem', fontSize: '0.85rem', color: 'var(--text-muted)', fontWeight: 500 }}>
+            The Sales Order sheet has been queued for processing.
+          </p>
+          <p style={{ margin: 0, fontSize: '0.78rem', color: 'var(--text-muted)', opacity: 0.7 }}>
+            The audit will be updated in the History once the workflow completes.
+          </p>
         </div>
       </div>
     )
