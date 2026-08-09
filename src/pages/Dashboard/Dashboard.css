@@ -27,6 +27,50 @@
   gap: 1rem;
 }
 
+/* ── Purchase / Sales Side Toggle ──────────────────────────── */
+.side-toggle-group {
+  display: inline-flex;
+  align-items: center;
+  background: var(--background);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 4px;
+  gap: 4px;
+  justify-content: flex-start;
+}
+
+.side-toggle-btn {
+  padding: 0.4rem 1.1rem;
+  border-radius: 8px;
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+  white-space: nowrap;
+}
+
+.side-toggle-btn:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text);
+}
+
+.side-toggle-btn.active-purchase {
+  background: rgba(37, 99, 235, 0.18);
+  color: #60a5fa;
+  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.18);
+}
+
+.side-toggle-btn.active-sales {
+  background: rgba(139, 92, 246, 0.18);
+  color: #a78bfa;
+  box-shadow: 0 2px 8px rgba(139, 92, 246, 0.18);
+}
+
 /* Stats Grid */
 .stats-grid {
   display: grid;

@@ -7,6 +7,7 @@ import { FileText, AlertTriangle, CheckCircle, TrendingDown, RefreshCw, Loader2,
 import './Dashboard.css'
 
 const AUDITS_WEBHOOK_URL = import.meta.env.VITE_AUDITS_HISTORY_URL || 'https://n8n.srv1010832.hstgr.cloud/webhook/40a6351a-d510-492f-918b-7ec9bae2bd2a'
+const SALES_HISTORY_URL = import.meta.env.VITE_SALES_HISTORY_URL || 'https://n8n.srv1010832.hstgr.cloud/webhook/10916618-e795-416f-9d0a-6646da9aba06'
 
 const COLORS = ['#10b981', '#f59e0b', '#ef4444', '#3b82f6']
 
@@ -740,10 +741,43 @@ const StatCard = ({ title, value, icon, trend, trendLabel, type = "default" }) =
   )
 }
 
+// ── Sales Analytics Helpers ───────────────────────────────────
+const getSalesInvoiceNo = (record) =>
+  record.so_number || record['Invoice Number'] || record.inv_number || record.order_number ||
+  record.Order_Number || record.invoice_number || record.inv_order_number || record.gp_number || record.id || 'Unknown';
+
+const getSalesParty = (record) =>
+  record.so_customer_name || record.so_broker_name || record.po_customer_name || record.po_supplier_name ||
+  record.inv_bill_to_name || record.sheet_bill_to_name || record.bill_to_name || record.inv_broker_name ||
+  record.sheet_broker_name || record.broker_name || record.so_party_name || 'Unknown Party';
+
+const getSalesDecision = (record) => {
+  const raw = record.Result || record.result || record.Status || record.status;
+  const r = String(raw || '').toUpperCase();
+  if (r === 'APPROVE' || r === 'APPROVED' || r === 'YES') return 'Approve';
+  if (r === 'REJECT' || r === 'REJECTED' || r === 'NO') return 'Reject';
+  return null;
+};
+
+const getSalesScore = (record) => {
+  const I = record.intelligence || record;
+  const s = I.audit_score ?? record.audit_score ?? record.score ?? record.Score;
+  if (s === undefined || s === null || s === '') return null;
+  const n = parseInt(s);
+  return isNaN(n) ? null : n;
+};
+
+const getSalesAmount = (record) =>
+  parseFloat(String(record.inv_final_amount || record.po_total_amount || record.inv_amount || '0').replace(/[^0-9.-]/g, '')) || 0;
+
 const Dashboard = () => {
   const [audits, setAudits] = useState([])
+  const [salesAudits, setSalesAudits] = useState([])
+  const [activeSide, setActiveSide] = useState('purchase')
   const [isLoading, setIsLoading] = useState(true)
+  const [isSalesLoading, setIsSalesLoading] = useState(false)
   const [error, setError] = useState(null)
+  const [salesError, setSalesError] = useState(null)
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [selectedAudit, setSelectedAudit] = useState(null)
   const [decisionProcessing, setDecisionProcessing] = useState(null)
@@ -854,18 +888,53 @@ const Dashboard = () => {
     }
   }
 
+  const fetchSalesAudits = async (showLoading = true) => {
+    if (showLoading) setIsSalesLoading(true)
+    setSalesError(null)
+    try {
+      const response = await fetch(SALES_HISTORY_URL)
+      if (!response.ok) throw new Error('Failed to fetch sales audits')
+      const data = await response.json()
+
+      let salesData = [];
+      if (Array.isArray(data)) {
+        salesData = data;
+      } else if (data && data.audits && Array.isArray(data.audits)) {
+        salesData = data.audits;
+      } else if (data && data.data && Array.isArray(data.data)) {
+        salesData = data.data;
+      } else if (data && typeof data === 'object' && Object.keys(data).length > 0) {
+        const arrayKey = Object.keys(data).find(k => Array.isArray(data[k]) && data[k].length > 0);
+        salesData = arrayKey ? data[arrayKey] : [data];
+      }
+
+      const unique = Array.from(new Map(salesData.map(item => [item.id || JSON.stringify(item), item])).values());
+      setSalesAudits(unique);
+    } catch (err) {
+      console.error('Sales Dashboard Fetch Error:', err)
+      setSalesError('Could not load sales analytics.')
+      setSalesAudits([])
+    } finally {
+      setIsSalesLoading(false)
+      setIsRefreshing(false)
+    }
+  }
+
   useEffect(() => {
     fetchAudits()
+    fetchSalesAudits()
   }, [])
 
   const handleRefresh = () => {
     setIsRefreshing(true)
     fetchAudits(false)
+    fetchSalesAudits(false)
   }
 
   const processedData = useMemo(() => {
-    const stats = { total: audits.length, matched: 0, pending: 0, mismatch: 0, totalValue: 0 }
-    const charts = { bar: {}, pie: [] }
+    // ── Purchase Side Analytics ──
+    const pStats = { total: audits.length, matched: 0, pending: 0, mismatch: 0, totalValue: 0 }
+    const pBar = {}
 
     audits.forEach(audit => {
       const result = parseAuditResult(audit.Audit_Result);
@@ -876,29 +945,92 @@ const Dashboard = () => {
       const isMatched = status === 'GOOD_MATCH' || status === 'Completed' || status === 'Approve';
       const isMismatch = status?.includes('MISMATCH') || status === 'Error' || status === 'PARTIAL_MATCH' || status === 'Reject';
       
-      if (isMatched) stats.matched++;
-      else if (isMismatch) stats.mismatch++;
-      else stats.pending++;
+      if (isMatched) pStats.matched++;
+      else if (isMismatch) pStats.mismatch++;
+      else pStats.pending++;
 
       const amount = parseFloat(audit.Total_Amount_Invoice) || 0;
-      stats.totalValue += amount;
+      pStats.totalValue += amount;
 
       const dateStr = audit.created_at || audit.Audit_Date || audit.Created_At;
       const date = dateStr ? new Date(dateStr) : new Date();
       const month = date.toLocaleString('default', { month: 'short' });
-      if (!charts.bar[month]) charts.bar[month] = { name: month, Success: 0, Issues: 0 }
-      if (isMatched) charts.bar[month].Success++;
-      else charts.bar[month].Issues++;
+      if (!pBar[month]) pBar[month] = { name: month, Success: 0, Issues: 0 }
+      if (isMatched) pBar[month].Success++;
+      else pBar[month].Issues++;
     })
 
-    charts.pie = [
-      { name: 'Verified Match', value: stats.matched },
-      { name: 'Pending Review', value: stats.pending },
-      { name: 'Critical Mismatch', value: stats.mismatch }
-    ]
+    const purchase = {
+      stats: pStats,
+      charts: {
+        bar: Object.values(pBar),
+        pie: [
+          { name: 'Verified Match', value: pStats.matched },
+          { name: 'Pending Review', value: pStats.pending },
+          { name: 'Critical Mismatch', value: pStats.mismatch }
+        ]
+      }
+    }
 
-    return { stats, charts: { ...charts, bar: Object.values(charts.bar) } }
-  }, [audits])
+    // ── Sales Side Analytics ──
+    const sStats = { total: 0, matched: 0, pending: 0, mismatch: 0, totalValue: 0 }
+    const sBar = {}
+    const salesGroups = {}
+
+    salesAudits.forEach(record => {
+      const key = getSalesInvoiceNo(record)
+      if (!salesGroups[key]) {
+        salesGroups[key] = { invoiceNumber: key, records: [], partyName: getSalesParty(record), latestDate: record.created_at }
+      }
+      salesGroups[key].records.push(record)
+      if (record.created_at && (!salesGroups[key].latestDate || new Date(record.created_at) > new Date(salesGroups[key].latestDate))) {
+        salesGroups[key].latestDate = record.created_at
+      }
+    })
+
+    Object.values(salesGroups).forEach(group => {
+      const decisions = group.records.map(getSalesDecision).filter(Boolean)
+      let status = 'pending'
+      if (decisions.includes('Reject')) status = 'mismatch'
+      else if (decisions.includes('Approve')) status = 'matched'
+
+      sStats.total++
+      if (status === 'matched') sStats.matched++
+      else if (status === 'mismatch') sStats.mismatch++
+      else sStats.pending++
+
+      group.records.forEach(record => { sStats.totalValue += getSalesAmount(record) })
+
+      const date = group.latestDate ? new Date(group.latestDate) : new Date()
+      const month = date.toLocaleString('default', { month: 'short' })
+      if (!sBar[month]) sBar[month] = { name: month, Success: 0, Issues: 0 }
+      if (status === 'matched') sBar[month].Success++
+      else sBar[month].Issues++
+    })
+
+    const recentSales = Object.values(salesGroups)
+      .sort((a, b) => new Date(b.latestDate || 0) - new Date(a.latestDate || 0))
+      .slice(0, 8)
+
+    const sales = {
+      stats: sStats,
+      charts: {
+        bar: Object.values(sBar),
+        pie: [
+          { name: 'Verified Match', value: sStats.matched },
+          { name: 'Pending Review', value: sStats.pending },
+          { name: 'Critical Mismatch', value: sStats.mismatch }
+        ]
+      },
+      recent: recentSales
+    }
+
+    return { purchase, sales }
+  }, [audits, salesAudits])
+
+  const isSalesSide = activeSide === 'sales'
+  const activeStats = isSalesSide ? processedData.sales.stats : processedData.purchase.stats
+  const activeCharts = isSalesSide ? processedData.sales.charts : processedData.purchase.charts
 
   if (isLoading) {
     return (
@@ -915,10 +1047,27 @@ const Dashboard = () => {
       <div className="page-header">
         <div>
           <h1 className="page-title">Executive Overview</h1>
-          <p className="page-subtitle">Unified surveillance of purchase and logistics compliance</p>
-          {error && <span className="error-badge">{error}</span>}
+          <p className="page-subtitle">
+            {isSalesSide ? 'Sales side analytics — order-to-dispatch compliance' : 'Unified surveillance of purchase and logistics compliance'}
+          </p>
+          {error && !isSalesSide && <span className="error-badge">{error}</span>}
+          {salesError && isSalesSide && <span className="error-badge">{salesError}</span>}
         </div>
         <div className="header-actions">
+          <div className="side-toggle-group">
+            <button
+              className={`side-toggle-btn ${!isSalesSide ? 'active-purchase' : ''}`}
+              onClick={() => setActiveSide('purchase')}
+            >
+              🛒 Purchase
+            </button>
+            <button
+              className={`side-toggle-btn ${isSalesSide ? 'active-sales' : ''}`}
+              onClick={() => setActiveSide('sales')}
+            >
+              💰 Sales
+            </button>
+          </div>
           <button className="btn btn-outline flex items-center gap-2" onClick={handleRefresh} disabled={isRefreshing}>
             <RefreshCw size={16} className={isRefreshing ? 'animate-spin' : ''} /> Sync Webhook
           </button>
@@ -927,34 +1076,69 @@ const Dashboard = () => {
       </div>
 
       <div className="stats-grid">
-        <StatCard 
-          title="Total Invoices Audited" 
-          value={processedData.stats.total} 
-          icon={FileText} 
-          trendLabel="Active ledger entries"
-          type="primary"
-        />
-        <StatCard 
-          title="Compliance Match Rate" 
-          value={`${processedData.stats.total ? Math.round((processedData.stats.matched / processedData.stats.total) * 100) : 0}%`}
-          icon={CheckCircle} 
-          type="success"
-          trendLabel="Across all documents"
-        />
-        <StatCard 
-          title="Audit Discrepancies" 
-          value={processedData.stats.mismatch} 
-          icon={AlertTriangle} 
-          type="error"
-          trendLabel="Requires immediate action"
-        />
-        <StatCard 
-          title="Total Audit Value" 
-          value={`₹${(processedData.stats.totalValue / 10000000).toFixed(2)} Cr`} 
-          icon={TrendingDown} 
-          type="warning"
-          trendLabel="Live transactional volume in Crores"
-        />
+        {isSalesSide ? (
+          <>
+            <StatCard 
+              title="Sales Orders Audited" 
+              value={activeStats.total} 
+              icon={FileText} 
+              trendLabel="Active sales ledger entries"
+              type="primary"
+            />
+            <StatCard 
+              title="Order Match Rate" 
+              value={`${activeStats.total ? Math.round((activeStats.matched / activeStats.total) * 100) : 0}%`}
+              icon={CheckCircle} 
+              type="success"
+              trendLabel="Across all sales documents"
+            />
+            <StatCard 
+              title="Sales Discrepancies" 
+              value={activeStats.mismatch} 
+              icon={AlertTriangle} 
+              type="error"
+              trendLabel="Requires immediate action"
+            />
+            <StatCard 
+              title="Total Sales Value" 
+              value={`₹${(activeStats.totalValue / 10000000).toFixed(2)} Cr`} 
+              icon={TrendingDown} 
+              type="warning"
+              trendLabel="Live sales volume in Crores"
+            />
+          </>
+        ) : (
+          <>
+            <StatCard 
+              title="Total Invoices Audited" 
+              value={activeStats.total} 
+              icon={FileText} 
+              trendLabel="Active ledger entries"
+              type="primary"
+            />
+            <StatCard 
+              title="Compliance Match Rate" 
+              value={`${activeStats.total ? Math.round((activeStats.matched / activeStats.total) * 100) : 0}%`}
+              icon={CheckCircle} 
+              type="success"
+              trendLabel="Across all documents"
+            />
+            <StatCard 
+              title="Audit Discrepancies" 
+              value={activeStats.mismatch} 
+              icon={AlertTriangle} 
+              type="error"
+              trendLabel="Requires immediate action"
+            />
+            <StatCard 
+              title="Total Audit Value" 
+              value={`₹${(activeStats.totalValue / 10000000).toFixed(2)} Cr`} 
+              icon={TrendingDown} 
+              type="warning"
+              trendLabel="Live transactional volume in Crores"
+            />
+          </>
+        )}
       </div>
 
       <div className="charts-grid">
@@ -964,7 +1148,7 @@ const Dashboard = () => {
           </div>
           <div className="chart-container pt-6">
             <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={processedData.charts.bar}>
+              <BarChart data={activeCharts.bar}>
                 <CartesianGrid strokeDasharray="3" vertical={false} stroke="var(--border)" opacity={0.3} />
                 <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: 'var(--text-muted)', fontSize: 11 }} dy={8} />
                 <YAxis axisLine={false} tickLine={false} tick={{ fill: 'var(--text-muted)', fontSize: 11 }} />
@@ -995,7 +1179,7 @@ const Dashboard = () => {
             <ResponsiveContainer width="100%" height={300}>
               <PieChart>
                 <Pie
-                  data={processedData.charts.pie}
+                  data={activeCharts.pie}
                   cx="50%"
                   cy="50%"
                   innerRadius={75}
@@ -1003,7 +1187,7 @@ const Dashboard = () => {
                   paddingAngle={8}
                   dataKey="value"
                 >
-                  {processedData.charts.pie.map((entry, index) => (
+                  {activeCharts.pie.map((entry, index) => (
                     <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                   ))}
                 </Pie>
@@ -1021,7 +1205,7 @@ const Dashboard = () => {
             </ResponsiveContainer>
             <div className="pie-center-text">
               <span className="pie-percent" style={{ fontSize: '1.5rem' }}>
-                {processedData.stats.total ? Math.round((processedData.stats.matched / processedData.stats.total) * 100) : 0}%
+                {activeStats.total ? Math.round((activeStats.matched / activeStats.total) * 100) : 0}%
               </span>
               <span className="pie-label">Integrity</span>
             </div>
@@ -1031,9 +1215,80 @@ const Dashboard = () => {
 
       <div className="card table-card overflow-hidden">
         <div className="card-header flex-between border-b p-6">
-          <h3 className="card-title">Recent Intelligence Snapshots</h3>
-          <p className="text-xs text-muted font-bold italic">Click any audit row to Drill-down</p>
+          <h3 className="card-title">{isSalesSide ? 'Recent Sales Order Snapshots' : 'Recent Intelligence Snapshots'}</h3>
+          <p className="text-xs text-muted font-bold italic">
+            {isSalesSide ? 'Latest sales order groups' : 'Click any audit row to Drill-down'}
+          </p>
         </div>
+        {isSalesSide ? (
+          <div className="table-responsive">
+            {isSalesLoading ? (
+              <div className="flex-center" style={{ height: '300px', flexDirection: 'column', gap: '1.5rem' }}>
+                <Loader2 size={40} className="animate-spin text-primary" />
+                <p className="text-muted font-bold tracking-widest uppercase text-xs">Syncing Sales Records...</p>
+              </div>
+            ) : processedData.sales.recent.length === 0 ? (
+              <div className="empty-state">
+                <AlertTriangle size={40} className="empty-icon" />
+                <p>{salesError || 'No sales records found in system registry.'}</p>
+              </div>
+            ) : (
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Order Identity</th>
+                    <th>Customer / Party</th>
+                    <th>Order Value</th>
+                    <th className="text-right">Compliance Score</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {processedData.sales.recent.map((group) => {
+                    const decisions = group.records.map(getSalesDecision).filter(Boolean);
+                    const finalDecision = decisions.includes('Reject') ? 'Reject' :
+                                          decisions.includes('Approve') ? 'Approve' : null;
+                    const score = group.records.map(getSalesScore).filter(s => s !== null);
+                    const avgScore = score.length
+                      ? Math.round(score.reduce((a, b) => a + b, 0) / score.length)
+                      : null;
+                    const amount = group.records.reduce((acc, r) => acc + getSalesAmount(r), 0);
+                    const rowBg = finalDecision === 'Approve' ? 'rgba(16, 185, 129, 0.2)' :
+                                  finalDecision === 'Reject' ? 'rgba(239, 68, 68, 0.2)' : undefined;
+                    return (
+                      <tr key={group.invoiceNumber} className="audit-row hover:bg-primary/5 transition-all" style={{ cursor: 'pointer', backgroundColor: rowBg }}>
+                        <td className="font-bold text-primary" style={{ fontSize: '1.1rem' }}>
+                          {group.invoiceNumber}
+                          {group.records.length > 1 && (
+                            <span className="text-xs text-muted opacity-60 ml-2">{group.records.length} items</span>
+                          )}
+                        </td>
+                        <td className="font-medium text-gray-700">{group.partyName}</td>
+                        <td className="font-semibold text-gray-800">₹{(amount / 100000).toFixed(2)} L</td>
+                        <td className="text-right">
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '0.75rem' }}>
+                            <div
+                              className={`score-badge ${avgScore !== null && avgScore > 80 ? 'high' : 'review'}`}
+                              style={{
+                                padding: '4px 12px', borderRadius: '20px', fontSize: '14px', fontWeight: '900',
+                                background: avgScore !== null && avgScore > 80 ? 'rgba(16, 185, 129, 0.1)' : 'rgba(245, 158, 11, 0.1)',
+                                color: avgScore !== null && avgScore > 80 ? 'var(--success)' : 'var(--warning)',
+                                border: `1px solid ${avgScore !== null && avgScore > 80 ? 'rgba(16, 185, 129, 0.2)' : 'rgba(245, 158, 11, 0.2)'}`
+                              }}
+                            >
+                              {avgScore !== null ? `${avgScore}%` : 'N/A'}
+                            </div>
+                            {finalDecision === 'Approve' && <CheckCircle size={16} className="text-success" />}
+                            {finalDecision === 'Reject' && <AlertTriangle size={16} className="text-error" />}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            )}
+          </div>
+        ) : (
         <div className="table-responsive">
           <table className="data-table">
             <thead>
@@ -1097,6 +1352,7 @@ const Dashboard = () => {
             </tbody>
           </table>
         </div>
+        )}
       </div>
 
       {selectedAudit && (
