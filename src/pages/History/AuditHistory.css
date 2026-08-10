@@ -2664,3 +2664,147 @@
     display: none !important;
   }
 }
+
+/* ══════════════════════════════════════════════════════════════
+   430×932 MOBILE OPTIMIZATION
+   ══════════════════════════════════════════════════════════════ */
+
+@media (max-width: 480px) {
+  .history-page {
+    padding: 0;
+    overflow-x: hidden;
+  }
+
+  .page-title {
+    font-size: 1.4rem !important;
+    line-height: 1.2;
+  }
+
+  .page-subtitle {
+    font-size: 0.7rem !important;
+    margin-bottom: 1rem !important;
+  }
+
+  .search-bar-container {
+    gap: 0.5rem;
+  }
+
+  .input-search {
+    font-size: 0.8rem !important;
+    height: 40px !important;
+  }
+}
+
+@media (max-width: 430px) {
+  /* Full-screen bottom-sheet modals */
+  .modal-overlay {
+    padding: 0;
+    align-items: stretch;
+  }
+
+  .modal-content {
+    width: 100vw !important;
+    max-width: 100vw !important;
+    max-height: 100dvh !important;
+    border-radius: 0 !important;
+    border-left: none !important;
+    border-right: none !important;
+  }
+
+  /* ── Purchase audit cards ── */
+  .audit-row {
+    padding: 0.8rem !important;
+    margin-bottom: 1rem;
+    border-radius: 14px !important;
+  }
+
+  .data-table td {
+    padding: 0.55rem 0 !important;
+    min-height: 2.25rem;
+    gap: 0.5rem;
+  }
+
+  .data-table td::before {
+    font-size: 0.5rem;
+    letter-spacing: 0.05em;
+    margin-right: 0.6rem;
+  }
+
+  /* First cell becomes the card header */
+  .data-table td:first-child {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.15rem;
+    margin: -0.8rem -0.8rem 0.5rem -0.8rem;
+    padding: 0.7rem 0.8rem !important;
+    min-height: 0;
+    background: linear-gradient(135deg, rgba(37, 99, 235, 0.12), rgba(37, 99, 235, 0.03));
+    border-bottom: 1px solid var(--border) !important;
+    border-radius: 14px 14px 0 0;
+  }
+
+  .data-table td:first-child::before {
+    color: var(--primary);
+    font-size: 0.5rem;
+    letter-spacing: 0.12em;
+    margin-right: 0;
+  }
+
+  .data-table td:first-child .flex.flex-col {
+    gap: 0.1rem;
+  }
+
+  .data-table td:first-child .flex.flex-col > span:first-child {
+    font-size: 1.05rem;
+  }
+
+  .badge-status {
+    font-size: 0.68rem;
+    padding: 0.3rem 0.6rem;
+  }
+
+  /* ── Sales record cards ── */
+  .sales-record-card {
+    flex-wrap: wrap;
+    gap: 0.6rem;
+    padding: 0.9rem 0.8rem;
+  }
+
+  .sales-record-action {
+    flex: 1 0 100%;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+
+  .sales-party {
+    max-width: 100%;
+  }
+
+  .sales-invoice-header {
+    flex-wrap: wrap;
+  }
+
+  .btn-action-view {
+    padding: 0.45rem 0.65rem;
+    font-size: 0.7rem;
+  }
+
+  /* ── Universal comparison ledger rows ── */
+  .doc-value-cell {
+    padding: 0.6rem 0 !important;
+    word-break: break-word;
+  }
+
+  .field-name-cell {
+    padding: 0.4rem 0 0.8rem 0 !important;
+    font-size: 0.78rem !important;
+  }
+
+  /* ── Pagination ── */
+  .pagination {
+    flex-wrap: wrap;
+    gap: 0.5rem !important;
+    padding: 0.85rem !important;
+    font-size: 0.7rem !important;
+  }
+}

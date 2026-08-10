@@ -729,7 +729,7 @@ const SALES_COMPARE_FIELDS = [
   { label: 'PO Number',          invoice: 'inv_party_order_number',  so: 'so_po_number',         po: 'po_number',             gp: 'gp_so_number',         ws: null,                       type: 'text', nowrap: true },
   { label: 'Customer / Party',   invoice: 'inv_bill_to_name',        so: 'so_customer_name',     po: 'po_customer_name',      gp: 'gp_party_name',        ws: 'ws_party_name',            type: 'name' },
   { label: 'Supplier',           invoice: null,                      so: null,                   po: 'po_supplier_name',      gp: null,                    ws: null,                       type: 'text', conditional: 'po' },
-  { label: 'Broker',             invoice: 'inv_broker_name',         so: 'so_broker_name',       po: null,                    gp: null,                    ws: null,                       type: 'name' },
+  { label: 'Broker',             invoice: 'inv_broker_name',         so: 'so_broker_name',       po: null,                    gp: null,                    ws: null,                       type: 'broker' },
   { label: 'Rate',               invoice: 'inv_rate',                so: 'so_rate',              po: 'po_rate',              gp: null,                    ws: null,                       type: 'numeric' },
   { label: 'Quantity',           invoice: 'inv_quantity',            so: 'so_quantity',          po: 'po_quantity',          gp: 'gp_quantity',          ws: 'ws_net_weight',            type: 'quantity' },
   { label: 'Unit',               invoice: 'inv_unit',                so: 'so_unit',              po: 'po_unit',              gp: 'gp_unit',               ws: null,                       type: 'text' },
@@ -816,6 +816,35 @@ const fuzzyNameMatch = (a, b) => {
   return matched.length / shorter.length >= 0.7;
 };
 
+// Honorifics/terms-of-address (e.g. "Bhai" = brother) that should not count toward the actual name
+const NAME_HONORIFICS = new Set([
+  'bhai', 'bhaya', 'bhay', 'bhaiji', 'ji', 'sahab', 'sahib',
+  'shri', 'shree', 'sri', 'smt', 'mr', 'mrs', 'ms', 'miss', 'dr',
+  'brother', 'bro', 'sir', 'm/s', 'm/s.'
+]);
+
+const stripHonorifics = (tokens) => {
+  const filtered = tokens.filter(t => !NAME_HONORIFICS.has(t));
+  return filtered.length ? filtered : tokens;
+};
+
+// Broker names often carry an honorific suffix (e.g. "Namdev Bhai" where Bhai = brother).
+// Match on the first (given) name — if it matches, treat the broker as the same person.
+const brokerNameMatch = (a, b) => {
+  if (!a || !b) return false;
+  const ta = stripHonorifics(normalizeNameTokens(a));
+  const tb = stripHonorifics(normalizeNameTokens(b));
+  if (ta.length === 0 || tb.length === 0) return false;
+
+  const firstA = ta[0];
+  const firstB = tb[0];
+  if (firstA === firstB) return true;
+  if (firstA.length > 3 && (firstA.includes(firstB) || firstB.includes(firstA))) return true;
+  if (firstA.length > 4 && firstB.length > 4 && levenshtein(firstA, firstB) <= 2) return true;
+
+  return fuzzyNameMatch(a, b);
+};
+
 const salesValuesMatch = (a, b, type = 'text') => {
   if (!a && !b) return true;
   if (!a || !b) return false;
@@ -823,6 +852,7 @@ const salesValuesMatch = (a, b, type = 'text') => {
   const clean = v => v.toString().replace(/,/g, '').trim();
 
   if (type === 'name') return fuzzyNameMatch(a, b);
+  if (type === 'broker') return brokerNameMatch(a, b);
 
   // For numeric/quantity, extract just the numbers if there's text attached (e.g. '150 DAYS' -> 150)
   const extractNum = (v) => {
@@ -848,8 +878,14 @@ const salesValuesMatch = (a, b, type = 'text') => {
     }
   }
 
-  const ca = clean(a).toLowerCase();
-  const cb = clean(b).toLowerCase();
+  // Canonicalize payment-term style values: "30D"/"30 D"/"30 d" -> "30 days"
+  const normalizeTerms = (v) => {
+    const m = v.toString().trim().toLowerCase().match(/^(\d+)\s*d$/);
+    return m ? `${m[1]} days` : v;
+  };
+
+  const ca = normalizeTerms(clean(a).toLowerCase());
+  const cb = normalizeTerms(clean(b).toLowerCase());
   if (ca === cb) return true;
   if (ca.includes(cb) || cb.includes(ca)) return true;
 
@@ -1372,6 +1408,11 @@ const SalesRecordModal = ({ records, onClose, invoiceNumber, onDecision, isProce
     if (field.label === 'Unit') {
       if (isKgs) return `MT (${val})`;
       if (isMt) return `MT`;
+    }
+
+    if (field.label === 'Payment Terms') {
+      const m = val.toString().trim().match(/^(\d+)\s*D$/i);
+      if (m) return `${m[1]} DAYS`;
     }
 
     return val;
