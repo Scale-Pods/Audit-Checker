@@ -178,6 +178,7 @@ const SalesAudit = () => {
         const fileName = `${item.name}${ext}`
         const renamed = new File([item.file], fileName, { type: item.file.type })
         formData.append(item.name, renamed, fileName)
+        formData.append(`${item.name}Name`, item.file.name)
       })
 
       const res = await fetch(SALES_WEBHOOK_URL, {
@@ -221,6 +222,7 @@ const SalesAudit = () => {
         const fileName = `PurchaseOrder${ext}`
         const renamed = new File([f], fileName, { type: f.type })
         formData.append('PurchaseOrder', renamed, fileName)
+        formData.append('PurchaseOrderName', f.name)
       })
 
       const res = await fetch(QUICK_CHECK_WEBHOOK_URL, {

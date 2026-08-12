@@ -1621,8 +1621,9 @@ const SalesRecordModal = ({ records, onClose, invoiceNumber, onDecision, isProce
                         const u = (unit || '').toString().toLowerCase().trim();
                         const num = parseFloat(val.toString().replace(/,/g, ''));
                         if (isNaN(num)) return null;
-                        if (u.includes('mt') || u.includes('ton')) return num / 1000;
                         if (u.includes('kg')) return num;
+                        // Small numbers are per-KG values even if unit says MT (matches display logic)
+                        if (u.includes('mt') || u.includes('ton')) return num <= 500 ? num : num / 1000;
                         return num > 500 ? num / 1000 : num;
                       };
                       compareValsForConflict = rawVals.map((val, i) => toRateKg(val, unitMap[i])).filter(v => v != null);
@@ -1660,8 +1661,8 @@ const SalesRecordModal = ({ records, onClose, invoiceNumber, onDecision, isProce
                         const u = (unit || '').toLowerCase();
                         const num = parseFloat(rawVal.toString().replace(/,/g, ''));
                         if (isNaN(num)) return null;
-                        if (u.includes('mt') || u.includes('ton')) return num / 1000;
                         if (u.includes('kg')) return num;
+                        if (u.includes('mt') || u.includes('ton')) return num <= 500 ? num : num / 1000;
                         return num > 500 ? num / 1000 : num;
                       }
                       return rawVal;
