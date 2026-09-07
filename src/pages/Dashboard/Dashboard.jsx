@@ -742,9 +742,10 @@ const StatCard = ({ title, value, icon, trend, trendLabel, type = "default" }) =
 }
 
 // ── Sales Analytics Helpers ───────────────────────────────────
-const getSalesInvoiceNo = (record) =>
-  record.so_number || record['Invoice Number'] || record.inv_number || record.order_number ||
-  record.Order_Number || record.invoice_number || record.inv_order_number || record.gp_number || record.id || 'Unknown';
+const getSalesGroupKey = (record) =>
+  record.so_number || record.so_po_number || record['so_number'] || 'Unknown';
+
+const getSalesInvoiceNo = getSalesGroupKey;
 
 const getSalesParty = (record) =>
   record.so_customer_name || record.so_broker_name || record.po_customer_name || record.po_supplier_name ||

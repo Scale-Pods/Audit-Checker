@@ -744,6 +744,10 @@ const SALES_COMPARE_FIELDS = [
   { label: 'GSTIN',              invoice: 'inv_gstin',               so: null,                   po: 'po_gstin',              gp: null,                    ws: null,                       type: 'text' },
 ];
 
+// Group sales records by the main order number (so_number OR so_po_number)
+const getSalesGroupKey = (record) =>
+  record.so_number || record.so_po_number || record['so_number'] || 'Unknown';
+
 // Common abbreviation normalizer for name fuzzy matching
 const normalizeNameTokens = (str) => {
   const ABBR = { 'ltd': 'limited', 'pvt': 'private', 'co': 'company', 'corp': 'corporation', 'intl': 'international', 'ind': 'industries', 'mfg': 'manufacturing' };
@@ -1365,6 +1369,45 @@ const SalesRecordModal = ({ records, onClose, invoiceNumber, onDecision, isProce
     return null;
   };
 
+  // True when the Document Comparison Matrix finds an actual field conflict
+  // (mirrors the per-row mismatch detection used in Section 1).
+  const hasMatrixMismatch = SALES_COMPARE_FIELDS
+    .filter(f => !f.conditional || getCellVal(f, f.conditional))
+    .some((field) => {
+      const { label, type } = field;
+      const docKeys = ['invoice', 'so', 'po', 'gp', 'ws'];
+      const docVals = docKeys.map(d => getCellVal(field, d));
+      const allVals = docVals.filter(Boolean);
+
+      let compareVals;
+      if (type === 'quantity' || label === 'Rate') {
+        const unitKeys = ['inv_unit', 'so_unit', 'po_unit', 'gp_unit', null];
+        const unitMap = unitKeys.map(k => k ? v(k) : null);
+        const num = (val, unit, isRate) => {
+          if (val == null) return null;
+          const u = (unit || '').toString().toLowerCase().trim();
+          const n = parseFloat(val.toString().replace(/,/g, ''));
+          if (isNaN(n)) return null;
+          if (type === 'quantity') {
+            if (u.includes('mt') || u.includes('ton')) return n * 1000;
+            if (u.includes('kg')) return n;
+            return n < 500 ? n * 1000 : n;
+          }
+          if (u.includes('kg')) return n;
+          if (u.includes('mt') || u.includes('ton')) return n <= 500 ? n : n / 1000;
+          return n > 500 ? n / 1000 : n;
+        };
+        compareVals = docVals.map((val, i) => num(val, unitMap[i], label === 'Rate')).filter(v => v != null);
+      } else {
+        compareVals = allVals;
+      }
+
+      if (compareVals.length < 2) return false;
+      if (type === 'quantity') return compareVals.some(x => Math.abs(x - compareVals[0]) > 250);
+      if (label === 'Rate') return compareVals.some(x => Math.abs(x - compareVals[0]) > 0.5);
+      return compareVals.some(x => !salesValuesMatch(x, compareVals[0], type));
+    });
+
   const formatDocVal = (field, doc, val) => {
     if (val === null || val === undefined || val === '') return null;
 
@@ -1975,10 +2018,17 @@ const SalesRecordModal = ({ records, onClose, invoiceNumber, onDecision, isProce
               </div>
             )}
 
-            {(!I.critical_mismatches?.length && !I.warnings?.length && !I.missing_documents?.length && !I.audit_summary) && (
+            {(!I.critical_mismatches?.length && !I.warnings?.length && !I.missing_documents?.length && !I.audit_summary && !hasMatrixMismatch) && (
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.75rem', color: '#10b981', fontSize: '0.85rem', fontWeight: 600 }}>
                 <CheckCircle size={16} />
                 No issues found. All checks passed.
+              </div>
+            )}
+
+            {hasMatrixMismatch && !I.critical_mismatches?.length && !I.warnings?.length && (
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.5rem', padding: '0.75rem', borderRadius: '8px', backgroundColor: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.15)', color: '#ef4444', fontSize: '0.85rem', fontWeight: 600 }}>
+                <AlertTriangle size={16} style={{ flexShrink: 0, marginTop: '2px' }} />
+                <span>Field mismatch detected in the document comparison matrix.</span>
               </div>
             )}
           </CollapseSection>
@@ -2068,8 +2118,8 @@ const AuditHistory = () => {
   const salesGroupDecisions = useMemo(() => {
     const map = {};
     salesHistory.forEach(r => {
-      const inv = r["Invoice Number"] || r.inv_number || r.order_number || r.Order_Number || r.invoice_number || r.inv_order_number;
-      if (!inv) return;
+      const inv = getSalesGroupKey(r);
+      if (!inv || inv === 'Unknown') return;
       const raw = r.Result || r.result || r.Status || r.status;
       if (raw === 'Approve' || raw === 'Reject' || raw === 'APPROVED' || raw === 'REJECTED') {
         if (!map[inv]) map[inv] = raw === 'APPROVED' ? 'Approve' : raw === 'REJECTED' ? 'Reject' : raw;
@@ -2096,11 +2146,11 @@ const AuditHistory = () => {
       let targetInvoice = null;
       const record = prev.find(r => r.id === id);
       if (record) {
-        targetInvoice = record["Invoice Number"] || record.inv_number || record.order_number || record.Order_Number || record.invoice_number || record.inv_order_number;
+        targetInvoice = getSalesGroupKey(record);
       }
-      if (!targetInvoice) return prev;
+      if (!targetInvoice || targetInvoice === 'Unknown') return prev;
       return prev.map(r => {
-        const inv = r["Invoice Number"] || r.inv_number || r.order_number || r.Order_Number || r.invoice_number || r.inv_order_number;
+        const inv = getSalesGroupKey(r);
         if (inv === targetInvoice) {
           return { ...r, Result: decision };
         }
@@ -2273,7 +2323,7 @@ const AuditHistory = () => {
     const decoded = decodeURIComponent(soParam);
     const groups = {};
     salesHistory.forEach(record => {
-      const invoiceNum = record.so_number || record['Invoice Number'] || record.inv_number || record.order_number || record.Order_Number || record.invoice_number || record.inv_order_number || 'Unknown';
+      const invoiceNum = getSalesGroupKey(record);
       if (!groups[invoiceNum]) {
         groups[invoiceNum] = {
           invoiceNumber: invoiceNum,
@@ -2324,7 +2374,7 @@ const AuditHistory = () => {
   const groupedSalesHistory = useMemo(() => {
     const groups = {};
     filteredSalesHistory.forEach(record => {
-      const invoiceNum = record.so_number || record["Invoice Number"] || record.inv_number || record.order_number || record.Order_Number || record.invoice_number || record.inv_order_number || 'Unknown';
+      const invoiceNum = getSalesGroupKey(record);
       if (!groups[invoiceNum]) {
         groups[invoiceNum] = {
           invoiceNumber: invoiceNum,
