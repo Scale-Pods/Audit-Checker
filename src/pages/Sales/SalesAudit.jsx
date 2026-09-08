@@ -133,6 +133,9 @@ const SalesAudit = () => {
   const [quickCheckResult, setQuickCheckResult] = useState(null)
   const [quickCheckLoading, setQuickCheckLoading] = useState(false)
 
+  const [docType, setDocType] = useState('PO')
+  const [docNumber, setDocNumber] = useState('')
+
   // Paste handler (single file per section)
   useEffect(() => {
     const handlePaste = (e) => {
@@ -172,6 +175,11 @@ const SalesAudit = () => {
 
     try {
       const formData = new FormData()
+
+      const enteredNumber = (docNumber || '').trim()
+
+      formData.append('po_number', docType === 'PO' ? enteredNumber : '')
+      formData.append('so_number', docType === 'SO' ? enteredNumber : '')
       
       uploads.forEach((item) => {
         const ext = item.file.name.includes('.') ? '.' + item.file.name.split('.').pop() : ''
@@ -217,6 +225,12 @@ const SalesAudit = () => {
     setSubmitError(null)
     try {
       const formData = new FormData()
+
+      const enteredNumber = (docNumber || '').trim()
+
+      formData.append('po_number', docType === 'PO' ? enteredNumber : '')
+      formData.append('so_number', docType === 'SO' ? enteredNumber : '')
+      
       purchaseOrderFiles.forEach(f => {
         const ext = f.name.includes('.') ? '.' + f.name.split('.').pop() : ''
         const fileName = `PurchaseOrder${ext}`
@@ -723,7 +737,7 @@ const SalesAudit = () => {
         <div className="header-actions">
           {(result || allDone) && (
             <button className="btn btn-outline" onClick={() => {
-              setResult(null); setInvoiceFiles([]); setGatepassFiles([]); setWeightslipFiles([]); setPurchaseOrderFiles([]); setAllDone(false); setActiveStep(0); setWebhookResponse(null); setQuickCheckResult(null);
+              setResult(null); setInvoiceFiles([]); setGatepassFiles([]); setWeightslipFiles([]); setPurchaseOrderFiles([]); setAllDone(false); setActiveStep(0); setWebhookResponse(null); setQuickCheckResult(null); setDocType('PO'); setDocNumber('');
             }}>
               New Entry
             </button>
@@ -757,12 +771,30 @@ const SalesAudit = () => {
                 {!allDone && (
                   <div style={{ minHeight: '500px' }}>
                     {activeStep === 0 && (
-                      <DocumentUpload 
-                        title="Purchase Order Upload" 
-                        accepted={{'image/*': ['.png', '.jpg', '.jpeg'], 'application/pdf': ['.pdf']}}
-                        onUpload={setPurchaseOrderFiles}
-                        files={purchaseOrderFiles}
-                      />
+                      <div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1.25rem' }}>
+                          <input
+                            type="text"
+                            value={docNumber}
+                            onChange={(e) => setDocNumber(e.target.value)}
+                            placeholder="PO Number (optional)"
+                            style={{
+                              flex: 1, padding: '0.6rem 1rem', borderRadius: '10px', border: '1px solid var(--border)',
+                              fontSize: '0.95rem', fontWeight: 600, fontFamily: 'monospace',
+                              backgroundColor: 'var(--bg-secondary)', color: 'var(--text)', outline: 'none',
+                              transition: 'border-color 0.2s'
+                            }}
+                            onFocus={(e) => e.target.style.borderColor = 'var(--primary)'}
+                            onBlur={(e) => e.target.style.borderColor = 'var(--border)'}
+                          />
+                        </div>
+                        <DocumentUpload
+                          title="PO Upload"
+                          accepted={{'image/*': ['.png', '.jpg', '.jpeg'], 'application/pdf': ['.pdf']}}
+                          onUpload={setPurchaseOrderFiles}
+                          files={purchaseOrderFiles}
+                        />
+                      </div>
                     )}
                     {activeStep === 1 && (
                       <div className="upload-box card" style={{ textAlign: 'center', padding: '3rem 2rem', alignItems: 'center' }}>
