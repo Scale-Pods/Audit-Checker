@@ -2096,6 +2096,65 @@ const navBtnStyle = {
   color: 'var(--text)'
 };
 
+const DATE_FILTERS = [
+  { value: 'all', label: 'All Time' },
+  { value: 'today', label: 'Today' },
+  { value: 'thisWeek', label: 'This Week' },
+  { value: 'past30', label: 'Past 30 Days' },
+  { value: 'past3m', label: 'Past 3 Months' },
+  { value: 'past6m', label: 'Past 6 Months' },
+  { value: 'thisYear', label: 'This Year' },
+  { value: 'custom', label: 'Custom Range' },
+];
+
+const getDateCutoff = (filter) => {
+  const now = new Date();
+  const start = new Date(now);
+  switch (filter) {
+    case 'today':
+      start.setHours(0, 0, 0, 0);
+      return start.getTime();
+    case 'thisWeek': {
+      const day = (now.getDay() + 6) % 7;
+      start.setDate(now.getDate() - day);
+      start.setHours(0, 0, 0, 0);
+      return start.getTime();
+    }
+    case 'past30':
+      return now.getTime() - 30 * 24 * 60 * 60 * 1000;
+    case 'past3m':
+      start.setMonth(now.getMonth() - 3);
+      return start.getTime();
+    case 'past6m':
+      start.setMonth(now.getMonth() - 6);
+      return start.getTime();
+    case 'thisYear':
+      start.setMonth(0, 1);
+      start.setHours(0, 0, 0, 0);
+      return start.getTime();
+    default:
+      return null;
+  }
+};
+
+const isWithinDateFilter = (createdAt, filter, customRange) => {
+  const ts = new Date(createdAt || 0).getTime();
+  if (!ts) return false;
+  if (filter === 'custom') {
+    const { start, end } = customRange || {};
+    if (!start && !end) return true;
+    const startMs = start ? new Date(start).setHours(0, 0, 0, 0) : null;
+    const endMs = end ? new Date(end).setHours(23, 59, 59, 999) : null;
+    if (startMs !== null && ts < startMs) return false;
+    if (endMs !== null && ts > endMs) return false;
+    return true;
+  }
+  if (!filter || filter === 'all') return true;
+  const cutoff = getDateCutoff(filter);
+  if (cutoff === null) return true;
+  return ts >= cutoff;
+};
+
 const AuditHistory = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const [activeSide, setActiveSide] = useState('purchase') // 'purchase' | 'sales'
@@ -2113,6 +2172,8 @@ const AuditHistory = () => {
   const [decisionProcessing, setDecisionProcessing] = useState(null)
   const [confirmDecision, setConfirmDecision] = useState(null)
   const [sortOrder, setSortOrder] = useState('latest') // 'latest' | 'oldest'
+  const [dateFilter, setDateFilter] = useState('all') // 'all' | 'today' | 'thisWeek' | 'past30' | 'past3m' | 'past6m' | 'thisYear' | 'custom'
+  const [customDateRange, setCustomDateRange] = useState({ start: '', end: '' })
 
   // Derived: which groups already have a decision saved
   const salesGroupDecisions = useMemo(() => {
@@ -2350,25 +2411,32 @@ const AuditHistory = () => {
 
   const filteredHistory = useMemo(() => {
     const filtered = history.filter(item => 
-      (item.Invoice_Number_Invoice?.toLowerCase().includes(searchTerm.toLowerCase())) ||
+      isWithinDateFilter(item.created_at, dateFilter, customDateRange) &&
+      ((item.Invoice_Number_Invoice?.toLowerCase().includes(searchTerm.toLowerCase())) ||
       (item.Supplier_Name_Invoice?.toLowerCase().includes(searchTerm.toLowerCase())) ||
       (item.Vehicle_No_Eway?.toLowerCase().includes(searchTerm.toLowerCase())) ||
-      (item.id?.toString().includes(searchTerm))
+      (item.id?.toString().includes(searchTerm)))
     );
     return [...filtered].sort((a, b) => {
       const da = new Date(a.created_at || 0).getTime();
       const db = new Date(b.created_at || 0).getTime();
       return sortOrder === 'latest' ? db - da : da - db;
     });
-  }, [history, searchTerm, sortOrder])
+  }, [history, searchTerm, sortOrder, dateFilter, customDateRange])
 
   const filteredSalesHistory = useMemo(() => {
-    if (!searchTerm) return salesHistory;
     const term = searchTerm.toLowerCase();
-    return salesHistory.filter(item =>
-      Object.values(item).some(v => v?.toString().toLowerCase().includes(term))
-    );
-  }, [salesHistory, searchTerm])
+    let result = salesHistory;
+    if (dateFilter !== 'all') {
+      result = salesHistory.filter(item => isWithinDateFilter(item.created_at, dateFilter, customDateRange));
+    }
+    if (term) {
+      result = result.filter(item =>
+        Object.values(item).some(v => v?.toString().toLowerCase().includes(term))
+      );
+    }
+    return result;
+  }, [salesHistory, searchTerm, dateFilter, customDateRange])
 
   // Group sales records by invoice number
   const groupedSalesHistory = useMemo(() => {
@@ -2455,6 +2523,49 @@ const AuditHistory = () => {
           </div>
           
           <div className="search-bar-container">
+            <div className="date-filter-wrap">
+              <Filter size={14} className="text-muted date-filter-icon" />
+              <select 
+                className="input-search date-filter-select" 
+                value={dateFilter}
+                onChange={(e) => setDateFilter(e.target.value)}
+                title="Filter by date"
+              >
+                {DATE_FILTERS.map(opt => (
+                  <option key={opt.value} value={opt.value}>{opt.label}</option>
+                ))}
+              </select>
+            </div>
+            {dateFilter === 'custom' && (
+              <div className="custom-date-range">
+                <input
+                  type="date"
+                  className="date-range-input"
+                  value={customDateRange.start}
+                  max={customDateRange.end || undefined}
+                  onChange={(e) => setCustomDateRange(prev => ({ ...prev, start: e.target.value }))}
+                  title="From date"
+                />
+                <span className="date-range-sep">to</span>
+                <input
+                  type="date"
+                  className="date-range-input"
+                  value={customDateRange.end}
+                  min={customDateRange.start || undefined}
+                  onChange={(e) => setCustomDateRange(prev => ({ ...prev, end: e.target.value }))}
+                  title="To date"
+                />
+                {(customDateRange.start || customDateRange.end) && (
+                  <button
+                    className="btn btn-outline btn-sm date-range-clear"
+                    onClick={() => setCustomDateRange({ start: '', end: '' })}
+                    title="Clear custom range"
+                  >
+                    <X size={14} />
+                  </button>
+                )}
+              </div>
+            )}
             <div className="search-bar">
               <Search size={16} className="text-muted search-icon-inner" />
               <input 
