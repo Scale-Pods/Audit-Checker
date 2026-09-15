@@ -735,9 +735,9 @@ const SALES_COMPARE_FIELDS = [
   { label: 'Unit',               invoice: 'inv_unit',                so: 'so_unit',              po: 'po_unit',              gp: 'gp_unit',               ws: null,                       type: 'text' },
   { label: 'Payment Terms',      invoice: 'inv_payment_terms',       so: 'so_payment_terms',     po: 'po_payment_terms',     gp: null,                    ws: null,                       type: 'text' },
   { label: 'Delivery Terms',     invoice: null,                      so: 'so_delivery_terms',    po: 'po_delivery_terms',    gp: null,                    ws: null,                       type: 'text' },
-  { label: 'Thickness',          invoice: 'inv_thickness',           so: 'so_thickness',         po: 'po_thickness',          gp: 'gp_thickness',          ws: null,                       type: 'numeric', poFallback: 'po_material_description' },
-  { label: 'Width',              invoice: 'inv_width',               so: 'so_width',             po: 'po_width',              gp: 'gp_width',              ws: null,                       type: 'numeric', poFallback: 'po_material_description' },
-  { label: 'Length',             invoice: 'inv_length',              so: 'so_length',            po: 'po_length',             gp: 'gp_length',             ws: null,                       type: 'numeric', poFallback: 'po_material_description' },
+  { label: 'Thickness',          invoice: 'inv_thickness',           so: 'so_thickness',         po: 'po_thickness',          gp: 'gp_thickness',          ws: null,                       type: 'numeric' },
+  { label: 'Width',              invoice: 'inv_width',               so: 'so_width',             po: 'po_width',              gp: 'gp_width',              ws: null,                       type: 'numeric' },
+  { label: 'Length',             invoice: 'inv_length',              so: 'so_length',            po: 'po_length',             gp: 'gp_length',             ws: null,                       type: 'numeric' },
   { label: 'Vehicle Number',     invoice: 'inv_vehicle_number',      so: null,                   po: null,                    gp: 'gp_vehicle_number',    ws: 'ws_vehicle_number',        type: 'text', nowrap: true },
   { label: 'Material',           invoice: 'inv_product',             so: 'so_product',           po: 'po_material_grade',     gp: 'gp_product',            ws: 'ws_material_description',  type: 'text', poFallback: 'po_material_description' },
   { label: 'Coil Number',        invoice: null,                      so: 'so_coil_number',       po: null,                    gp: 'gp_coil_number',        ws: null,                       type: 'text', nowrap: true },
@@ -893,8 +893,16 @@ const salesValuesMatch = (a, b, type = 'text') => {
   if (ca === cb) return true;
   if (ca.includes(cb) || cb.includes(ca)) return true;
 
+  // Steel material grade acronyms & form terms recognition
+  const keySteelAcronyms = new Set([
+    'hrpo', 'hr', 'cr', 'crca', 'gi', 'gp', 'gl', 'gpsp', 'ppgl', 'ppgi',
+    'tmt', 'wr', 'is2062', 'e250', 'e350', 'e34', 'e410', 'ys350', 'sailhard',
+    'st52', 'c45', 'en8', 'ss304', 'ss316'
+  ]);
+  const formTerms = new Set(['slit', 'coil', 'sheet', 'plate', 'patta', 'strip', 'cut', 'pkt', 'bundle']);
+
   // Token overlap matching for material descriptions, products, and text
-  const stopWords = new Set(['x', 'mm', 'tolerance', 'to', 'and', 'the', 'of', 'for', 'with', 'in']);
+  const stopWords = new Set(['x', 'mm', 'tolerance', 'to', 'and', 'the', 'of', 'for', 'with', 'in', 'min', 'mpa', 'uts', 'ys']);
   const getTokens = (str) =>
     str.replace(/[^a-z0-9\s]/g, ' ')
        .split(/\s+/)
@@ -903,10 +911,18 @@ const salesValuesMatch = (a, b, type = 'text') => {
   const ta = getTokens(ca);
   const tb = getTokens(cb);
   if (ta.length > 0 && tb.length > 0) {
-    const shorter = ta.length <= tb.length ? ta : tb;
-    const longer = ta.length <= tb.length ? tb : ta;
+    // 1. Direct steel grade acronym match (e.g., 'hrpo' in both "HRPO SLIT" and "E34 HRPO 1.6mm")
+    const steelMatch = ta.some(t => keySteelAcronyms.has(t) && tb.includes(t));
+    if (steelMatch) return true;
+
+    // 2. Token overlap ignoring form factor terms (e.g., 'slit', 'coil')
+    const taGrade = ta.filter(t => !formTerms.has(t));
+    const tbGrade = tb.filter(t => !formTerms.has(t));
+    const shorter = (taGrade.length > 0 && taGrade.length <= tbGrade.length) ? taGrade : (tbGrade.length > 0 ? tbGrade : ta);
+    const longer  = (taGrade.length > 0 && taGrade.length <= tbGrade.length) ? tbGrade : ta;
+
     const matches = shorter.filter(st => longer.some(lt => lt === st || lt.includes(st) || st.includes(lt)));
-    if (matches.length / shorter.length >= 0.6) return true;
+    if (matches.length > 0 && (matches.length / shorter.length >= 0.5)) return true;
   }
 
   return false;
