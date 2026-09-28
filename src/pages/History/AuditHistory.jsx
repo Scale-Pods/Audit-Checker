@@ -1227,7 +1227,7 @@ const StatCard = ({ label, value }) => {
       border: '1px solid var(--border)', background: 'rgba(0,0,0,0.015)'
     }}>
       <div style={{
-        fontSize: '0.62rem', fontWeight: 700, textTransform: 'uppercase',
+        fontSize: '0.68rem', fontWeight: 700, textTransform: 'uppercase',
         letterSpacing: '0.06em', color: 'var(--text-muted)', marginBottom: '0.3rem'
       }}>{label}</div>
       <div style={{
@@ -1280,7 +1280,7 @@ const DocPanel = ({ kind, title, rows }) => {
           <PanelIcon size={12} />
         </span>
         <span style={{
-          fontSize: '0.65rem', fontWeight: 800, textTransform: 'uppercase',
+          fontSize: '0.68rem', fontWeight: 800, textTransform: 'uppercase',
           letterSpacing: '0.08em', color: accent.color
         }}>{title || accent.label}</span>
         <span style={{
@@ -1303,7 +1303,7 @@ const SectionLabel = ({ children, action }) => (
     marginBottom: '0.5rem'
   }}>
     <span style={{
-      fontSize: '0.62rem', fontWeight: 800, textTransform: 'uppercase',
+      fontSize: '0.68rem', fontWeight: 800, textTransform: 'uppercase',
       letterSpacing: '0.1em', color: 'var(--text-muted)'
     }}>{children}</span>
     {action}
@@ -1412,7 +1412,7 @@ const SummaryBlock = ({ summary }) => {
       <Info size={16} style={{ color: 'var(--primary)', flexShrink: 0, marginTop: '2px' }} />
       <div>
         <div style={{
-          fontSize: '0.62rem', fontWeight: 800, textTransform: 'uppercase',
+          fontSize: '0.68rem', fontWeight: 800, textTransform: 'uppercase',
           letterSpacing: '0.08em', color: 'var(--primary)', marginBottom: '0.25rem'
         }}>Audit Summary</div>
         <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--text)', lineHeight: 1.55, fontWeight: 500, whiteSpace: 'pre-line' }}>{text}</p>
@@ -1497,7 +1497,7 @@ const SingleFilePicker = ({ label, file, onSelectFile, isPending }) => {
           {label} Document
         </span>
         {isPending && (
-          <span style={{ fontSize: '0.65rem', fontWeight: 800, color: '#ef4444', background: 'rgba(239,68,68,0.1)', padding: '2px 6px', borderRadius: '4px' }}>
+          <span style={{ fontSize: '0.68rem', fontWeight: 800, color: '#ef4444', background: 'rgba(239,68,68,0.1)', padding: '2px 6px', borderRadius: '4px' }}>
             Pending Upload
           </span>
         )}
@@ -1808,8 +1808,16 @@ const SalesRecordModal = ({ records, onClose, invoiceNumber, onDecision, isProce
   // them at the top level — read both so no check silently reads as unchecked.
   const check = (key) => (I[key] !== undefined && I[key] !== null && I[key] !== '' ? I[key] : record[key]);
 
+  // A document column is only worth showing when the record actually carries
+  // data for it — quick entries have no gp_/ws_/inv_ values at all.
   const hasDocData = (prefix) =>
-    Object.keys(record).some(k => k.startsWith(prefix) && record[k] !== null && record[k] !== undefined && record[k] !== '');
+    Object.keys(record).some(k => {
+      if (!k.startsWith(prefix)) return false;
+      const val = record[k];
+      if (val === null || val === undefined) return false;
+      if (typeof val === 'string') return val.trim() !== '';
+      return true;
+    });
 
   const hasInvoiceData = hasDocData('inv_');
   const hasGPData = hasDocData('gp_');
@@ -1844,7 +1852,7 @@ const SalesRecordModal = ({ records, onClose, invoiceNumber, onDecision, isProce
   const CollapseSection = ({ title, children }) => (
     <div style={{ border: '1px solid var(--border)', borderRadius: '10px', overflow: 'hidden', marginBottom: '1rem', background: 'var(--surface)' }}>
       <SectionHeader title={title} />
-      {expandedSections[title] && <div style={{ padding: '1rem 1.25rem' }}>{children}</div>}
+      {expandedSections[title] && <div className="audit-section-body">{children}</div>}
     </div>
   );
 
@@ -2041,10 +2049,7 @@ const MATCH_RESULT_CHECKS = [
         style={{ maxWidth: '1100px', width: '95%', borderRadius: '16px', padding: 0, overflow: 'hidden' }}
       >
         {/* ── Header ── */}
-        <div style={{
-          padding: '1.25rem 1.5rem', borderBottom: '1px solid var(--border)',
-          background: 'var(--surface)'
-        }}>
+        <div className="sales-modal-head">
           <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: '1rem' }}>
             <div>
               <h2 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
@@ -2052,7 +2057,7 @@ const MATCH_RESULT_CHECKS = [
                 Sales Comparison Ledger
                 {isQuickEntry && (
                   <span style={{
-                    fontSize: '0.65rem', fontWeight: 800, textTransform: 'uppercase',
+                    fontSize: '0.68rem', fontWeight: 800, textTransform: 'uppercase',
                     letterSpacing: '0.08em', padding: '0.2rem 0.6rem', borderRadius: '6px',
                     background: 'rgba(245,158,11,0.12)', color: '#f59e0b',
                     border: '1px solid rgba(245,158,11,0.25)', verticalAlign: 'middle'
@@ -2119,11 +2124,11 @@ const MATCH_RESULT_CHECKS = [
               { label: 'Invoice #', value: invoiceNumber || v('inv_order_number') },
               { label: 'SO #', value: v('so_number') },
               { label: 'PO #', value: v('po_number') },
-              { label: 'GP #', value: v('gp_number') },
+              { label: 'GP #', value: v('gp_number'), show: hasGPData },
               { label: 'WS #', value: v('ws_number') },
-            ].map((item, idx) => (
+            ].filter(item => item.show !== false).map((item, idx) => (
               <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-                <span style={{ fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', fontSize: '0.65rem', letterSpacing: '0.05em' }}>{item.label}</span>
+                <span style={{ fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', fontSize: '0.68rem', letterSpacing: '0.05em' }}>{item.label}</span>
                 <span style={{ fontWeight: 700, color: 'var(--text)', fontSize: '0.8rem' }}>{item.value || '—'}</span>
               </div>
             ))}
@@ -2131,7 +2136,7 @@ const MATCH_RESULT_CHECKS = [
         </div>
 
         {/* ── Scrollable Body ── */}
-        <div style={{ padding: '1.25rem 1.5rem', maxHeight: '70vh', overflowY: 'auto' }}>
+        <div className="sales-modal-scroll">
           
           {/* ─── Section 1: Document Comparison Matrix ─── */}
           <CollapseSection title="Document Comparison Matrix">
@@ -2146,7 +2151,7 @@ const MATCH_RESULT_CHECKS = [
                     {hasInvoiceData && <th style={{ ...thStyle, textAlign: 'center' }}>Invoice</th>}
                     <th style={{ ...thStyle, textAlign: 'center' }}>SO</th>
                     <th style={{ ...thStyle, textAlign: 'center' }}>PO</th>
-                    <th style={{ ...thStyle, textAlign: 'center' }}>Gate Pass</th>
+                    {hasGPData && <th style={{ ...thStyle, textAlign: 'center' }}>Gate Pass</th>}
                     {hasWSData && <th style={{ ...thStyle, textAlign: 'center' }}>Weight Slip</th>}
                   </tr>
                 </thead>
@@ -2265,7 +2270,7 @@ const MATCH_RESULT_CHECKS = [
                         {hasInvoiceData && <td style={{ ...tdStyle, textAlign: 'center', background: getCellBg(iv, 0) }}><DocBadge val={formatDocVal(field, 'invoice', iv)} nowrap={nowrap} align="center" color={getCellColor(iv, 0)} /></td>}
                         <td style={{ ...tdStyle, textAlign: 'center', background: getCellBg(sv, 1) }}><DocBadge val={formatDocVal(field, 'so', sv)} nowrap={nowrap} align="center" color={getCellColor(sv, 1)} /></td>
                         <td style={{ ...tdStyle, textAlign: 'center', background: getCellBg(pv, 2) }}><DocBadge val={formatDocVal(field, 'po', pv)} nowrap={nowrap} align="center" color={getCellColor(pv, 2)} /></td>
-                        <td style={{ ...tdStyle, textAlign: 'center', background: getCellBg(gv, 3) }}><DocBadge val={formatDocVal(field, 'gp', gv)} nowrap={nowrap} align="center" color={getCellColor(gv, 3)} /></td>
+                        {hasGPData && <td style={{ ...tdStyle, textAlign: 'center', background: getCellBg(gv, 3) }}><DocBadge val={formatDocVal(field, 'gp', gv)} nowrap={nowrap} align="center" color={getCellColor(gv, 3)} /></td>}
                         {hasWSData && <td style={{ ...tdStyle, textAlign: 'center', background: getCellBg(wv, 4) }}><DocBadge val={formatWsCell(field, wv)} nowrap={nowrap} align="center" color={getCellColor(wv, 4)} /></td>}
                       </tr>
                     );
@@ -2284,7 +2289,7 @@ const MATCH_RESULT_CHECKS = [
                 border: '1px solid var(--border)', background: 'rgba(0,0,0,0.02)'
               }}>
                 <span style={{
-                  fontSize: '0.62rem', fontWeight: 800, textTransform: 'uppercase',
+                  fontSize: '0.68rem', fontWeight: 800, textTransform: 'uppercase',
                   letterSpacing: '0.1em', color: 'var(--text-muted)'
                 }}>Invoice Number</span>
                 <span style={{
@@ -2295,7 +2300,7 @@ const MATCH_RESULT_CHECKS = [
 
               <div>
                 <SectionLabel>Amounts on Record</SectionLabel>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '0.6rem' }}>
+                <div className="audit-stat-grid">
                   <StatCard label="Taxable Amount" value={showMoney(record.inv_taxable_value)} />
                   <StatCard label="Final Invoice Amount" value={showMoney(record.inv_final_amount)} />
                   <StatCard label="PO Amount" value={showMoney(record.po_total_amount)} />
@@ -2304,7 +2309,7 @@ const MATCH_RESULT_CHECKS = [
 
               <div>
                 <SectionLabel action={<MatchBadge value={check('rate_match')} />}>Rate Comparison</SectionLabel>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '0.6rem' }}>
+                <div className="audit-rate-grid">
                   <StatCard label="SO Rate" value={showRate(record.so_rate)} />
                   <StatCard label="PO Rate" value={showRate(record.po_rate)} />
                   <StatCard label="Invoice Rate" value={showRate(record.inv_rate)} />
@@ -2315,7 +2320,7 @@ const MATCH_RESULT_CHECKS = [
 
           {/* ─── Section 3: Financial Summary ─── */}
           <CollapseSection title="Financial Summary">
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '0.6rem' }}>
+            <div className="audit-stat-grid">
               <StatCard label="Invoice Taxable Value" value={showMoney(record.inv_taxable_value)} />
               <StatCard label="Invoice Final Amount" value={showMoney(record.inv_final_amount)} />
               <StatCard label="Invoice CGST" value={showMoney(record.inv_cgst_amount)} />
@@ -2341,7 +2346,7 @@ const MATCH_RESULT_CHECKS = [
 
           {/* ─── Section 4: Material Information ─── */}
           <CollapseSection title="Material Information">
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(255px, 1fr))', gap: '0.7rem' }}>
+            <div className="audit-doc-grid">
               <DocPanel
                 kind="so"
                 title="Sales Order"
@@ -2375,6 +2380,7 @@ const MATCH_RESULT_CHECKS = [
                   { label: 'Quantity', value: showQuantity(record.inv_quantity, record.inv_unit) },
                 ]}
               />
+              {hasGPData && (
               <DocPanel
                 kind="gp"
                 title="Gate Pass"
@@ -2389,6 +2395,7 @@ const MATCH_RESULT_CHECKS = [
                   { label: 'Coil Number', value: showText(record.gp_coil_number) },
                 ]}
               />
+              )}
               <DocPanel
                 kind="ws"
                 title="Weight Slip"
@@ -2416,7 +2423,7 @@ const MATCH_RESULT_CHECKS = [
 
           {/* ─── Section 5: Logistics ─── */}
           <CollapseSection title="Logistics">
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(255px, 1fr))', gap: '0.7rem' }}>
+            <div className="audit-doc-grid">
               <DocPanel
                 kind="invoice"
                 title="Invoice · Dispatch"
@@ -2426,6 +2433,7 @@ const MATCH_RESULT_CHECKS = [
                   { label: 'Consignee', value: showText(record.inv_consignee_name) },
                 ]}
               />
+              {hasGPData && (
               <DocPanel
                 kind="gp"
                 title="Gate Pass · Movement"
@@ -2440,6 +2448,7 @@ const MATCH_RESULT_CHECKS = [
                   { label: 'Weight', value: showQuantity(record.gp_weight, record.gp_unit) },
                 ]}
               />
+              )}
               <DocPanel
                 kind="ws"
                 title="Weight Slip · Weighment"
@@ -2470,7 +2479,7 @@ const MATCH_RESULT_CHECKS = [
           <CollapseSection title="Match Results">
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
               <AuditStatusStrip score={check('audit_score')} status={check('audit_status')} />
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))', gap: '0.4rem' }}>
+              <div className="audit-check-grid">
                 {MATCH_RESULT_CHECKS.map(item => (
                   <CheckRow key={item.key} label={item.label} value={check(item.key)} />
                 ))}
@@ -2535,11 +2544,7 @@ const MATCH_RESULT_CHECKS = [
         </div>
 
         {/* ── Footer ── */}
-        <div style={{
-          padding: '1rem 1.5rem', borderTop: '1px solid var(--border)',
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.75rem',
-          background: 'var(--surface)'
-        }}>
+        <div className="sales-modal-foot">
           <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
             <span style={{ fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-muted)' }}>Overall Score</span>
             <Badge value={score} green={90} yellow={75} red={0} />
@@ -3260,7 +3265,7 @@ const AuditHistory = () => {
                       {hasPendingDocs && !groupDecision && (
                         <span style={{
                           display: 'inline-flex', alignItems: 'center', gap: '0.3rem',
-                          padding: '0.2rem 0.6rem', borderRadius: '5px', fontSize: '0.65rem', fontWeight: 800,
+                          padding: '0.2rem 0.6rem', borderRadius: '5px', fontSize: '0.68rem', fontWeight: 800,
                           background: 'rgba(245,158,11,0.15)', color: '#f59e0b',
                           border: '1px solid rgba(245,158,11,0.3)', textTransform: 'uppercase', letterSpacing: '0.05em'
                         }}>

@@ -883,6 +883,9 @@
   border-radius: 20px;
   width: 100%;
   max-width: 600px;
+  /* Without a cap the flex body never scrolls and tall modals grow
+     past the viewport, hiding the footer. */
+  max-height: 92dvh;
   box-shadow: var(--shadow-lg);
   border: 1px solid var(--border);
   overflow: hidden;
@@ -2903,8 +2906,134 @@
 }
 
 /* ══════════════════════════════════════════════════════════════
-   430×932 MOBILE OPTIMIZATION
+   SALES DETAIL SECTION LAYOUT (target: 440 x 956)
+   Grids live here rather than inline so they can reflow per breakpoint.
    ══════════════════════════════════════════════════════════════ */
+
+.audit-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 0.6rem;
+}
+
+.audit-rate-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 0.6rem;
+}
+
+.audit-doc-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(255px, 1fr));
+  gap: 0.7rem;
+}
+
+.audit-check-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 0.4rem;
+}
+
+.audit-section-body {
+  padding: 1rem 1.25rem;
+}
+
+.sales-modal-head {
+  padding: 1.25rem 1.5rem;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.sales-modal-scroll {
+  padding: 1.25rem 1.5rem;
+  max-height: 70vh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+.sales-modal-foot {
+  padding: 1rem 1.5rem;
+  border-top: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  background: var(--surface);
+}
+
+/* ══════════════════════════════════════════════════════════════
+   ≤480px MOBILE OPTIMIZATION
+   440 x 956 (and every phone down to 320px) gets a full-height
+   sheet with an internally scrolling body.
+   ══════════════════════════════════════════════════════════════ */
+
+@media (max-width: 480px) {
+  /* The app renders from a 13px root, which is fine on a desktop but leaves
+     micro-labels near 8px on a 440px-wide phone. Scale the root up one step
+     for handsets; every rem-based size in the page follows. */
+  html, body {
+    font-size: 15px;
+  }
+
+  /* Touch targets: nothing interactive below 40px. */
+  .sales-modal-head button,
+  .sales-modal-foot button {
+    min-height: 40px;
+    min-width: 40px;
+  }
+
+  .history-page button {
+    min-height: 40px;
+  }
+
+  .item-count-badge,
+  .quick-entry-badge {
+    font-size: 0.68rem;
+  }
+
+  .audit-stat-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.5rem;
+  }
+
+  .audit-rate-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.5rem;
+  }
+
+  .audit-doc-grid {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.6rem;
+  }
+
+  .audit-check-grid {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.35rem;
+  }
+
+  .audit-section-body {
+    padding: 0.75rem 0.85rem;
+  }
+
+  .sales-modal-head {
+    padding: 0.85rem 0.9rem;
+  }
+
+  /* The sheet owns the viewport, so the body flexes and scrolls
+     internally instead of the whole modal growing past the screen. */
+  .sales-modal-scroll {
+    flex: 1;
+    min-height: 0;
+    max-height: none;
+    padding: 0.75rem 0.9rem;
+  }
+
+  .sales-modal-foot {
+    padding: 0.7rem 0.9rem;
+  }
+}
 
 @media (max-width: 480px) {
   .history-page {
@@ -2932,7 +3061,7 @@
   }
 }
 
-@media (max-width: 430px) {
+@media (max-width: 480px) {
   /* Full-screen bottom-sheet modals */
   .modal-overlay {
     padding: 0;
