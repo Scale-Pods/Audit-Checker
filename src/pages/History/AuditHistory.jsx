@@ -10,6 +10,11 @@ const AUDITS_WEBHOOK_URL = import.meta.env.VITE_AUDITS_HISTORY_URL || 'https://n
 const SALES_WEBHOOK_URL = 'https://n8n.srv1010832.hstgr.cloud/webhook/10916618-e795-416f-9d0a-6646da9aba06'
 const SALES_DECISION_WEBHOOK_URL = 'https://n8n.srv1010832.hstgr.cloud/webhook/0c5dfbd4-db17-4d71-87ab-96fa2fb7369e'
 const PENDING_DOCS_UPLOAD_WEBHOOK = 'https://n8n.srv1010832.hstgr.cloud/webhook/9f099219-ec9c-465d-83f4-6a048fa7dc85'
+
+// The n8n workflow that re-audits a ledger once its pending documents arrive is
+// not built yet, so the upload entry points stay hidden until it goes live.
+// Flip this to true once the workflow is deployed.
+const PENDING_DOCS_UPLOAD_ENABLED = false
 const LEDGERS_PER_PAGE = 15
 
 const getPageItems = (currentPage, totalPages) => {
@@ -803,7 +808,6 @@ const UnifiedAuditModal = ({ audit, onClose, onDecision, isProcessing }) => {
 const SALES_COMPARE_FIELDS = [
   { label: 'Order Number',       invoice: 'inv_order_number',        so: 'so_number',            po: null,                    gp: 'gp_so_number',         ws: null,                       type: 'text', nowrap: true },
   { label: 'PO Number',          invoice: 'inv_party_order_number',  so: 'so_po_number',         po: 'po_number',             gp: 'gp_po_number',          ws: null,                       type: 'text', nowrap: true },
-  { label: 'Gate Pass Number',   invoice: null,                      so: null,                   po: null,                    gp: 'gp_number',            ws: null,                       type: 'text', nowrap: true },
   { label: 'Customer / Party',   invoice: 'inv_bill_to_name',        so: 'so_customer_name',     po: 'po_customer_name',      gp: 'gp_party_name',        ws: 'ws_party_name',            type: 'name' },
   { label: 'Supplier',           invoice: null,                      so: null,                   po: 'po_supplier_name',      gp: null,                    ws: null,                       type: 'text', conditional: 'po' },
   { label: 'Broker',             invoice: 'inv_broker_name',         so: 'so_broker_name',       po: null,                    gp: null,                    ws: null,                       type: 'broker' },
@@ -818,8 +822,6 @@ const SALES_COMPARE_FIELDS = [
   { label: 'Length',             invoice: 'inv_length',              so: 'so_length',             po: 'po_length',             gp: 'gp_length',              ws: null,                       type: 'numeric' },
   { label: 'Vehicle Number',     invoice: 'inv_vehicle_number',      so: null,                   po: null,                    gp: 'gp_vehicle_number',    ws: 'ws_vehicle_number',        type: 'text', nowrap: true },
   { label: 'Material',           invoice: 'inv_notes',                so: 'so_product',           po: 'po_material_grade',     gp: 'gp_product',            ws: 'ws_material_description',  type: 'text', invoiceFallback: 'inv_product', poFallback: 'po_material_description' },
-  { label: 'Material Description', invoice: null,                      so: null,                   po: null,                    gp: 'gp_material_description', ws: null,                       type: 'text' },
-  { label: 'Gate Pass Date',     invoice: null,                      so: null,                   po: null,                    gp: 'gp_date',               ws: null,                       type: 'text' },
   { label: 'Coil Number',        invoice: null,                      so: 'so_coil_number',       po: null,                    gp: 'gp_coil_number',        ws: null,                       type: 'text', nowrap: true },
   { label: 'GSTIN',              invoice: 'inv_gstin',               so: null,                   po: 'po_gstin',              gp: null,                    ws: null,                       type: 'text' },
 ];
@@ -857,6 +859,30 @@ const levenshtein = (a, b) => {
   return matrix[b.length][a.length];
 };
 
+// Honorifics/terms-of-address (e.g. "Bhai" = brother) that should not count toward the actual name
+const NAME_HONORIFICS = new Set([
+  'bhai', 'bhaya', 'bhay', 'bhaiji', 'ji', 'sahab', 'sahib',
+  'shri', 'shree', 'sri', 'smt', 'mr', 'mrs', 'ms', 'miss', 'dr',
+  'brother', 'bro', 'sir', 'm/s', 'm/s.'
+]);
+
+const stripHonorifics = (tokens) => {
+  const filtered = tokens.filter(t => !NAME_HONORIFICS.has(t));
+  return filtered.length ? filtered : tokens;
+};
+
+// Two name words are the same word when they are identical, one contains the
+// other, or they sit within a small typo budget that scales with word length
+// (1 typo for 3-5 letter words like "jay"/"jai", 2 typos for 6+ letter words).
+const tokenSimilarity = (a, b) => {
+  if (a === b) return true;
+  if (a.length > 3 && b.includes(a)) return true;
+  if (b.length > 3 && a.includes(b)) return true;
+  const longest = Math.max(a.length, b.length);
+  if (longest < 3) return false;
+  return levenshtein(a, b) <= Math.max(1, Math.round(longest / 4));
+};
+
 const normalizeAuditResult = (result) => {
   if (!result || !result.output?.overall_summary) return result;
   const o = result.output;
@@ -879,41 +905,17 @@ const normalizeAuditResult = (result) => {
 };
 
 const fuzzyNameMatch = (a, b) => {
-  const ta = normalizeNameTokens(a);
-  const tb = normalizeNameTokens(b);
+  const ta = stripHonorifics(normalizeNameTokens(a));
+  const tb = stripHonorifics(normalizeNameTokens(b));
   const shorter = ta.length <= tb.length ? ta : tb;
   const longer  = ta.length <= tb.length ? tb : ta;
-  // Each token of the shorter must appear in the longer (or be ≥80% similar or max 2 typos)
-  const matched = shorter.filter(st =>
-    longer.some(lt => {
-      if (lt === st) return true;
-      if (st.length > 3 && lt.includes(st)) return true;
-      if (lt.length > 3 && st.includes(lt)) return true;
-      // Allow minor spelling mistakes (max 2 characters diff for words > 4 chars)
-      if (st.length > 4 && lt.length > 4) {
-         const dist = levenshtein(st, lt);
-         return dist <= 2;
-      }
-      return false;
-    })
-  );
+  // Each word of the shorter name must appear in the longer one (order is ignored)
+  const matched = shorter.filter(st => longer.some(lt => tokenSimilarity(st, lt)));
   return matched.length / shorter.length >= 0.7;
 };
 
-// Honorifics/terms-of-address (e.g. "Bhai" = brother) that should not count toward the actual name
-const NAME_HONORIFICS = new Set([
-  'bhai', 'bhaya', 'bhay', 'bhaiji', 'ji', 'sahab', 'sahib',
-  'shri', 'shree', 'sri', 'smt', 'mr', 'mrs', 'ms', 'miss', 'dr',
-  'brother', 'bro', 'sir', 'm/s', 'm/s.'
-]);
-
-const stripHonorifics = (tokens) => {
-  const filtered = tokens.filter(t => !NAME_HONORIFICS.has(t));
-  return filtered.length ? filtered : tokens;
-};
-
 // Broker names often carry an honorific suffix (e.g. "Namdev Bhai" where Bhai = brother).
-// Match on the first (given) name — if it matches, treat the broker as the same person.
+// Match on the stripped-down name — "JAY BHAI USA" and "Jai Bhai USA" are the same broker.
 const brokerNameMatch = (a, b) => {
   if (!a || !b) return false;
   const ta = stripHonorifics(normalizeNameTokens(a));
@@ -922,10 +924,10 @@ const brokerNameMatch = (a, b) => {
 
   const firstA = ta[0];
   const firstB = tb[0];
-  if (firstA === firstB) return true;
-  if (firstA.length > 3 && (firstA.includes(firstB) || firstB.includes(firstA))) return true;
-  if (firstA.length > 4 && firstB.length > 4 && levenshtein(firstA, firstB) <= 2) return true;
+  if (tokenSimilarity(firstA, firstB)) return true;
 
+  // Fall back to matching the whole stripped name regardless of word order,
+  // so "USA Jai Bhai" still resolves to "Jai Bhai USA".
   return fuzzyNameMatch(a, b);
 };
 
@@ -1459,31 +1461,46 @@ const transformSalesRecord = (record) => {
   return rest;
 };
 
-const isRecordQuickEntry = (record) =>
-  !Object.keys(record).some(k =>
-    (k.startsWith('inv_') || k.startsWith('gp_') || k.startsWith('ws_')) &&
-    record[k] !== null && record[k] !== undefined && record[k] !== ''
-  );
+// True when a record carries at least one non-empty column for a document prefix.
+const hasDocPrefixData = (record, prefix) =>
+  Object.keys(record).some(k => {
+    if (!k.startsWith(prefix)) return false;
+    const val = record[k];
+    if (val === null || val === undefined) return false;
+    if (typeof val === 'string') return val.trim() !== '';
+    return true;
+  });
 
-// Detect records that are missing Invoice or Weightslip uploads
-// (weightslip upload is allowed whenever the invoice is present)
+// The sales audit document set, in the order they are collected on the ledger.
+const DOC_PRESENCE = [
+  { key: 'po',         label: 'PO',         prefix: 'po_',  field: 'PurchaseOrder' },
+  { key: 'invoice',    label: 'Invoice',    prefix: 'inv_', field: 'Invoice' },
+  { key: 'gatepass',   label: 'Gate Pass',  prefix: 'gp_',  field: 'Gatepass' },
+  { key: 'weightslip', label: 'Weightslip', prefix: 'ws_',  field: 'Weightslip' },
+];
+
+const isRecordQuickEntry = (record) =>
+  !hasDocPrefixData(record, 'inv_') &&
+  !hasDocPrefixData(record, 'gp_') &&
+  !hasDocPrefixData(record, 'ws_');
+
+// Work out which documents a ledger is still missing so the user can upload
+// exactly those. A quick entry only ever carries PO data (it is the SO-vs-PO
+// check), so it is never chased for invoice / gate pass / weightslip.
+const getRecordMissingDocs = (record) => {
+  const missing = {};
+  DOC_PRESENCE.forEach(d => { missing[d.key] = !hasDocPrefixData(record, d.prefix); });
+  if (isRecordQuickEntry(record)) {
+    return { po: missing.po, invoice: false, gatepass: false, weightslip: false };
+  }
+  return missing;
+};
+
+// Detect records that are still missing one or more uploaded documents.
 const isRecordPendingDocuments = (record) => {
-  const hasPO = record.po_number && record.po_number !== '';
-  const hasSO = record.so_number && record.so_number !== '';
-  const hasGP = record.gp_number && record.gp_number !== '';
-  // Check if invoice fields are empty
-  const hasInvoice = Object.keys(record).some(k =>
-    k.startsWith('inv_') && record[k] !== null && record[k] !== undefined && record[k] !== ''
-  );
-  // Check if weightslip fields are empty
-  const hasWS = Object.keys(record).some(k =>
-    k.startsWith('ws_') && record[k] !== null && record[k] !== undefined && record[k] !== ''
-  );
-  // If invoice is already present, the weightslip can still be uploaded,
-  // so flag it even when PO/SO/GP numbers aren't all extracted.
-  if ((!hasPO || !hasSO || !hasGP) && !hasInvoice) return { pending: false, missingInvoice: false, missingWS: false };
-  const pending = !hasInvoice || !hasWS;
-  return { pending, missingInvoice: !hasInvoice, missingWS: !hasWS };
+  const missing = getRecordMissingDocs(record);
+  const missingLabels = DOC_PRESENCE.filter(d => missing[d.key]).map(d => d.label);
+  return { pending: missingLabels.length > 0, missing, missingLabels };
 };
 
 // ── Single File Picker for Pending Docs Modal ────────────────────
@@ -1606,11 +1623,14 @@ const SingleFilePicker = ({ label, file, onSelectFile, isPending }) => {
 const PendingDocsUploadModal = ({ group, onClose, onUploadSuccess }) => {
   const record = group.records[0];
   const pendingInfo = isRecordPendingDocuments(record);
-  const [invoiceFile, setInvoiceFile] = useState(null);
-  const [weightslipFile, setWeightslipFile] = useState(null);
+  // Only the documents this ledger is actually missing are offered for upload.
+  const missingDocs = DOC_PRESENCE.filter(d => pendingInfo.missing[d.key]);
+  const [files, setFiles] = useState({});
   const [isUploading, setIsUploading] = useState(false);
   const [uploadError, setUploadError] = useState(null);
   const [uploadSuccess, setUploadSuccess] = useState(false);
+
+  const setDocFile = (key, file) => setFiles(prev => ({ ...prev, [key]: file }));
 
   const convertPdfToImg = async (file) => {
     const pdfjsLib = await import('pdfjs-dist');
@@ -1629,46 +1649,45 @@ const PendingDocsUploadModal = ({ group, onClose, onUploadSuccess }) => {
     return new File([blob], file.name.replace(/\.pdf$/i, '.png'), { type: 'image/png' });
   };
 
-  const handleFile = async (e, setter) => {
+  const handleFile = async (e, key) => {
     const file = e.target.files[0];
     if (!file) return;
     if (file.type === 'application/pdf') {
       try {
-        const img = await convertPdfToImg(file);
-        setter(img);
-      } catch { setter(file); }
+        setDocFile(key, await convertPdfToImg(file));
+      } catch { setDocFile(key, file); }
     } else {
-      setter(file);
+      setDocFile(key, file);
     }
   };
 
   const handleSubmit = async () => {
-    if (!invoiceFile && !weightslipFile) {
-      setUploadError('Please select at least one file (Invoice or Weightslip) to upload.');
+    const chosen = missingDocs.filter(d => files[d.key]);
+    if (chosen.length === 0) {
+      setUploadError(`Please select at least one file (${missingDocs.map(d => d.label).join(', ')}).`);
       return;
     }
     setIsUploading(true);
     setUploadError(null);
     try {
       const formData = new FormData();
-      // Attach SO/PO/GP context
-      const soNum = record.so_number || record.inv_order_number || record.order_number || record["Invoice Number"] || group.invoiceNumber || '';
+      // The ledger identity travels with every upload so the audit can be re-linked.
+      const soNum = record.so_number || record.so_po_number || record.inv_order_number
+        || record.order_number || record['Invoice Number'] || group.invoiceNumber || '';
       formData.append('so_number', soNum);
       formData.append('so_no', soNum);
       formData.append('SO Number', soNum);
-      formData.append('po_number', record.po_number || '');
+      formData.append('po_number', record.po_number || record.so_po_number || '');
       formData.append('gp_number', record.gp_number || '');
       formData.append('record_id', record.id?.toString() || '');
-      if (invoiceFile) {
-        const ext = invoiceFile.name.includes('.') ? invoiceFile.name.split('.').pop() : 'png';
-        const renamed = new File([invoiceFile], `Invoice.${ext}`, { type: invoiceFile.type });
-        formData.append('Invoice', renamed, renamed.name);
-      }
-      if (weightslipFile) {
-        const ext = weightslipFile.includes?.('.') ? weightslipFile.name.split('.').pop() : 'png';
-        const renamed = new File([weightslipFile], `Weightslip.${ext}`, { type: weightslipFile.type });
-        formData.append('Weightslip', renamed, renamed.name);
-      }
+      chosen.forEach(d => {
+        const file = files[d.key];
+        const ext = file.name.includes('.') ? file.name.split('.').pop() : 'png';
+        const fileName = `${d.field}.${ext}`;
+        const renamed = new File([file], fileName, { type: file.type });
+        formData.append(d.field, renamed, fileName);
+        formData.append(`${d.field}Name`, file.name);
+      });
       const res = await fetch(PENDING_DOCS_UPLOAD_WEBHOOK, { method: 'POST', body: formData });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       setUploadSuccess(true);
@@ -1698,7 +1717,9 @@ const PendingDocsUploadModal = ({ group, onClose, onUploadSuccess }) => {
               <div>
                 <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 800, color: 'var(--text)' }}>Upload Pending Documents</h3>
                 <p style={{ margin: '0.15rem 0 0', fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 600 }}>
-                  SO: {record.so_number || group.invoiceNumber || '—'} · PO: {record.po_number || '—'} · GP: {record.gp_number || '—'}
+                  SO: {record.so_number || group.invoiceNumber || '—'}
+                  {hasDocPrefixData(record, 'po_') ? ` · PO: ${record.po_number || '—'}` : ''}
+                  {hasDocPrefixData(record, 'gp_') ? ` · GP: ${record.gp_number || '—'}` : ''}
                 </p>
               </div>
             </div>
@@ -1708,47 +1729,38 @@ const PendingDocsUploadModal = ({ group, onClose, onUploadSuccess }) => {
           </div>
         </div>
 
-        {/* Missing doc info badges */}
+        {/* Document status badges */}
         <div style={{ padding: '1rem 1.5rem 0' }}>
           <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '1rem' }}>
-            <span style={{
-              display: 'inline-flex', alignItems: 'center', gap: '0.35rem',
-              padding: '0.3rem 0.75rem', borderRadius: '6px', fontSize: '0.72rem', fontWeight: 700,
-              background: pendingInfo.missingInvoice ? 'rgba(239,68,68,0.1)' : 'rgba(16,185,129,0.1)',
-              color: pendingInfo.missingInvoice ? '#ef4444' : '#10b981',
-              border: `1px solid ${pendingInfo.missingInvoice ? 'rgba(239,68,68,0.2)' : 'rgba(16,185,129,0.2)'}`
-            }}>
-              {pendingInfo.missingInvoice ? <AlertTriangle size={11} /> : <CheckCircle size={11} />}
-              Invoice {pendingInfo.missingInvoice ? '— Pending' : '— Present'}
-            </span>
-            <span style={{
-              display: 'inline-flex', alignItems: 'center', gap: '0.35rem',
-              padding: '0.3rem 0.75rem', borderRadius: '6px', fontSize: '0.72rem', fontWeight: 700,
-              background: pendingInfo.missingWS ? 'rgba(239,68,68,0.1)' : 'rgba(16,185,129,0.1)',
-              color: pendingInfo.missingWS ? '#ef4444' : '#10b981',
-              border: `1px solid ${pendingInfo.missingWS ? 'rgba(239,68,68,0.2)' : 'rgba(16,185,129,0.2)'}`
-            }}>
-              {pendingInfo.missingWS ? <AlertTriangle size={11} /> : <CheckCircle size={11} />}
-              Weightslip {pendingInfo.missingWS ? '— Pending' : '— Present'}
-            </span>
+            {DOC_PRESENCE.map(d => {
+              const isMissing = pendingInfo.missing[d.key];
+              return (
+                <span key={d.key} style={{
+                  display: 'inline-flex', alignItems: 'center', gap: '0.35rem',
+                  padding: '0.3rem 0.75rem', borderRadius: '6px', fontSize: '0.72rem', fontWeight: 700,
+                  background: isMissing ? 'rgba(239,68,68,0.1)' : 'rgba(16,185,129,0.1)',
+                  color: isMissing ? '#ef4444' : '#10b981',
+                  border: `1px solid ${isMissing ? 'rgba(239,68,68,0.2)' : 'rgba(16,185,129,0.2)'}`
+                }}>
+                  {isMissing ? <AlertTriangle size={11} /> : <CheckCircle size={11} />}
+                  {d.label} {isMissing ? '— Pending' : '— Present'}
+                </span>
+              );
+            })}
           </div>
         </div>
 
-        {/* Upload form */}
+        {/* Upload form — one picker per missing document */}
         <div style={{ padding: '0 1.5rem 1.5rem' }}>
-          <SingleFilePicker
-            label="Invoice"
-            file={invoiceFile}
-            isPending={pendingInfo.missingInvoice}
-            onSelectFile={(e) => handleFile(e, setInvoiceFile)}
-          />
-
-          <SingleFilePicker
-            label="Weightslip"
-            file={weightslipFile}
-            isPending={pendingInfo.missingWS}
-            onSelectFile={(e) => handleFile(e, setWeightslipFile)}
-          />
+          {missingDocs.map(d => (
+            <SingleFilePicker
+              key={d.key}
+              label={d.label}
+              file={files[d.key] || null}
+              isPending
+              onSelectFile={(e) => handleFile(e, d.key)}
+            />
+          ))}
 
           {uploadError && (
             <div style={{
@@ -1822,6 +1834,9 @@ const SalesRecordModal = ({ records, onClose, invoiceNumber, onDecision, isProce
   const hasInvoiceData = hasDocData('inv_');
   const hasGPData = hasDocData('gp_');
   const hasWSData = hasDocData('ws_');
+  // A ledger where no PO was uploaded would otherwise render an entirely
+  // blank PO column, so every PO block is hidden instead.
+  const hasPOData = hasDocData('po_');
   const isQuickEntry = !hasInvoiceData && !hasGPData && !hasWSData;
 
   const SectionHeader = ({ title, defaultOpen = true }) => (
@@ -2020,7 +2035,7 @@ const SalesRecordModal = ({ records, onClose, invoiceNumber, onDecision, isProce
 // ordered documents first, then the commercial terms, then the money.
 const MATCH_RESULT_CHECKS = [
   { label: 'Customer',        key: 'customer_match' },
-  { label: 'PO',              key: 'po_match' },
+  { label: 'PO',              key: 'po_match',       hideWithout: 'po' },
   { label: 'SO',              key: 'so_match' },
   { label: 'Vehicle',         key: 'vehicle_match' },
   { label: 'Weight Slip',     key: 'weight_slip_match' },
@@ -2123,7 +2138,7 @@ const MATCH_RESULT_CHECKS = [
             {[
               { label: 'Invoice #', value: invoiceNumber || v('inv_order_number') },
               { label: 'SO #', value: v('so_number') },
-              { label: 'PO #', value: v('po_number') },
+              { label: 'PO #', value: v('po_number'), show: hasPOData },
               { label: 'GP #', value: v('gp_number'), show: hasGPData },
               { label: 'WS #', value: v('ws_number') },
             ].filter(item => item.show !== false).map((item, idx) => (
@@ -2150,7 +2165,7 @@ const MATCH_RESULT_CHECKS = [
                     <th style={thStyle}>Field</th>
                     {hasInvoiceData && <th style={{ ...thStyle, textAlign: 'center' }}>Invoice</th>}
                     <th style={{ ...thStyle, textAlign: 'center' }}>SO</th>
-                    <th style={{ ...thStyle, textAlign: 'center' }}>PO</th>
+                    {hasPOData && <th style={{ ...thStyle, textAlign: 'center' }}>PO</th>}
                     {hasGPData && <th style={{ ...thStyle, textAlign: 'center' }}>Gate Pass</th>}
                     {hasWSData && <th style={{ ...thStyle, textAlign: 'center' }}>Weight Slip</th>}
                   </tr>
@@ -2269,7 +2284,7 @@ const MATCH_RESULT_CHECKS = [
                         <td style={{ ...tdStyle, fontWeight: 700, color: 'var(--text)', whiteSpace: 'nowrap' }}>{label}</td>
                         {hasInvoiceData && <td style={{ ...tdStyle, textAlign: 'center', background: getCellBg(iv, 0) }}><DocBadge val={formatDocVal(field, 'invoice', iv)} nowrap={nowrap} align="center" color={getCellColor(iv, 0)} /></td>}
                         <td style={{ ...tdStyle, textAlign: 'center', background: getCellBg(sv, 1) }}><DocBadge val={formatDocVal(field, 'so', sv)} nowrap={nowrap} align="center" color={getCellColor(sv, 1)} /></td>
-                        <td style={{ ...tdStyle, textAlign: 'center', background: getCellBg(pv, 2) }}><DocBadge val={formatDocVal(field, 'po', pv)} nowrap={nowrap} align="center" color={getCellColor(pv, 2)} /></td>
+                        {hasPOData && <td style={{ ...tdStyle, textAlign: 'center', background: getCellBg(pv, 2) }}><DocBadge val={formatDocVal(field, 'po', pv)} nowrap={nowrap} align="center" color={getCellColor(pv, 2)} /></td>}
                         {hasGPData && <td style={{ ...tdStyle, textAlign: 'center', background: getCellBg(gv, 3) }}><DocBadge val={formatDocVal(field, 'gp', gv)} nowrap={nowrap} align="center" color={getCellColor(gv, 3)} /></td>}
                         {hasWSData && <td style={{ ...tdStyle, textAlign: 'center', background: getCellBg(wv, 4) }}><DocBadge val={formatWsCell(field, wv)} nowrap={nowrap} align="center" color={getCellColor(wv, 4)} /></td>}
                       </tr>
@@ -2303,7 +2318,7 @@ const MATCH_RESULT_CHECKS = [
                 <div className="audit-stat-grid">
                   <StatCard label="Taxable Amount" value={showMoney(record.inv_taxable_value)} />
                   <StatCard label="Final Invoice Amount" value={showMoney(record.inv_final_amount)} />
-                  <StatCard label="PO Amount" value={showMoney(record.po_total_amount)} />
+                  {hasPOData && <StatCard label="PO Amount" value={showMoney(record.po_total_amount)} />}
                 </div>
               </div>
 
@@ -2311,7 +2326,7 @@ const MATCH_RESULT_CHECKS = [
                 <SectionLabel action={<MatchBadge value={check('rate_match')} />}>Rate Comparison</SectionLabel>
                 <div className="audit-rate-grid">
                   <StatCard label="SO Rate" value={showRate(record.so_rate)} />
-                  <StatCard label="PO Rate" value={showRate(record.po_rate)} />
+                  {hasPOData && <StatCard label="PO Rate" value={showRate(record.po_rate)} />}
                   <StatCard label="Invoice Rate" value={showRate(record.inv_rate)} />
                 </div>
               </div>
@@ -2326,10 +2341,10 @@ const MATCH_RESULT_CHECKS = [
               <StatCard label="Invoice CGST" value={showMoney(record.inv_cgst_amount)} />
               <StatCard label="Invoice SGST" value={showMoney(record.inv_sgst_amount)} />
               <StatCard label="Invoice IGST" value={showMoney(record.inv_igst_amount)} />
-              <StatCard label="PO Rate" value={showRate(record.po_rate)} />
+              {hasPOData && <StatCard label="PO Rate" value={showRate(record.po_rate)} />}
               <StatCard label="Invoice Rate" value={showRate(record.inv_rate)} />
               <StatCard label="SO Rate" value={showRate(record.so_rate)} />
-              <StatCard label="PO Total Amount" value={showMoney(record.po_total_amount)} />
+              {hasPOData && <StatCard label="PO Total Amount" value={showMoney(record.po_total_amount)} />}
               <StatCard label="SO Payment Terms" value={showText(record.so_payment_terms)} />
               <StatCard label="Invoice Payment Terms" value={showText(record.inv_payment_terms)} />
             </div>
@@ -2359,18 +2374,20 @@ const MATCH_RESULT_CHECKS = [
                   { label: 'Coil Number', value: showText(record.so_coil_number) },
                 ]}
               />
-              <DocPanel
-                kind="po"
-                title="Purchase Order"
-                rows={[
-                  { label: 'Material Description', value: showText(record.po_material_description) },
-                  { label: 'Material Grade', value: showText(record.po_material_grade) },
-                  { label: 'HSN Code', value: showText(record.po_hsn_code) },
-                  { label: 'Dimensions (T × W × L)', value: showDimensions(record.po_thickness, record.po_width, record.po_length) },
-                  { label: 'Quantity', value: showQuantity(record.po_quantity, record.po_unit) },
-                  { label: 'Unit', value: showText(record.po_unit) },
-                ]}
-              />
+              {hasPOData && (
+                <DocPanel
+                  kind="po"
+                  title="Purchase Order"
+                  rows={[
+                    { label: 'Material Description', value: showText(record.po_material_description) },
+                    { label: 'Material Grade', value: showText(record.po_material_grade) },
+                    { label: 'HSN Code', value: showText(record.po_hsn_code) },
+                    { label: 'Dimensions (T × W × L)', value: showDimensions(record.po_thickness, record.po_width, record.po_length) },
+                    { label: 'Quantity', value: showQuantity(record.po_quantity, record.po_unit) },
+                    { label: 'Unit', value: showText(record.po_unit) },
+                  ]}
+                />
+              )}
               <DocPanel
                 kind="invoice"
                 title="Invoice"
@@ -2480,7 +2497,7 @@ const MATCH_RESULT_CHECKS = [
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
               <AuditStatusStrip score={check('audit_score')} status={check('audit_status')} />
               <div className="audit-check-grid">
-                {MATCH_RESULT_CHECKS.map(item => (
+                {MATCH_RESULT_CHECKS.filter(item => !item.hideWithout || hasPOData).map(item => (
                   <CheckRow key={item.key} label={item.label} value={check(item.key)} />
                 ))}
               </div>
@@ -3231,11 +3248,10 @@ const AuditHistory = () => {
                   const s = isRecordPendingDocuments(r);
                   return {
                     pending: acc.pending || s.pending,
-                    missingInvoice: acc.missingInvoice || s.missingInvoice,
-                    missingWS: acc.missingWS || s.missingWS,
+                    missingLabels: [...new Set([...acc.missingLabels, ...s.missingLabels])],
                   };
-                }, { pending: false, missingInvoice: false, missingWS: false });
-                const hasPendingDocs = pendingDocStatus.pending;
+                }, { pending: false, missingLabels: [] });
+                const hasPendingDocs = PENDING_DOCS_UPLOAD_ENABLED && pendingDocStatus.pending;
                 const cardBg = groupDecision === 'Approve' ? 'rgba(16, 185, 129, 0.12)' :
                                groupDecision === 'Reject' ? 'rgba(239, 68, 68, 0.12)' :
                                hasPendingDocs ? 'rgba(245,158,11,0.06)' : '';
@@ -3255,7 +3271,7 @@ const AuditHistory = () => {
                 >
                   <div className="sales-record-info">
                     <div className="sales-invoice-header">
-                      <h3 className="sales-order-id">{group.invoiceNumber}</h3>
+                      <h3 className="sales-party-name" title={group.partyName}>{group.partyName}</h3>
                       {group.records.length > 1 && (
                         <span className="item-count-badge">{group.records.length} items</span>
                       )}
@@ -3270,16 +3286,11 @@ const AuditHistory = () => {
                           border: '1px solid rgba(245,158,11,0.3)', textTransform: 'uppercase', letterSpacing: '0.05em'
                         }}>
                           <AlertTriangle size={10} />
-                          {pendingDocStatus.missingInvoice && pendingDocStatus.missingWS
-                            ? 'Invoice & Weightslip Pending'
-                            : pendingDocStatus.missingInvoice
-                            ? 'Invoice Pending'
-                            : 'Weightslip Pending'}
+                          {pendingDocStatus.missingLabels.join(' & ')} Pending
                         </span>
-                      )}
-                    </div>
+                      )}                    </div>
                     <div className="sales-meta">
-                      <span className="sales-party">{group.partyName}</span>
+                      <span className="sales-so-id" title={group.invoiceNumber}>{group.invoiceNumber}</span>
                       <span className="sales-dot">•</span>
                       <span className="sales-date">
                         {group.latestDate ? new Date(group.latestDate).toLocaleDateString('en-IN', { dateStyle: 'medium' }) : '—'}
@@ -3346,7 +3357,7 @@ const AuditHistory = () => {
         />
       )}
 
-      {pendingUploadGroup && (
+      {PENDING_DOCS_UPLOAD_ENABLED && pendingUploadGroup && (
         <PendingDocsUploadModal
           group={pendingUploadGroup}
           onClose={() => setPendingUploadGroup(null)}

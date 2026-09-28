@@ -676,13 +676,17 @@
   flex-wrap: wrap;
 }
 
-.sales-order-id {
+.sales-party-name {
   font-size: 0.95rem;
   font-weight: 700;
-  color: var(--primary);
+  color: var(--text);
   margin: 0;
   font-family: 'Outfit', sans-serif;
   line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 320px;
 }
 
 .sales-meta {
@@ -694,7 +698,10 @@
   font-weight: 500;
 }
 
-.sales-party {
+.sales-so-id {
+  font-weight: 700;
+  color: var(--primary);
+  font-family: 'Outfit', sans-serif;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -758,7 +765,7 @@
     padding: 1rem;
   }
   
-  .sales-party {
+  .sales-so-id {
     max-width: 160px;
   }
   
@@ -775,10 +782,11 @@
 }
 
 @media (max-width: 480px) {
-  .sales-order-id {
+  .sales-party-name {
     font-size: 0.9rem;
   }
-  .sales-party {
+  .sales-party-name,
+  .sales-so-id {
     max-width: 120px;
   }
   .input-search {
@@ -3181,7 +3189,8 @@
     justify-content: flex-end;
   }
 
-  .sales-party {
+  .sales-party-name,
+  .sales-so-id {
     max-width: 100%;
   }
 
