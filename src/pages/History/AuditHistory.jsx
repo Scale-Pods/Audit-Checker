@@ -3310,11 +3310,13 @@ const AuditHistory = () => {
                       >
                         <UploadCloud size={13} />
                         <span className="hide-mobile">Upload Docs</span>
+                        <span className="sr-only-mobile">Upload Docs</span>
                       </button>
                     )}
-                    <button className="btn-action-view">
+                    <button className="btn-action-view" aria-label="View comparison" title="View comparison">
                       <Eye size={16} />
                       <span className="hide-mobile">View Comparison</span>
+                      <span className="sr-only-mobile">View Comparison</span>
                     </button>
                   </div>
                 </div>

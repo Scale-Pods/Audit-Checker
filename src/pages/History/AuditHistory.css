@@ -1628,7 +1628,7 @@
 }
 
 .addr-hint-badge {
-  font-size: 0.55rem;
+  font-size: 0.62rem;
   font-weight: 800;
   text-transform: uppercase;
   color: #818cf8;
@@ -2088,7 +2088,7 @@
     content: attr(data-label);
     font-weight: 800;
     text-transform: uppercase;
-    font-size: 0.55rem;
+    font-size: 0.62rem;
     color: var(--text-muted);
     text-align: left;
     margin-right: 1rem;
@@ -2351,7 +2351,7 @@
   }
 
   .item-count-badge {
-    font-size: 0.58rem;
+    font-size: 0.64rem;
     padding: 1px 7px;
   }
 }
@@ -2606,7 +2606,8 @@
   gap: 3px;
   padding: 2px 7px;
   border-radius: 99px;
-  font-size: 0.52rem;
+  /* 0.52rem rendered at 8.3px on the mobile root — under the legibility floor. */
+  font-size: 0.6rem;
   font-weight: 800;
   letter-spacing: 0.04em;
   white-space: nowrap;
@@ -2877,17 +2878,17 @@
     padding: 2px 8px;
   }
   .risk-badge {
-    font-size: 0.55rem;
+    font-size: 0.62rem;
     padding: 1px 7px;
   }
   .confidence-badge {
-    font-size: 0.55rem;
+    font-size: 0.62rem;
   }
   .score-header-stats {
     gap: 0.3rem;
   }
   .stat-chip {
-    font-size: 0.55rem;
+    font-size: 0.62rem;
     padding: 1px 6px;
   }
   .audit-insights-panel {
@@ -2970,12 +2971,9 @@
    ══════════════════════════════════════════════════════════════ */
 
 @media (max-width: 480px) {
-  /* The app renders from a 13px root, which is fine on a desktop but leaves
-     micro-labels near 8px on a 440px-wide phone. Scale the root up one step
-     for handsets; every rem-based size in the page follows. */
-  html, body {
-    font-size: 15px;
-  }
+  /* The 13px → 16px root step lives in index.css and applies app-wide; a local
+     html/body rule here would override it and make this page the only one
+     rendering at 15px. This block handles the sheet layout only. */
 
   /* Touch targets: nothing interactive below 40px. */
   .sales-modal-head button,
@@ -3059,6 +3057,47 @@
     font-size: 0.8rem !important;
     height: 40px !important;
   }
+
+  /* The button label classes were declared but never actually hidden, so on a
+     360px screen the sort control was crushed to a 42px sliver trying to hold
+     "↓ Latest" next to a 297px search field. Drop the labels and keep the
+     icons — every one of these buttons carries an aria-label or title. */
+  .hide-mobile {
+    display: none !important;
+  }
+
+  .pagination-nav-btn,
+  .ledger-sort-btn,
+  .btn-action,
+  .btn-action-view {
+    min-width: 40px;
+    justify-content: center;
+    padding-left: 0.5rem;
+    padding-right: 0.5rem;
+  }
+}
+
+/* 360px-class handsets: two money columns leave ~123px of content per card,
+   which wraps every uppercase label onto two lines. One column reads better. */
+@media (max-width: 380px) {
+  .audit-stat-grid,
+  .audit-rate-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* Icon-only buttons keep their accessible name: the visible label is hidden
+   on phones, so the text is re-exposed to screen readers off-screen. */
+.sr-only-mobile {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 @media (max-width: 480px) {

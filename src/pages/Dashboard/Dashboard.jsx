@@ -419,6 +419,52 @@ const getReference = (item, isPurchase) => {
   }
 }
 
+const getPurchaseDocumentState = (item) => {
+  const documentGroups = [
+    [item?.Invoice_Number_Invoice, item?.inv_number, item?.tax_invoice_number, item?.invoice_number],
+    [item?.EWB_Number_EWay, item?.Invoice_Number_EWay, item?.ewb_number],
+    [item?.Batch_Code_Invoice, item?.batch_code, item?.batch_number],
+    [item?.Supplier_Name_Invoice, item?.supplier_name, item?.vendor_name]
+  ]
+  const available = documentGroups.filter((group) => group.some(hasValue)).length
+
+  return {
+    available,
+    total: documentGroups.length,
+    complete: available === documentGroups.length
+  }
+}
+
+const getPurchaseTaxTotal = (item) => {
+  const taxes = [
+    item?.CGST_Invoice,
+    item?.SGST_Invoice,
+    item?.IGST_Invoice,
+    item?.Tax_Amount,
+    item?.cgst_amount,
+    item?.sgst_amount,
+    item?.igst_amount
+  ]
+    .map(parseAmount)
+    .filter((value) => value !== null)
+
+  return taxes.length > 0 ? taxes.reduce((sum, value) => sum + value, 0) : null
+}
+
+const getPurchaseQuantity = (item) => parseScore(firstValue(
+  item?.Quantity_Invoice,
+  item?.Billed_Quantity,
+  item?.Net_Weight,
+  item?.Quantity,
+  item?.qty
+))
+
+const getPurchaseUnit = (item) => asText(firstValue(
+  item?.Unit_Invoice,
+  item?.Quantity_Unit,
+  item?.unit
+))
+
 const normalizeRecord = (item, side, index) => {
   const isPurchase = side === 'purchase'
   const result = getAuditResult(item)
@@ -461,10 +507,10 @@ const normalizeRecord = (item, side, index) => {
     isPurchase ? undefined : item?.po_date
   ))
   const amount = isPurchase ? getPurchaseAmount(item) : getSalesAmount(item)
-  const quantity = isPurchase ? null : getSalesQuantity(item)
-  const quantityUnit = isPurchase ? '' : getSalesUnit(item)
-  const documentState = isPurchase ? null : getSalesDocumentState(item)
-  const taxTotal = isPurchase ? null : getSalesTaxTotal(item)
+  const quantity = isPurchase ? getPurchaseQuantity(item) : getSalesQuantity(item)
+  const quantityUnit = isPurchase ? getPurchaseUnit(item) : getSalesUnit(item)
+  const documentState = isPurchase ? getPurchaseDocumentState(item) : getSalesDocumentState(item)
+  const taxTotal = isPurchase ? getPurchaseTaxTotal(item) : getSalesTaxTotal(item)
   const summary = asText(firstValue(
     item?.inv_audit_summary,
     item?.audit_summary,
@@ -587,6 +633,50 @@ const buildSalesStats = (rows) => {
   }
 }
 
+const buildPurchaseStats = (rows) => {
+  const pricedRows = rows.filter((row) => row.amount !== null)
+  const scoredRows = rows.filter((row) => row.score !== null)
+  const quantityRows = rows.filter((row) => row.quantity !== null)
+  const taxRows = rows.filter((row) => row.taxTotal !== null)
+  const unitCounts = new Map()
+
+  quantityRows.forEach((row) => {
+    if (row.quantityUnit) unitCounts.set(row.quantityUnit, (unitCounts.get(row.quantityUnit) || 0) + 1)
+  })
+
+  const quantityUnit = [...unitCounts.entries()]
+    .sort((left, right) => right[1] - left[1])[0]?.[0] || 'units'
+  const documentChecks = rows.reduce((sum, row) => sum + row.documentAvailable, 0)
+  const possibleDocumentChecks = rows.reduce((sum, row) => sum + row.documentTotal, 0)
+  const totalQuantity = quantityRows.length > 0
+    ? quantityRows.reduce((sum, row) => sum + row.quantity, 0)
+    : null
+  const totalTax = taxRows.length > 0
+    ? taxRows.reduce((sum, row) => sum + row.taxTotal, 0)
+    : null
+
+  return {
+    averageInvoiceValue: pricedRows.length > 0
+      ? pricedRows.reduce((sum, row) => sum + row.amount, 0) / pricedRows.length
+      : null,
+    averageScore: scoredRows.length > 0
+      ? scoredRows.reduce((sum, row) => sum + row.score, 0) / scoredRows.length
+      : null,
+    supplierCount: new Set(rows.filter((row) => row.party !== 'Unknown party').map((row) => row.party)).size,
+    documentCoverageRate: possibleDocumentChecks > 0
+      ? Math.round(documentChecks / possibleDocumentChecks * 100)
+      : 0,
+    completeDocumentCount: rows.filter((row) => row.documentComplete).length,
+    totalQuantity,
+    quantityUnit,
+    quantityCount: quantityRows.length,
+    totalTax,
+    taxCount: taxRows.length,
+    pricedCount: pricedRows.length,
+    scoredCount: scoredRows.length
+  }
+}
+
 const statusBadgeClass = (status) => {
   if (status === 'verified') return 'tag-verified'
   if (status === 'mismatch') return 'tag-mismatch'
@@ -618,6 +708,7 @@ const Dashboard = () => {
   const [tableSearch, setTableSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
   const [sortOrder, setSortOrder] = useState('newest')
+  const [rowLimit, setRowLimit] = useState('5')
   const [selectedAuditModal, setSelectedAuditModal] = useState(null)
   const requestIdRef = useRef(0)
 
@@ -671,7 +762,8 @@ const Dashboard = () => {
     [activeRecords, activeSide]
   )
   const isSales = activeSide === 'sales'
-  const tableRows = useMemo(() => {
+  
+  const { tableRows, totalFilteredCount } = useMemo(() => {
     const query = tableSearch.trim().toLowerCase()
 
     const filtered = query
@@ -684,21 +776,30 @@ const Dashboard = () => {
       : filtered.filter((row) => row.status === statusFilter)
 
     const sortedRows = [...statusFiltered].sort((left, right) => {
-      if (isSales) return right.timestamp - left.timestamp
       const difference = left.timestamp - right.timestamp
       return sortOrder === 'newest' ? -difference : difference
     })
 
-    return isSales ? sortedRows.slice(0, 5) : sortedRows
-  }, [isSales, normalizedRows, statusFilter, sortOrder, tableSearch])
+    const limit = rowLimit === '5' ? 5 : sortedRows.length
+    return {
+      tableRows: sortedRows.slice(0, limit),
+      totalFilteredCount: sortedRows.length
+    }
+  }, [normalizedRows, statusFilter, sortOrder, rowLimit, tableSearch])
 
   const dashboardStats = useMemo(() => buildDashboardStats(normalizedRows), [normalizedRows])
   const salesStats = useMemo(
     () => isSales ? buildSalesStats(normalizedRows) : null,
     [isSales, normalizedRows]
   )
+  const purchaseStats = useMemo(
+    () => !isSales ? buildPurchaseStats(normalizedRows) : null,
+    [isSales, normalizedRows]
+  )
   const tableTitle = isSales ? 'Recent Sales Audits' : 'Recent Purchase Audits'
-  const tableSubtitle = isSales ? 'Latest 5 sales order, invoice, and logistics compliance records' : 'Invoice, e-way, LR, and GRN compliance'
+  const tableSubtitle = isSales 
+    ? 'Latest sales order, invoice, and logistics compliance records' 
+    : 'Latest purchase invoice, e-way bill, and GRN compliance records'
   const searchPlaceholder = isSales ? 'Search order, customer, reference...' : 'Search invoice, supplier, reference...'
   const sourceLabel = isSales ? 'public."Audit Checker Sales"' : 'public."Audit Checker"'
 
@@ -840,6 +941,63 @@ const Dashboard = () => {
         </section>
       )}
 
+      {!isSales && purchaseStats && (
+        <section className="sales-insights-section">
+          <div className="section-heading-row">
+            <div>
+              <h2 className="section-title">Purchase intelligence</h2>
+              <p className="section-subtitle">Supplier, financial, and procurement compliance signals</p>
+            </div>
+            <span className="section-data-note">Based on {dashboardStats.total.toLocaleString('en-IN')} purchase records</span>
+          </div>
+
+          <div className="sales-metric-grid">
+            <SalesMetricCard
+              icon={ReceiptIndianRupee}
+              title="Average invoice value"
+              value={formatCurrency(purchaseStats.averageInvoiceValue)}
+              detail={`${purchaseStats.pricedCount.toLocaleString('en-IN')} priced invoices`}
+              tone="blue"
+            />
+            <SalesMetricCard
+              icon={Gauge}
+              title="Average audit score"
+              value={purchaseStats.averageScore === null ? '—' : `${formatNumber(purchaseStats.averageScore)}%`}
+              detail={`${purchaseStats.scoredCount.toLocaleString('en-IN')} scored invoices`}
+              tone="green"
+            />
+            <SalesMetricCard
+              icon={Users}
+              title="Active suppliers"
+              value={purchaseStats.supplierCount.toLocaleString('en-IN')}
+              detail="Distinct purchase suppliers"
+              tone="purple"
+            />
+            <SalesMetricCard
+              icon={FileCheck2}
+              title="Document coverage"
+              value={`${purchaseStats.documentCoverageRate}%`}
+              detail={`${purchaseStats.completeDocumentCount.toLocaleString('en-IN')} complete document sets`}
+              tone="teal"
+            />
+            <SalesMetricCard
+              icon={Boxes}
+              title="Procured volume"
+              value={formatQuantity(purchaseStats.totalQuantity, purchaseStats.quantityUnit)}
+              detail={`${purchaseStats.quantityCount.toLocaleString('en-IN')} items with quantity`}
+              tone="blue"
+            />
+            <SalesMetricCard
+              icon={ReceiptIndianRupee}
+              title="Tax captured"
+              value={formatCurrency(purchaseStats.totalTax)}
+              detail={`${purchaseStats.taxCount.toLocaleString('en-IN')} tax records`}
+              tone="green"
+            />
+          </div>
+        </section>
+      )}
+
       <div className="charts-flex-grid">
         <div className="panel-box chart-panel-left">
           <div className="panel-box-header">
@@ -967,16 +1125,24 @@ const Dashboard = () => {
               </select>
             </div>
 
-            {!isSales && (
-              <button
-                type="button"
-                className="btn btn-outline sort-toggle-btn"
-                onClick={() => setSortOrder((current) => current === 'newest' ? 'oldest' : 'newest')}
-              >
-                <ArrowUpDown size={12} />
-                <span>{sortOrder === 'newest' ? 'Newest' : 'Oldest'}</span>
-              </button>
-            )}
+            <button
+              type="button"
+              className="btn btn-outline sort-toggle-btn"
+              onClick={() => setSortOrder((current) => current === 'newest' ? 'oldest' : 'newest')}
+              title="Toggle sort direction"
+            >
+              <ArrowUpDown size={12} />
+              <span>{sortOrder === 'newest' ? 'Newest' : 'Oldest'}</span>
+            </button>
+
+            <button
+              type="button"
+              className={`btn btn-outline limit-toggle-btn ${rowLimit === '5' ? 'active-limit' : ''}`}
+              onClick={() => setRowLimit((current) => current === '5' ? 'all' : '5')}
+              title="Toggle rows display limit"
+            >
+              <span>{rowLimit === '5' ? 'Top 5' : 'All'}</span>
+            </button>
           </div>
         </div>
 
@@ -1052,7 +1218,7 @@ const Dashboard = () => {
         </div>
 
         <div className="table-footer">
-          <span>{isSales ? `Showing ${tableRows.length} latest sales entries` : `Showing ${tableRows.length} audit entries`}</span>
+          <span>Showing {tableRows.length} of {totalFilteredCount} {isSales ? 'sales' : 'purchase'} audit entries</span>
           <span>Data source: {sourceLabel}</span>
         </div>
       </div>

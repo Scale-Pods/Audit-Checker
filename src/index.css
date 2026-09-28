@@ -237,6 +237,23 @@ html, body {
   -moz-osx-font-smoothing: grayscale;
   font-size: 13px;
   line-height: 1.5;
+  /* Reserve the scrollbar track so content never shifts sideways when a
+     page grows past the viewport (mobile browsers overlay it, desktop does not). */
+  scrollbar-gutter: stable;
+  overflow-x: hidden;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+/* Handsets and tablets: the 13px desktop root leaves micro-labels near
+   8-9px on a 440px-wide screen, which is below the legibility floor. Stepping
+   the root to 16px lifts every rem-based size in the app — labels, badges,
+   table headers — in one place, and 16px is the platform default. Held to
+   1024px so desktop windows keep the denser 13px dashboard. */
+@media (max-width: 1024px) {
+  html, body {
+    font-size: 16px;
+  }
 }
 
 #root {
@@ -325,12 +342,30 @@ button {
   color: var(--text);
 }
 
+/* ═══════════════════════════════════════════════════════════
+   SHARED DATA TABLES
+   Wide audit tables must pan inside their own card, never stretch the
+   page. Declared here (not in a page stylesheet) because Dashboard,
+   Analytics, Purchase, Sales and History all rely on it.
+   ═══════════════════════════════════════════════════════════ */
+.table-responsive {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.data-table,
+.comparison-table,
+.dense-audit-table {
+  border-collapse: collapse;
+  width: 100%;
+}
+
 /* Custom Scrollbars */
 ::-webkit-scrollbar {
   width: 5px;
   height: 5px;
 }
-
 ::-webkit-scrollbar-track {
   background: transparent;
 }
@@ -375,3 +410,60 @@ button {
 
 .spin { animation: spin 0.85s linear infinite; }
 .fade-in-up { animation: fadeInUp 0.3s ease forwards; }
+
+/* ═══════════════════════════════════════════════════════════
+   TOUCH PASS — every authenticated page, up to tablet portrait
+   ═══════════════════════════════════════════════════════════ */
+@media (max-width: 1024px) {
+  /* Grid and flex children default to min-width:auto, so one wide table
+     forces the whole page wider than the screen. Letting the page shell
+     shrink is what keeps the content panning inside its own card. */
+  .content-inner,
+  .content-inner > *,
+  .content-inner .card,
+  .content-inner .panel-box,
+  .content-inner [class*="-grid"] > * {
+    min-width: 0;
+  }
+
+  /* Touch targets: 40px minimum, per platform guidance. */
+  .btn,
+  button:not(.sidebar-item) {
+    min-height: 40px;
+  }
+
+  /* Icon-only controls (pagination arrows, toolbar chips) read as ~26px wide
+     and are easy to mis-tap. */
+  .page-btn,
+  .pagination button,
+  input,
+  select {
+    min-height: 40px;
+  }
+
+  .page-btn,
+  .pagination button {
+    min-width: 40px;
+  }
+
+  /* Long unbroken strings (invoice ids, IFSC, URLs) are the usual reason
+     a mobile page drifts sideways. */
+  .card,
+  .panel-box,
+  .data-table,
+  .comparison-table,
+  .dense-audit-table {
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+}
+
+@media (max-width: 640px) {
+  .btn {
+    padding: 0.55rem 0.9rem;
+  }
+
+  .card {
+    padding: 0.9rem;
+  }
+}

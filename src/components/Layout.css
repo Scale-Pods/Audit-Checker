@@ -7,6 +7,9 @@
   display: flex;
   width: 100%;
   min-height: 100vh;
+  /* dvh keeps the shell matched to the *visible* viewport, so collapsing the
+     mobile URL bar no longer resizes the page under the user's finger. */
+  min-height: 100dvh;
   background-image: var(--grad-ambient);
   background-color: var(--background);
   background-attachment: fixed;
@@ -25,6 +28,7 @@
   bottom: 0;
   left: 0;
   height: 100vh;
+  height: 100dvh;
   z-index: 50;
   transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
   border-right: 1px solid var(--border);
@@ -422,7 +426,8 @@
 }
 
 .user-role {
-  font-size: 0.575rem;
+  /* 0.575rem rendered at 7.5px on the desktop root — too small to read. */
+  font-size: 0.62rem;
   color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 0.04em;
@@ -493,7 +498,7 @@
 
 /* ─────────────────────────────────────────
    RESPONSIVE
-───────────────────────────────────────── */
+   ───────────────────────────────────────── */
 @media (max-width: 1024px) {
   .sidebar {
     transform: translateX(-100%);
@@ -507,5 +512,112 @@
   }
   .mobile-menu-toggle {
     display: flex;
+  }
+
+  /* Touch-sized controls for the sidebar-handle band. */
+  .mobile-menu-toggle,
+  .topbar-search-toggle {
+    width: 40px;
+    height: 40px;
+    flex-shrink: 0;
+  }
+
+  .topbar-search input {
+    min-height: 40px;
+  }
+
+  .sync-btn {
+    min-height: 40px;
+  }
+
+  .user-profile {
+    min-height: 40px;
+  }
+}
+
+/* ── Handsets: the topbar has to survive a 440px viewport. Everything
+      non-essential (range picker, sync label, user text, search field)
+      collapses to icons or hides so nothing overflows sideways. ── */
+@media (max-width: 640px) {
+  /* A fixed background attachment repaints on every scroll frame on iOS,
+     which reads as the page sliding around. Let it scroll with the content. */
+  .app-container {
+    background-attachment: scroll;
+  }
+
+  .topbar {
+    height: auto;
+    min-height: 52px;
+    padding: 0 0.75rem;
+    gap: 0.5rem;
+  }
+
+  .topbar-left {
+    flex: 1;
+    min-width: 0;
+    gap: 0.5rem;
+  }
+
+  .topbar-actions {
+    gap: 0.4rem;
+    flex-shrink: 0;
+  }
+
+  .date-picker-wrap {
+    display: none;
+  }
+
+  .sync-label {
+    display: none;
+  }
+
+  .sync-btn {
+    width: 40px;
+    height: 40px;
+    padding: 0;
+    justify-content: center;
+  }
+
+  .user-info {
+    display: none;
+  }
+
+  .user-profile {
+    padding: 0.35rem;
+  }
+
+  .mobile-menu-toggle,
+  .topbar-search-toggle {
+    width: 40px;
+    height: 40px;
+    flex-shrink: 0;
+  }
+
+  /* Search is opt-in on phones: the field would eat half the bar. */
+  .topbar-search {
+    display: none;
+    width: 100%;
+    min-width: 0;
+  }
+
+  .topbar-search.mobile-visible {
+    display: block;
+  }
+
+  .search-close {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border-radius: 6px;
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+  }
+
+  .content-inner {
+    padding: 0.85rem 0.75rem 1.75rem;
   }
 }

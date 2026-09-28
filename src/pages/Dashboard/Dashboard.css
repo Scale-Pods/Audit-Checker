@@ -1098,6 +1098,22 @@
   }
 }
 
+.sort-toggle-btn,
+.limit-toggle-btn {
+  font-size: 0.75rem;
+  padding: 0 0.65rem;
+  height: 30px;
+  border-radius: 8px;
+  white-space: nowrap;
+}
+
+.limit-toggle-btn.active-limit {
+  background: var(--blue-500);
+  color: #FFFFFF;
+  border-color: var(--blue-500);
+  box-shadow: 0 2px 8px rgba(59, 110, 232, 0.3);
+}
+
 @media (max-width: 768px) {
   .executive-header {
     flex-direction: column;
@@ -1142,12 +1158,123 @@
 }
 
 @media (max-width: 480px) {
+  .dashboard-wrapper {
+    gap: 0.85rem;
+  }
+
+  .executive-header {
+    gap: 0.85rem;
+    width: 100%;
+  }
+
+  .header-action-block {
+    width: 100%;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.5rem;
+  }
+
+  .audit-segment-control {
+    width: 100%;
+    display: flex;
+  }
+
+  .segment-btn {
+    flex: 1;
+    text-align: center;
+    padding: 0.45rem 0.5rem;
+    font-size: 0.75rem;
+  }
+
+  .ledger-refresh-btn {
+    width: 100%;
+    justify-content: center;
+    height: 36px;
+  }
+
   .kpi-row-grid,
   .sales-metric-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.5rem;
+  }
+
+  .kpi-panel {
+    padding: 0.75rem 0.85rem;
+  }
+
+  .kpi-num {
+    font-size: 1.3rem;
+  }
+
+  .sales-metric-card {
+    padding: 0.75rem 0.85rem;
+  }
+
+  .sales-metric-value {
+    font-size: 1.15rem;
   }
 
   .main-title {
     font-size: 1.35rem;
+  }
+
+  .table-toolbar-actions {
+    flex-wrap: wrap;
+    width: 100%;
+    gap: 0.4rem;
+  }
+
+  .toolbar-search-box {
+    width: 100%;
+  }
+
+  .toolbar-select-box {
+    flex: 1;
+    min-width: 120px;
+  }
+
+  .sort-toggle-btn,
+  .limit-toggle-btn {
+    flex: 1;
+    justify-content: center;
+    height: 32px;
+  }
+
+  .dense-audit-table {
+    min-width: 640px;
+  }
+
+  .table-scroll-container {
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .modal-content-box {
+    max-height: calc(100dvh - 24px);
+  }
+
+  .modal-body-area {
+    max-height: calc(85dvh - 110px);
+    overflow-y: auto;
+    padding: 0.85rem 1rem;
+  }
+
+  .modal-info-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 380px) {
+  .kpi-row-grid {
+    grid-template-columns: 1fr 1fr;
+    gap: 0.4rem;
+  }
+
+  .sales-metric-grid {
+    grid-template-columns: 1fr 1fr;
+    gap: 0.4rem;
+  }
+
+  .dense-audit-table {
+    min-width: 600px;
   }
 }

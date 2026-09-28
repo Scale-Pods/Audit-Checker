@@ -153,6 +153,14 @@ const Layout = () => {
                 <X size={15} />
               </button>
             </div>
+            <button 
+              className="mobile-menu-toggle topbar-search-toggle" 
+              onClick={() => setIsSearchVisible(v => !v)}
+              title="Search"
+              aria-label="Toggle search"
+            >
+              <Search size={18} />
+            </button>
           </div>
 
           <div className="topbar-actions">

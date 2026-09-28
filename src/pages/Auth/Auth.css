@@ -151,3 +151,51 @@
   color: var(--primary);
   font-weight: 600;
 }
+
+/* Handsets: 2rem of shell padding plus 2.5rem inside the card left a 296px
+   form column on a 440px screen, which wraps every field label. */
+@media (max-width: 640px) {
+  .auth-container {
+    padding: 0.85rem;
+    align-items: flex-start;
+    min-height: 100dvh;
+  }
+
+  .auth-card {
+    padding: 1.75rem 1.25rem;
+    border-radius: 16px;
+  }
+
+  .auth-header {
+    margin-bottom: 1.5rem;
+  }
+
+  .auth-btn {
+    min-height: 44px;
+  }
+
+  /* The eye toggle was a 21px-wide sliver sitting on top of the text. */
+  .password-toggle {
+    width: 40px;
+    height: 40px;
+    right: 2px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .input-with-icon input {
+    padding-right: 2.9rem;
+  }
+
+  .label-row {
+    flex-wrap: wrap;
+    gap: 0.25rem;
+  }
+
+  .forgot-link,
+  .auth-footer a {
+    display: inline-block;
+    padding: 0.4rem 0;
+  }
+}

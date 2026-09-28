@@ -560,7 +560,9 @@
 /* Audit Result Comparison Table */
 .comparison-table-wrapper {
   margin-top: 2rem;
-  overflow: hidden;
+  /* Pan the comparison columns instead of clipping them off-screen. */
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 .comparison-table {
