@@ -2819,9 +2819,9 @@ const AuditHistory = () => {
           new Date(b.created_at || Date.now()) - new Date(a.created_at || Date.now())
         );
       });
-    } catch {
-      console.error('History Fetch Error')
-      setError('System offline. Using transient storage.')
+    } catch (err) {
+      console.error('History Fetch Error:', err)
+      setError(`Could not load purchase records. ${err.message}`)
       setHistory([])
     } finally {
       setIsLoading(false)
@@ -2846,7 +2846,7 @@ const AuditHistory = () => {
       setSalesHistory(uniqueSales);
     } catch (err) {
       console.error('Sales History Fetch Error:', err)
-      setSalesError('Could not load sales records.')
+      setSalesError(`Could not load sales records. ${err.message}`)
       setSalesHistory([])
     } finally {
       setIsSalesLoading(false)
@@ -3098,6 +3098,13 @@ const AuditHistory = () => {
       {/* ── PURCHASE SIDE ──────────────────────────────────────── */}
       {activeSide === 'purchase' && (
         <div className="card table-card overflow-hidden animate-fade-in">
+          {paginatedHistory.length === 0 ? (
+            <div className="empty-state">
+              <AlertTriangle size={40} className="empty-icon" />
+              <p>{error || 'No purchase records found.'}</p>
+            </div>
+          ) : (
+          <>
           <div className="table-responsive">
             <table className="data-table">
               <thead>
@@ -3190,6 +3197,8 @@ const AuditHistory = () => {
             onPageChange={setPurchasePage}
             itemLabel="purchase audit records"
           />
+          </>
+          )}
         </div>
       )}
 

@@ -1,30 +1,12 @@
-import { auth } from '../firebase'
+import { authorizedFetch, readErrorMessage } from './auth-client.js';
 
 export const fetchPurchaseRecords = async () => {
-  let token = null
-  if (auth.currentUser) {
-    try {
-      token = await auth.currentUser.getIdToken()
-    } catch (e) {
-      console.warn('Could not get auth token:', e)
-    }
-  }
-
-  const headers = token ? { Authorization: `Bearer ${token}` } : {}
-
-  const res = await fetch('/api/audits', { headers })
+  const res = await authorizedFetch('/api/audits');
 
   if (!res.ok) {
-    let message = `Failed to load audit data (${res.status})`
-    try {
-      const body = await res.json()
-      if (body?.error) message = body.error
-    } catch {
-      /* keep default message */
-    }
-    throw new Error(message)
+    throw new Error(await readErrorMessage(res, 'Failed to load audit data'));
   }
 
-  const json = await res.json()
-  return Array.isArray(json.data) ? json.data : []
-}
+  const json = await res.json();
+  return Array.isArray(json.data) ? json.data : [];
+};
