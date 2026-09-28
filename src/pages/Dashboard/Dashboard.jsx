@@ -1,1390 +1,1131 @@
-import React, { useState, useEffect, useMemo } from 'react'
-import { 
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  PieChart, Pie, Cell, Legend
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  PieChart,
+  Pie,
+  Cell
 } from 'recharts'
-import { FileText, AlertTriangle, CheckCircle, TrendingDown, RefreshCw, Loader2, Gauge, X, Info, Check, Truck, BarChart3 } from 'lucide-react'
+import {
+  FileText,
+  AlertTriangle,
+  CheckCircle,
+  RefreshCw,
+  Loader2,
+  X,
+  Info,
+  Search,
+  Filter,
+  Eye,
+  ArrowUpDown,
+  FileCheck2,
+  Gauge,
+  Users,
+  Boxes,
+  ReceiptIndianRupee
+} from 'lucide-react'
+import { fetchSalesRecords } from '../../api/sales.js'
+import { fetchPurchaseRecords } from '../../api/audits.js'
+import { useSyncRefresh } from '../../context/SyncContext'
 import './Dashboard.css'
 
-const AUDITS_WEBHOOK_URL = import.meta.env.VITE_AUDITS_HISTORY_URL || 'https://n8n.srv1010832.hstgr.cloud/webhook/40a6351a-d510-492f-918b-7ec9bae2bd2a'
-const SALES_HISTORY_URL = import.meta.env.VITE_SALES_HISTORY_URL || 'https://n8n.srv1010832.hstgr.cloud/webhook/10916618-e795-416f-9d0a-6646da9aba06'
+const COLOR_VERIFIED = '#18A66A'
+const COLOR_MISMATCH = '#D99A22'
+const COLOR_PENDING = '#718096'
+const COLOR_NA = '#D9534F'
 
-const COLORS = ['#10b981', '#f59e0b', '#ef4444', '#3b82f6']
+const STATUS_DEFINITIONS = [
+  { key: 'verified', name: 'Verified', color: COLOR_VERIFIED },
+  { key: 'mismatch', name: 'Mismatch', color: COLOR_MISMATCH },
+  { key: 'pending', name: 'Pending', color: COLOR_PENDING },
+  { key: 'unavailable', name: 'Not Available', color: COLOR_NA }
+]
 
-// ── Intelligent Comparison Utilities ─────────────────────────
-const normalizeText = (text) => {
-  if (!text || text === '—' || text === 'N/A') return '';
-  return text.toString().toLowerCase().replace(/[^a-z0-9]/g, '').trim();
-};
+const hasValue = (value) => value !== null && value !== undefined && String(value).trim() !== ''
 
-const normalizeInvoiceNo = (text) => {
-  if (!text || text === '—') return '';
-  return text.toString()
-    .toLowerCase()
-    .replace(/^inv[\s\-_:#]*/i, '')
-    .replace(/^invoice[\s\-_:#]*/i, '')
-    .replace(/[\/\s\-_#,.:]/g, '')
-    .trim();
-};
+const firstValue = (...values) => values.find(hasValue)
 
-const normalizeSupplierName = (text) => {
-  if (!text || text === '—') return '';
-  let name = text.toString().toLowerCase();
-  
-  // Expand common abbreviation for JSW Steel Coated Products Limited
-  name = name.replace(/jswscpl/g, 'jsw steel coated products');
-  
-  // Remove common location, administration suffixes, and keywords
-  const wordsToRemove = [
-    'tarapur', 'works', 'plant', 'depot', 'mumbai', 'khopoli', 'kalmeshwar', 'vasind',
-    'pvt', 'ltd', 'private', 'limited', 'co', 'company', 'corp', 'corporation', 'inc', 'incorporated'
-  ];
-  
-  wordsToRemove.forEach(w => {
-    name = name.replace(new RegExp('\\b' + w + '\\b', 'g'), '');
-    name = name.replace(new RegExp('-?' + w + '-?', 'g'), '');
-  });
+const asText = (value) => hasValue(value) ? String(value).trim() : ''
 
-  return name
-    .replace(/[^a-z0-9]/g, '')
-    .trim();
-};
+const parseJson = (value) => {
+  if (value !== null && typeof value === 'object') return value
+  if (!hasValue(value)) return null
 
-const normalizeHSN = (text) => {
-  if (!text || text === '—') return '';
-  return text.toString().replace(/[^0-9]/g, '');
-};
-
-const normalizeVehicleNo = (text) => {
-  if (!text || text === '—') return '';
-  return text.toString().toUpperCase().replace(/\s/g, '');
-};
-
-const normalizeDate = (text) => {
-  if (!text || text === '—') return '';
-  // Normalize dot path date formats by replacing dots with dashes
-  const s = text.toString().trim().replace(/\./g, '-');
-  const months = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];
-  const mmmMatch = s.match(/^(\d{1,2})[-\/](\w{3})[-\/](\d{2,4})$/);
-  if (mmmMatch) {
-    const day = mmmMatch[1].padStart(2, '0');
-    const monthIdx = months.indexOf(mmmMatch[2].toLowerCase().substring(0, 3));
-    if (monthIdx !== -1) {
-      let year = mmmMatch[3];
-      if (year.length === 2) year = '20' + year;
-      return `${year}-${String(monthIdx + 1).padStart(2, '0')}-${day}`;
-    }
+  try {
+    return JSON.parse(String(value))
+  } catch {
+    return null
   }
-  const numMatch = s.match(/^(\d{1,2})[-\/](\d{1,2})[-\/](\d{2,4})$/);
-  if (numMatch) {
-    const day = numMatch[1].padStart(2, '0');
-    const month = numMatch[2].padStart(2, '0');
-    let year = numMatch[3];
-    if (year.length === 2) year = '20' + year;
-    return `${year}-${month}-${day}`;
-  }
-  const ymdMatch = s.match(/^(\d{4})[-\/](\d{1,2})[-\/](\d{1,2})$/);
-  if (ymdMatch) {
-    return `${ymdMatch[1]}-${ymdMatch[2].padStart(2, '0')}-${ymdMatch[3].padStart(2, '0')}`;
-  }
-  const d = new Date(s);
-  if (!isNaN(d.getTime())) return d.toISOString().split('T')[0];
-  return normalizeText(s);
-};
-
-const extractNumericValue = (text) => {
-  if (!text || text === '—') return null;
-  const cleaned = text.toString().replace(/,/g, '').replace(/[^0-9.-]/g, '');
-  const parsed = parseFloat(cleaned);
-  return isNaN(parsed) ? null : parsed;
-};
-
-const toKG = (value, text) => {
-  if (value === null) return null;
-  if (!text) return value;
-  const lower = text.toString().toLowerCase();
-  if (lower.includes('mt') || lower.includes('ton')) return value * 1000;
-  return value;
-};
-
-const semanticSimilarity = (a, b) => {
-  const na = normalizeText(a);
-  const nb = normalizeText(b);
-  if (!na || !nb) return 0;
-  if (na === nb) return 1;
-  const tokensA = new Set(na.split(/\s+/));
-  const tokensB = new Set(nb.split(/\s+/));
-  const intersection = new Set([...tokensA].filter(t => tokensB.has(t)));
-  const union = new Set([...tokensA, ...tokensB]);
-  return intersection.size / union.size;
-};
-
-// Known ZV Steels address tokens
-const BILL_TO_TOKENS = ['zv steels', 'zvsteels', 'zv metal', 'aaacz0915c', 'gupta bhavan', 'masjid', 'carnac bunder', 'masjid bandar', '400009', 'mumbai', 'maharashtra']
-const SHIP_TO_TOKENS  = ['zv metal', 'roshan fabricators', 'taloja', '410208', 'bhagwan laxmi', 'zv steels', 'midc', 'maharashtra']
-const ADDRESS_FIELDS  = ['Bill_To', 'Ship_To', 'Bill To', 'Ship To', 'Recipient', 'Details of Recipient', 'Consignee']
-
-const fuzzyMatch = (value, tokens) => {
-  if (!value) return false;
-  const normalize = (s) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
-  const normValue = normalize(value);
-  return tokens.some(t => {
-    const normToken = normalize(t);
-    return normValue.includes(normToken);
-  });
 }
 
-const compareFieldValues = (fieldName, vals, audit) => {
-  const docs = ['Invoice', 'E-Way Bill', 'LR Copy', 'GRN'];
-  const filledDocs = docs.filter(d => vals[d] && vals[d] !== '—');
-  if (filledDocs.length <= 1) return { status: null, reason: 'Single data point — no comparison' };
-  const field = fieldName.toLowerCase();
+const getAuditResult = (item) => {
+  const values = [
+    item?.inv_audit_result,
+    item?.inv_result,
+    item?.Audit_Result,
+    item?.Audit_Intelligence,
+    item?.audit_result
+  ]
 
-  if (field.includes('bill to') || field.includes('recipient')) {
-    const results = filledDocs.map(d => ({ doc: d, match: fuzzyMatch(vals[d], BILL_TO_TOKENS) }));
-    const allOk = results.every(r => r.match);
-    return { status: allOk ? 'MATCH' : 'MISMATCH', reason: allOk ? 'Bill-to address matches known vendor locations' : 'Bill-to address does not match known vendor locations' };
-  }
-
-  if (field.includes('ship to') || field.includes('consignee')) {
-    const results = filledDocs.map(d => ({ doc: d, match: fuzzyMatch(vals[d], SHIP_TO_TOKENS) }));
-    const allOk = results.every(r => r.match);
-    return { status: allOk ? 'MATCH' : 'MISMATCH', reason: allOk ? 'Ship-to address matches known destinations' : 'Ship-to address does not match known destinations' };
-  }
-
-  if (field.includes('invoice number')) {
-    const normalized = filledDocs.map(d => ({ doc: d, norm: normalizeInvoiceNo(vals[d]) }));
-    const unique = new Set(normalized.map(n => n.norm));
-    if (unique.size === 1) return { status: 'MATCH', reason: 'Invoice numbers match after normalization' };
-    if (unique.size === 2) return { status: 'PARTIAL_MATCH', reason: 'Minor variation in invoice number format' };
-    return { status: 'MISMATCH', reason: 'Invoice numbers differ across documents' };
-  }
-
-  if (field.includes('supplier name')) {
-    const normalized = filledDocs.map(d => ({ doc: d, norm: normalizeSupplierName(vals[d]) }));
-    const unique = new Set(normalized.map(n => n.norm));
-    if (unique.size === 1) return { status: 'MATCH', reason: 'Supplier name verified across all documents' };
-    
-    // Fallback: Check if they are all JSW-related entities
-    const allContainJSW = normalized.every(n => n.norm.includes('jsw'));
-    if (allContainJSW && normalized.length > 0) {
-      return { status: 'MATCH', reason: 'Supplier name verified across all documents (JSW Group entity)' };
-    }
-
-    if (unique.size === 2) {
-      const names = Array.from(unique);
-      if (semanticSimilarity(names[0], names[1]) > 0.7) return { status: 'PARTIAL_MATCH', reason: 'Supplier name has minor formatting variation (Ltd/Limited)' };
-    }
-    return { status: 'MISMATCH', reason: 'Supplier name differs — possible vendor mismatch' };
-  }
-
-  if (field.includes('gstin')) {
-    const normalized = filledDocs.map(d => ({ doc: d, norm: normalizeText(vals[d]) }));
-    const unique = new Set(normalized.map(n => n.norm));
-    if (unique.size === 1) return { status: 'MATCH', reason: 'GSTIN verified across documents' };
-    return { status: 'CRITICAL', reason: 'GSTIN MISMATCH — possible tax compliance violation' };
-  }
-
-  if (field.includes('product')) {
-    const normalized = filledDocs.map(d => ({ doc: d, norm: normalizeText(vals[d]) }));
-    const unique = new Set(normalized.map(n => n.norm));
-    if (unique.size === 1) return { status: 'MATCH', reason: 'Product code matches across documents' };
-    if (unique.size === 2) {
-      const codes = Array.from(unique);
-      if (semanticSimilarity(codes[0], codes[1]) > 0.6) return { status: 'PARTIAL_MATCH', reason: 'Product code has minor spacing/format variation' };
-    }
-    return { status: 'MISMATCH', reason: 'Product code differs across documents' };
-  }
-
-  if (field.includes('description')) {
-    let bestSim = 1;
-    for (let i = 0; i < filledDocs.length; i++) {
-      for (let j = i + 1; j < filledDocs.length; j++) {
-        bestSim = Math.min(bestSim, semanticSimilarity(vals[filledDocs[i]], vals[filledDocs[j]]));
-      }
-    }
-    if (bestSim >= 0.8) return { status: 'MATCH', reason: 'Descriptions semantically match' };
-    if (bestSim >= 0.4) return { status: 'PARTIAL_MATCH', reason: 'Descriptions partially match — possible OCR variation' };
-    return { status: 'MISMATCH', reason: 'Descriptions differ significantly' };
-  }
-
-  if (field.includes('hsn')) {
-    const normalized = filledDocs.map(d => ({ doc: d, norm: normalizeHSN(vals[d]) }));
-    const first4 = new Set(normalized.map(n => n.norm.substring(0, 4)));
-    if (first4.size === 1) {
-      const first6 = new Set(normalized.map(n => n.norm.substring(0, 6)));
-      return first6.size === 1
-        ? { status: 'MATCH', reason: 'HSN code fully matches' }
-        : { status: 'PARTIAL_MATCH', reason: 'HSN first 4–6 digits match — sub-classification difference' };
-    }
-    return { status: 'MISMATCH', reason: 'HSN code differs across documents' };
-  }
-
-  if (field.includes('batch') || field.includes('coil')) {
-    const normalized = filledDocs.map(d => ({ doc: d, norm: normalizeText(vals[d]) }));
-    const unique = new Set(normalized.map(n => n.norm));
-    if (unique.size === 1) return { status: 'MATCH', reason: 'Batch/coil number matches' };
-    return { status: 'MISMATCH', reason: 'Batch/coil number differs' };
-  }
-
-  if (field.includes('vehicle')) {
-    const normalized = filledDocs.map(d => ({ doc: d, norm: normalizeVehicleNo(vals[d]) }));
-    const unique = new Set(normalized.map(n => n.norm));
-    if (unique.size === 1) return { status: 'MATCH', reason: 'Vehicle number matches transport records' };
-    return { status: 'MISMATCH', reason: 'Vehicle number differs between documents' };
-  }
-
-  if (field.includes('weight') || field.includes('quantity')) {
-    const numericVals = {};
-    filledDocs.forEach(d => {
-      const raw = extractNumericValue(vals[d]);
-      numericVals[d] = raw !== null ? toKG(raw, vals[d]) : null;
-    });
-    const valid = Object.entries(numericVals).filter(([, v]) => v !== null);
-    if (valid.length <= 1) return { status: null, reason: 'Insufficient data' };
-    const invVal = numericVals['Invoice'];
-    const lrVal = numericVals['LR Copy'];
-    if (invVal && lrVal) {
-      const ratio = lrVal / invVal;
-      if (ratio > 1.5 && ratio < 2.5) return { status: 'DUPLICATE_LR_CASE', reason: 'LR weight appears duplicated (combined shipment pattern)' };
-    }
-    const allV = valid.map(([, v]) => v);
-    const maxDiff = Math.max(...allV) - Math.min(...allV);
-    if (maxDiff <= 250) return { status: 'MATCH', reason: `Weight within 250 KG tolerance (${Math.round(maxDiff)} KG diff)` };
-    if (maxDiff <= 500) return { status: 'PARTIAL_MATCH', reason: `Weight difference ${Math.round(maxDiff)} KG — within extended tolerance` };
-    return { status: 'MISMATCH', reason: `Weight differs by ${Math.round(maxDiff)} KG — possible discrepancy` };
-  }
-
-  if (field.includes('total amount') || field === 'amount') {
-    const numericVals = {};
-    filledDocs.forEach(d => { numericVals[d] = extractNumericValue(vals[d]); });
-    const valid = Object.entries(numericVals).filter(([, v]) => v !== null);
-    if (valid.length <= 1) return { status: null, reason: 'Single data point' };
-    const allV = valid.map(([, v]) => v);
-    const maxDiff = Math.max(...allV) - Math.min(...allV);
-    if (maxDiff < 1) return { status: 'MATCH', reason: `Amount matches within ₹1 tolerance (₹${maxDiff.toFixed(2)} diff)` };
-    return { status: 'MISMATCH', reason: `Amount differs by ₹${maxDiff.toFixed(2)}` };
-  }
-
-  if (field.includes('date')) {
-    const normalized = filledDocs.map(d => ({ doc: d, norm: normalizeDate(vals[d]) }));
-    const unique = new Set(normalized.map(n => n.norm));
-    if (unique.size === 1) return { status: 'MATCH', reason: 'Dates match after normalization' };
-    return { status: 'MISMATCH', reason: 'Date values differ across documents' };
-  }
-
-  const filled = Object.values(vals).filter(v => v !== '—');
-  if (new Set(filled).size > 1) return { status: 'MISMATCH', reason: 'Values differ across documents' };
-  return { status: 'MATCH', reason: 'Values match across documents' };
-};
-
-const generateInsights = (comparisons, fieldMap) => {
-  const insights = [];
-  const matched = Object.values(comparisons).filter(c => c.status === 'MATCH').length;
-  const partial = Object.values(comparisons).filter(c => c.status === 'PARTIAL_MATCH').length;
-  const mismatched = Object.values(comparisons).filter(c => c.status === 'MISMATCH' || c.status === 'CRITICAL').length;
-  const dupLR = Object.values(comparisons).filter(c => c.status === 'DUPLICATE_LR_CASE').length;
-
-  if (matched > partial + mismatched) insights.push('Majority of fields match across all documents — high data integrity.');
-  if (partial > 0) insights.push(`${partial} field(s) show partial matches — likely due to formatting or OCR variations.`);
-  if (mismatched > 0) insights.push(`${mismatched} field(s) have critical or significant mismatches requiring attention.`);
-  if (dupLR > 0) insights.push('LR weight pattern suggests combined shipment entry — common logistics scenario.');
-
-  const supl = fieldMap['Supplier Name'];
-  if (supl) {
-    const suplDocs = Object.values(supl).filter(v => v !== '—');
-    if (new Set(suplDocs.map(s => normalizeSupplierName(s))).size === 1 && suplDocs.length >= 2) {
-      insights.push('Invoice, EWay and GRN supplier details align successfully.');
+  for (const value of values) {
+    const parsed = parseJson(value)
+    if (Array.isArray(parsed)) {
+      const candidate = parsed.find((entry) => entry && typeof entry === 'object' && !Array.isArray(entry))
+      if (candidate) return candidate
+    } else if (parsed && typeof parsed === 'object') {
+      return parsed
     }
   }
 
-  const veh = fieldMap['Vehicle No'];
-  if (veh && veh['E-Way Bill'] !== '—' && veh['LR Copy'] !== '—') {
-    if (normalizeVehicleNo(veh['E-Way Bill']) === normalizeVehicleNo(veh['LR Copy'])) {
-      insights.push('Vehicle number matches transport records — logistics chain verified.');
+  return null
+}
+
+const statusText = (value) => {
+  if (value && typeof value === 'object') {
+    return asText(value.status || value.overall_status || value.result || value.value)
+  }
+
+  return asText(value)
+}
+
+const classifyStatus = (value) => {
+  const text = statusText(value).toLowerCase().replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim()
+  if (!text) return null
+
+  if (/not available|unavailable|not applicable|unknown|unverified|no data|\bna\b|\bn\/a\b/.test(text)) {
+    return 'unavailable'
+  }
+  if (/mismatch|fail|reject|error|violation|discrep|invalid|not match|high mismatch/.test(text)) {
+    return 'mismatch'
+  }
+  if (/pending|processing|in progress|running|awaiting|queued/.test(text)) {
+    return 'pending'
+  }
+  if (/partial|needs review|review required|deviation/.test(text)) {
+    return 'mismatch'
+  }
+  if (/pass|verified|approve|success|good match|compliant|matched|^match$|^ok$|^yes$/.test(text)) {
+    return 'verified'
+  }
+
+  return null
+}
+
+const resolveStatus = (candidates, issues, score) => {
+  for (const candidate of candidates) {
+    const status = classifyStatus(candidate)
+    if (status) return status
+  }
+
+  if (issues.length > 0) return 'mismatch'
+  if (score !== null) return score >= 85 ? 'verified' : 'mismatch'
+  return 'pending'
+}
+
+const getStatusCandidates = (item, result) => [
+  item?.inv_audit_status,
+  item?.inv_status,
+  item?.audit_status,
+  result?.overall?.status,
+  result?.overall_summary?.overall_status,
+  result?.output?.overall_summary?.overall_status,
+  result?.output?.overall?.status,
+  item?.['Status'],
+  item?.Result,
+  item?.result,
+  item?.status,
+  result?.status,
+  result?.result
+]
+
+const formatIssue = (value) => {
+  if (value === null || value === undefined || value === '') return ''
+
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value)
+  if (typeof value === 'string') return value.trim()
+
+  if (Array.isArray(value)) {
+    return value.map(formatIssue).filter(Boolean).join('; ')
+  }
+
+  if (typeof value === 'object') {
+    const message = firstValue(value.message, value.reason, value.description, value.title)
+    if (message) return formatIssue(message)
+
+    const nested = firstValue(value.key_issues, value.issues, value.problems)
+    if (nested) return formatIssue(nested)
+
+    const field = asText(value.field || value.name || value.key)
+    const expected = asText(value.expected ?? value.invoice ?? value.invoice_value)
+    const actual = asText(value.actual ?? value.received ?? value.eway ?? value.eway_value)
+    if (field && (expected || actual)) return `${field}: ${expected || '—'} vs ${actual || '—'}`
+    if (field) return field
+
+    return ''
+  }
+
+  return ''
+}
+
+const flattenIssues = (value, depth = 0) => {
+  if (depth > 4 || !hasValue(value)) return []
+
+  const parsed = parseJson(value)
+  if (Array.isArray(parsed)) {
+    return parsed.flatMap((entry) => flattenIssues(entry, depth + 1))
+  }
+
+  if (parsed && typeof parsed === 'object') {
+    return formatIssue(parsed) ? [formatIssue(parsed)] : Object.values(parsed).flatMap((entry) => flattenIssues(entry, depth + 1))
+  }
+
+  const text = asText(parsed)
+  return text ? [text] : []
+}
+
+const uniqueIssues = (issues) => {
+  const seen = new Set()
+  return issues.filter((issue) => {
+    const normalized = issue.toLowerCase()
+    if (seen.has(normalized)) return false
+    seen.add(normalized)
+    return true
+  })
+}
+
+const isMismatchValue = (value) => {
+  if (value === false) return true
+  if (!hasValue(value)) return false
+  if (typeof value === 'object') return Object.values(value).some(isMismatchValue)
+
+  const text = String(value).toLowerCase().trim()
+  return /mismatch|fail|reject|error|violation|discrep|invalid|not match|false|^no$/.test(text)
+}
+
+const humanizeMatchKey = (key) => key
+  .replace(/_match$/i, '')
+  .replace(/[_-]+/g, ' ')
+  .replace(/\b\w/g, (character) => character.toUpperCase())
+
+const collectMatchIssues = (source) => {
+  if (!source || typeof source !== 'object' || Array.isArray(source)) return []
+
+  const issues = []
+  for (const [key, value] of Object.entries(source)) {
+    if (!key.toLowerCase().includes('match')) continue
+    if (isMismatchValue(value)) {
+      issues.push(humanizeMatchKey(key))
+    } else if (value && typeof value === 'object') {
+      issues.push(...collectMatchIssues(value))
+    }
+  }
+  return issues
+}
+
+const getIssueTexts = (item, result) => {
+  const sources = [
+    item?.critical_mismatches,
+    item?.warnings,
+    item?.missing_documents,
+    item?.inv_issues,
+    item?.inv_warnings,
+    item?.inv_missing_documents,
+    result?.critical_mismatches,
+    result?.warnings,
+    result?.missing_documents,
+    result?.issues,
+    result?.output?.detailed_issues,
+    result?.output?.field_issues,
+    result?.output?.overall_summary?.key_issues
+  ]
+
+  const issues = sources.flatMap((source) => flattenIssues(source))
+  issues.push(...collectMatchIssues(item))
+  issues.push(...collectMatchIssues(result))
+  return uniqueIssues(issues.map((issue) => issue.trim()).filter(Boolean))
+}
+
+const parseScore = (value) => {
+  if (!hasValue(value)) return null
+  const numericText = String(value).replace('%', '').replace(/[^0-9.-]/g, '')
+  if (!numericText || !/[0-9]/.test(numericText)) return null
+  const number = Number(numericText)
+  return Number.isFinite(number) ? number : null
+}
+
+const parseAmount = (value) => {
+  if (!hasValue(value)) return null
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null
+
+  const text = String(value).trim().toLowerCase()
+  if (['n/a', 'na', '-', '--'].includes(text)) return null
+
+  const multiplier = /crore|\bcr\b/.test(text)
+    ? 10000000
+    : /lakh|lac|\bl\b/.test(text)
+      ? 100000
+      : /thousand|\bk\b/.test(text)
+        ? 1000
+        : 1
+  const numericText = text.replace(/[^0-9.-]/g, '')
+  const number = Number(numericText)
+  return Number.isFinite(number) ? number * multiplier : null
+}
+
+const parseDateValue = (value) => {
+  if (!hasValue(value)) return null
+
+  const date = new Date(value)
+  if (!Number.isNaN(date.getTime())) return date
+
+  const text = asText(value)
+  const match = text.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})/)
+  if (!match) return null
+
+  const parsed = new Date(Number(match[3]), Number(match[2]) - 1, Number(match[1]))
+  return Number.isNaN(parsed.getTime()) ? null : parsed
+}
+
+const formatDate = (date) => date
+  ? date.toLocaleString('en-IN', {
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    })
+  : '—'
+
+const formatCurrency = (value) => {
+  if (value === null || value === undefined) return '—'
+  if (value >= 10000000) return `₹${(value / 10000000).toFixed(2)} Cr`
+  if (value >= 100000) return `₹${(value / 100000).toFixed(2)} L`
+  return `₹${value.toLocaleString('en-IN', { maximumFractionDigits: 2 })}`
+}
+
+const getPurchaseAmount = (item) => parseAmount(firstValue(
+  item?.Total_Amount_Invoice,
+  item?.Total_Amount_EWay,
+  item?.Amount,
+  item?.amount
+))
+
+const getSalesAmount = (item) => {
+  const directAmount = parseAmount(firstValue(
+    item?.inv_final_amount,
+    item?.inv_taxable_value,
+    item?.po_total_amount
+  ))
+  if (directAmount !== null) return directAmount
+
+  const rate = parseScore(firstValue(item?.inv_rate, item?.so_rate, item?.po_rate))
+  const quantity = parseScore(firstValue(item?.inv_quantity, item?.so_quantity, item?.po_quantity))
+  return rate !== null && quantity !== null ? rate * quantity : null
+}
+
+const getSalesQuantity = (item) => parseScore(firstValue(
+  item?.inv_quantity,
+  item?.so_quantity,
+  item?.po_quantity,
+  item?.gp_quantity,
+  item?.ws_net_weight
+))
+
+const getSalesUnit = (item) => asText(firstValue(
+  item?.inv_unit,
+  item?.so_unit,
+  item?.po_unit,
+  item?.gp_unit,
+  item?.ws_unit
+))
+
+const getSalesTaxTotal = (item) => {
+  const taxes = [item?.inv_cgst_amount, item?.inv_sgst_amount, item?.inv_igst_amount]
+    .map(parseAmount)
+    .filter((value) => value !== null)
+
+  return taxes.length > 0 ? taxes.reduce((sum, value) => sum + value, 0) : null
+}
+
+const getSalesDocumentState = (item) => {
+  const documentGroups = [
+    [item?.inv_number, item?.inv_invoice_number, item?.tax_invoice_number, item?.invoice_number, item?.['Invoice Number']],
+    [item?.inv_party_order_number, item?.inv_po_number, item?.po_number, item?.so_po_number],
+    [item?.inv_order_number, item?.so_number, item?.order_number],
+    [item?.gp_number],
+    [item?.ws_number]
+  ]
+  const available = documentGroups.filter((group) => group.some(hasValue)).length
+
+  return {
+    available,
+    total: documentGroups.length,
+    complete: available === documentGroups.length
+  }
+}
+
+const formatNumber = (value, maximumFractionDigits = 1) => value === null || value === undefined
+  ? '—'
+  : value.toLocaleString('en-IN', { maximumFractionDigits })
+
+const formatQuantity = (value, unit) => {
+  if (value === null || value === undefined) return '—'
+  return `${formatNumber(value)}${unit ? ` ${unit}` : ''}`
+}
+
+const getReference = (item, isPurchase) => {
+  if (isPurchase) {
+    return {
+      primaryLabel: 'Batch',
+      primary: asText(firstValue(item?.Batch_Code_Invoice)) || '—',
+      secondaryLabel: 'EWB',
+      secondary: asText(firstValue(item?.EWB_Number_EWay, item?.Invoice_Number_EWay)) || '—'
     }
   }
 
-  return insights;
-};
-
-const DetailModal = ({ audit, onClose, onDecision, isProcessing }) => {
-  const [view, setView] = useState('intelligence');
-  if (!audit) return null;
-
-  const parseAuditResult = (resultStr) => {
-    if (!resultStr) return null;
-    try {
-      const parsed = typeof resultStr === 'string' ? JSON.parse(resultStr) : resultStr;
-      return Array.isArray(parsed) ? parsed[0] : parsed;
-    } catch {
-      return null;
-    }
+  return {
+    primaryLabel: 'Coil / Order',
+    primary: asText(firstValue(
+      item?.inv_number,
+      item?.inv_invoice_number,
+      item?.inv_coil_number,
+      item?.inv_order_number,
+      item?.so_coil_number,
+      item?.gp_coil_number,
+      item?.so_number,
+      item?.po_number
+    )) || '—',
+      secondaryLabel: 'PO / Order',
+      secondary: asText(firstValue(
+        item?.inv_party_order_number,
+        item?.inv_po_number,
+        item?.po_number,
+        item?.so_po_number,
+        item?.gp_po_number,
+        item?.gp_so_number,
+        item?.ws_number
+      )) || '—',
+    gatePassLabel: 'Gate Pass',
+    gatePass: asText(firstValue(
+      item?.gp_number,
+      item?.gp_gate_pass_number,
+      item?.gate_pass_number
+    )) || '—'
   }
+}
 
-  const result = parseAuditResult(audit.Audit_Result);
+const normalizeRecord = (item, side, index) => {
+  const isPurchase = side === 'purchase'
+  const result = getAuditResult(item)
+  const issues = getIssueTexts(item, result)
+  const score = parseScore(firstValue(
+    item?.inv_audit_score,
+    item?.audit_score,
+    result?.overall?.final_score,
+    result?.overall_summary?.average_score,
+    result?.score,
+    item?.Score,
+    item?.score
+  ))
+  const status = resolveStatus(getStatusCandidates(item, result), issues, score)
+  const identity = asText(firstValue(
+    isPurchase ? item?.Invoice_Number_Invoice : item?.inv_number,
+    isPurchase ? undefined : item?.inv_invoice_number,
+    isPurchase ? undefined : item?.inv_coil_number,
+    isPurchase ? undefined : item?.inv_order_number,
+    isPurchase ? undefined : item?.so_number,
+    isPurchase ? undefined : item?.so_coil_number,
+    isPurchase ? undefined : item?.po_number,
+    item?.id
+  )) || `${isPurchase ? 'PUR' : 'SAL'}-${index + 1}`
+  const party = asText(firstValue(
+    isPurchase ? item?.Supplier_Name_Invoice : item?.inv_bill_to_name,
+    isPurchase ? undefined : item?.inv_customer_name,
+    isPurchase ? undefined : item?.inv_party_name,
+    isPurchase ? undefined : item?.so_customer_name,
+    isPurchase ? undefined : item?.po_customer_name,
+    isPurchase ? undefined : item?.po_supplier_name,
+    isPurchase ? undefined : item?.sheet_bill_to_name
+  )) || 'Unknown party'
+  const reference = getReference(item, isPurchase)
+  const date = parseDateValue(firstValue(
+    isPurchase ? item?.created_at : item?.inv_date,
+    isPurchase ? item?.Invoice_Date_Invoice : item?.inv_invoice_date,
+    isPurchase ? undefined : item?.created_at,
+    isPurchase ? undefined : item?.so_date,
+    isPurchase ? undefined : item?.po_date
+  ))
+  const amount = isPurchase ? getPurchaseAmount(item) : getSalesAmount(item)
+  const quantity = isPurchase ? null : getSalesQuantity(item)
+  const quantityUnit = isPurchase ? '' : getSalesUnit(item)
+  const documentState = isPurchase ? null : getSalesDocumentState(item)
+  const taxTotal = isPurchase ? null : getSalesTaxTotal(item)
+  const summary = asText(firstValue(
+    item?.inv_audit_summary,
+    item?.audit_summary,
+    result?.audit_summary,
+    result?.summary,
+    result?.output?.overall_summary?.summary
+  ))
+  const displayIssues = issues.length > 0
+    ? `${summary ? `${summary}: ` : ''}${issues.slice(0, 5).join('; ')}`
+    : summary || (status === 'verified'
+      ? 'All parameters verified against the available documents.'
+      : status === 'unavailable'
+        ? 'No audit status is available for this record.'
+        : 'Audit is pending completion.')
 
-  // ── Enhanced field parser with GRN support ──
-  const fieldMap = {};
-  Object.entries(audit).forEach(([key, val]) => {
-    const EXCLUDED_KEYS = ['Audit_Result', 'Audit_Intelligence', 'id', 'created_at'];
-    if (EXCLUDED_KEYS.some(k => key.toLowerCase().includes(k.toLowerCase()))) return;
+  return {
+    key: `${side}-${asText(item?.id) || index}`,
+    identity,
+    party,
+    partyLabel: isPurchase ? 'Supplier' : 'Customer / Party',
+    amount,
+    amountLabel: isPurchase ? 'Invoice amount' : 'Invoice value',
+    quantity,
+    quantityUnit,
+    documentAvailable: documentState?.available || 0,
+    documentTotal: documentState?.total || 0,
+    documentComplete: documentState?.complete || false,
+    taxTotal,
+    reference,
+    date,
+    timestamp: date ? date.getTime() : 0,
+    status,
+    issuesCount: issues.length || (status === 'mismatch' ? 1 : 0),
+    issuesText: displayIssues,
+    score,
+    raw: item
+  }
+}
 
-    let docType = null;
-    let fieldBase = key;
+const buildDashboardStats = (rows) => {
+  const total = rows.length
+  const statusCounts = rows.reduce((counts, row) => {
+    counts[row.status] = (counts[row.status] || 0) + 1
+    return counts
+  }, {})
+  const totalValue = rows.reduce((sum, row) => sum + (row.amount ?? 0), 0)
+  const monthMap = new Map()
 
-    if (key.match(/[ _]\(Invoice\)$|_Invoice$/i)) { docType = 'Invoice'; fieldBase = key.replace(/[ _]\(Invoice\)$|_Invoice$/i, ''); }
-    else if (key.match(/[ _]\(EWay\)$|_EWay$/i)) { docType = 'E-Way Bill'; fieldBase = key.replace(/[ _]\(EWay\)$|_EWay$/i, ''); }
-    else if (key.match(/[ _]\(LR\)$|_LR$/i)) { docType = 'LR Copy'; fieldBase = key.replace(/[ _]\(LR\)$|_LR$/i, ''); }
-    else if (key.match(/[ _]\(GRN\)$|_GRN$/i)) { docType = 'GRN'; fieldBase = key.replace(/[ _]\(GRN\)$|_GRN$/i, ''); }
-
-    if (docType) {
-      const lowKey = fieldBase.toLowerCase();
-      if (lowKey.includes('invoice_number') || lowKey.includes('invoice_no')) {
-        fieldBase = 'Invoice Number';
-      } else if (lowKey.includes('lr_number')) {
-        fieldBase = 'LR Number';
-      } else if (lowKey.includes('ewb_number') || lowKey.includes('eway_number')) {
-        fieldBase = 'E-Way Bill Number';
-      } else if (lowKey.includes('gstin')) {
-        fieldBase = 'GSTIN';
-      } else if (lowKey.includes('batch_code') || lowKey.includes('coil_number') || lowKey.includes('batch_number')) {
-        fieldBase = 'Batch / Coil Number';
-      } else if (lowKey === 'consigner_name' || lowKey === 'supplier_name') {
-        fieldBase = 'Supplier Name';
-      } else if (lowKey === 'consignee_name' || lowKey === 'ship_to') {
-        fieldBase = 'Ship To';
-      } else if (lowKey === 'bill_to') {
-        fieldBase = 'Bill To';
-      } else if (lowKey.includes('product') || lowKey.includes('item_description') || lowKey.includes('item')) {
-        fieldBase = 'Product';
-      } else if (lowKey.includes('description') || lowKey.includes('desc')) {
-        fieldBase = 'Description';
-      } else if (lowKey.includes('hsn') || lowKey.includes('sac')) {
-        fieldBase = 'HSN';
-      } else if (lowKey.includes('vehicle') || lowKey.includes('veh_no')) {
-        fieldBase = 'Vehicle No';
-      } else if (lowKey.includes('weight') || lowKey.includes('wt')) {
-        fieldBase = 'Weight';
-      } else if (lowKey.includes('total_amount') || lowKey === 'amount') {
-        fieldBase = 'Total Amount';
-      } else if (lowKey.includes('quantity') || lowKey.includes('qty')) {
-        fieldBase = 'Quantity';
-      } else {
-        fieldBase = fieldBase.replace(/^(Invoice|EWay|EWB|LR|Supplier|Consigner|Consignee)[_ ]+/i, '');
-      }
-
-      fieldBase = fieldBase.replace(/_/g, ' ').trim();
-      if (fieldBase.toLowerCase().includes('total amount')) fieldBase = 'Total Amount';
-      if (fieldBase.toLowerCase() === 'name' && !lowKey.includes('supplier') && !lowKey.includes('consigner') && !lowKey.includes('consignee')) return;
-
-      if (!fieldMap[fieldBase]) fieldMap[fieldBase] = { Invoice: '—', 'E-Way Bill': '—', 'LR Copy': '—', 'GRN': '—' };
-      fieldMap[fieldBase][docType] = val?.toString() || '—';
+  rows.forEach((row) => {
+    const date = row.date
+    const monthKey = date
+      ? `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
+      : 'unknown'
+    const existing = monthMap.get(monthKey) || {
+      month: date ? date.toLocaleDateString('en-IN', { month: 'short', year: 'numeric' }) : 'Unknown',
+      totalAudits: 0,
+      verifiedMatches: 0,
+      sort: date ? date.getFullYear() * 100 + date.getMonth() : Number.MAX_SAFE_INTEGER
     }
-  });
+    existing.totalAudits += 1
+    if (row.status === 'verified') existing.verifiedMatches += 1
+    monthMap.set(monthKey, existing)
+  })
 
-  const isAddressField = (name) =>
-    ADDRESS_FIELDS.some(f => name.toLowerCase().includes(f.toLowerCase().replace(/ /g, '_')) ||
-                              name.toLowerCase().includes(f.toLowerCase()));
+  return {
+    total,
+    matchRate: total ? Math.round((statusCounts.verified || 0) / total * 100) : 0,
+    discrepancyCount: statusCounts.mismatch || 0,
+    totalValue,
+    monthlyActivity: Array.from(monthMap.values()).sort((a, b) => a.sort - b.sort).slice(-8),
+    statusData: STATUS_DEFINITIONS.map((definition) => ({
+      ...definition,
+      count: statusCounts[definition.key] || 0,
+      percentage: total ? Math.round((statusCounts[definition.key] || 0) / total * 100) : 0
+    }))
+  }
+}
 
-  const isBillTo = (name) => name.toLowerCase().includes('bill') || name.toLowerCase().includes('recipient');
-  const isShipTo = (name) => name.toLowerCase().includes('ship') || name.toLowerCase().includes('consignee');
+const buildSalesStats = (rows) => {
+  const pricedRows = rows.filter((row) => row.amount !== null)
+  const scoredRows = rows.filter((row) => row.score !== null)
+  const quantityRows = rows.filter((row) => row.quantity !== null)
+  const taxRows = rows.filter((row) => row.taxTotal !== null)
+  const unitCounts = new Map()
 
-  const getAddressStatus = (fieldBase, docType, value) => {
-    if (value === '—') return null;
-    if (isBillTo(fieldBase)) return fuzzyMatch(value, BILL_TO_TOKENS) ? 'ok' : 'fail';
-    if (isShipTo(fieldBase)) return fuzzyMatch(value, SHIP_TO_TOKENS) ? 'ok' : 'fail';
-    return null;
-  };
+  quantityRows.forEach((row) => {
+    if (row.quantityUnit) unitCounts.set(row.quantityUnit, (unitCounts.get(row.quantityUnit) || 0) + 1)
+  })
 
-  // ── Compute all field comparisons ──
-  const comparisons = {};
-  Object.entries(fieldMap).forEach(([fieldBase, vals]) => {
-    comparisons[fieldBase] = compareFieldValues(fieldBase, vals, audit);
-  });
+  const quantityUnit = [...unitCounts.entries()]
+    .sort((left, right) => right[1] - left[1])[0]?.[0] || 'units'
+  const documentChecks = rows.reduce((sum, row) => sum + row.documentAvailable, 0)
+  const possibleDocumentChecks = rows.reduce((sum, row) => sum + row.documentTotal, 0)
+  const totalQuantity = quantityRows.length > 0
+    ? quantityRows.reduce((sum, row) => sum + row.quantity, 0)
+    : null
+  const totalTax = taxRows.length > 0
+    ? taxRows.reduce((sum, row) => sum + row.taxTotal, 0)
+    : null
 
-  const totalFields = Object.keys(comparisons).length;
-  const matchCount = Object.values(comparisons).filter(c => c.status === 'MATCH').length;
-  const partialCount = Object.values(comparisons).filter(c => c.status === 'PARTIAL_MATCH').length;
-  const mismatchCount = Object.values(comparisons).filter(c => c.status === 'MISMATCH' || c.status === 'CRITICAL').length;
-  const webhookScore = parseInt(result?.overall?.final_score);
-  const auditScore = !isNaN(webhookScore) ? webhookScore : (totalFields > 0 ? Math.round(((matchCount + partialCount * 0.5) / totalFields) * 100) : 0);
-  const overallStatus = result?.overall?.status || (auditScore >= 85 ? 'GOOD MATCH' : auditScore >= 60 ? 'PARTIAL MATCH' : 'HIGH MISMATCH');
-  const webhookPercent = parseInt(result?.overall?.final_score);
-  const hasWebhookScore = !isNaN(webhookPercent);
-  const riskLevel = result?.overall?.status === 'CRITICAL' ? 'HIGH' : mismatchCount > 1 || Object.values(comparisons).some(c => c.status === 'CRITICAL') ? 'HIGH' : mismatchCount > 0 ? 'MEDIUM' : 'LOW';
-  const confidence = auditScore >= 85 ? 'HIGH' : auditScore >= 60 ? 'MEDIUM' : 'LOW';
+  return {
+    averageOrderValue: pricedRows.length > 0
+      ? pricedRows.reduce((sum, row) => sum + row.amount, 0) / pricedRows.length
+      : null,
+    averageScore: scoredRows.length > 0
+      ? scoredRows.reduce((sum, row) => sum + row.score, 0) / scoredRows.length
+      : null,
+    customerCount: new Set(rows.filter((row) => row.party !== 'Unknown party').map((row) => row.party)).size,
+    documentCoverageRate: possibleDocumentChecks > 0
+      ? Math.round(documentChecks / possibleDocumentChecks * 100)
+      : 0,
+    completeDocumentCount: rows.filter((row) => row.documentComplete).length,
+    totalQuantity,
+    quantityUnit,
+    quantityCount: quantityRows.length,
+    totalTax,
+    taxCount: taxRows.length,
+    pricedCount: pricedRows.length,
+    scoredCount: scoredRows.length
+  }
+}
 
-  const insights = generateInsights(comparisons, fieldMap);
+const statusBadgeClass = (status) => {
+  if (status === 'verified') return 'tag-verified'
+  if (status === 'mismatch') return 'tag-mismatch'
+  return 'tag-pending'
+}
 
-  const statusIcon = (status) => {
-    switch (status) {
-      case 'MATCH': return <Check size={12} />;
-      case 'PARTIAL_MATCH': return <AlertTriangle size={12} />;
-      case 'MISMATCH': return <X size={12} />;
-      case 'CRITICAL': return <AlertTriangle size={12} />;
-      case 'DUPLICATE_LR_CASE': return <Truck size={12} />;
-      default: return null;
-    }
-  };
-
-  const statusClass = (status) => {
-    switch (status) {
-      case 'MATCH': return 'status-match';
-      case 'PARTIAL_MATCH': return 'status-partial';
-      case 'MISMATCH': return 'status-mismatch';
-      case 'CRITICAL': return 'status-critical';
-      case 'DUPLICATE_LR_CASE': return 'status-duplicate-lr';
-      default: return '';
-    }
-  };
-
-  const renderCell = (fieldBase, docType, value) => {
-    const addr = isAddressField(fieldBase);
-    if (docType === 'LR Copy' && addr) return <td key={docType} className="doc-value-cell not-applicable"><span className="na-text">N/A</span></td>;
-
-    if (fieldBase === 'LR Number' && (docType === 'Invoice' || docType === 'E-Way Bill')) {
-      return <td key={docType} className="doc-value-cell not-applicable"><span className="na-text">N/A</span></td>;
-    }
-
-    if ((fieldBase === 'E-Way Bill Number' || fieldBase === 'Vehicle No') && docType === 'Invoice') {
-      return <td key={docType} className="doc-value-cell not-applicable"><span className="na-text">N/A</span></td>;
-    }
-
-    if (fieldBase === 'Batch / Coil Number' && docType === 'E-Way Bill') {
-      return <td key={docType} className="doc-value-cell not-applicable"><span className="na-text">N/A</span></td>;
-    }
-
-    const status = addr ? getAddressStatus(fieldBase, docType, value) : null;
-    const comp = comparisons[fieldBase];
-    const cellStatus = comp?.status;
-
-    let extraClass = '';
-    if (cellStatus && value !== '—') {
-      extraClass = statusClass(cellStatus) + '-cell';
-    }
-    if (status === 'ok')   extraClass = 'addr-ok';
-    if (status === 'fail') extraClass = 'addr-fail';
-
-    return (
-      <td key={docType} data-label={docType.replace(/_/g, ' ')} className={`doc-value-cell ${extraClass}`}>
-        <span className="cell-value">{value}</span>
-        {!addr && cellStatus && value !== '—' && (
-          <span className={`cell-status-badge ${statusClass(cellStatus)}`} title={comp?.reason || ''}>
-            {statusIcon(cellStatus)}
-          </span>
-        )}
-        {addr && status && (
-          <span className={`addr-badge ${status}`}>
-            {status === 'ok' ? '✓' : '✗'}
-          </span>
-        )}
-        {!addr && cellStatus && value !== '—' && comp?.reason && (
-          <div className="cell-tooltip">{comp.reason}</div>
-        )}
-      </td>
-    );
-  };
+const SalesMetricCard = ({ icon, title, value, detail, tone = 'blue' }) => {
+  const Icon = icon
 
   return (
-    <div className="modal-overlay animate-fade-in" onClick={onClose}>
-      <div className="modal-content animate-slide-up ledger-modal" style={{ maxWidth: view === 'universal' ? '1200px' : '750px', transition: 'max-width 0.3s ease' }} onClick={e => e.stopPropagation()}>
-        <div className="modal-header">
-          <div className="header-text-group">
-            <h2 className="modal-title">
-              <Info className="text-primary" size={24} /> 
-              {view === 'intelligence' ? 'Audit Intelligence' : 'Universal Document Ledger'}
-            </h2>
-            <p className="modal-subtitle">Ref: {audit.Invoice_Number_Invoice || audit.id}</p>
-          </div>
-          <div className="flex items-center gap-3">
-            <button 
-              className="btn btn-outline btn-sm py-1 font-bold text-[10px] uppercase tracking-wider" 
-              onClick={() => setView(view === 'intelligence' ? 'universal' : 'intelligence')}
-            >
-              {view === 'intelligence' ? '📊 Raw Data' : '🤖 Intelligence'}
-            </button>
-            <button className="close-btn" onClick={onClose}><X size={20} /></button>
-          </div>
-        </div>
-
-        <div className="modal-body" style={{ maxHeight: '70vh', overflowY: 'auto', padding: view === 'universal' ? '0rem' : '2rem' }}>
-          {view === 'intelligence' ? (
-            !result ? (
-              <div className="empty-state">
-                 <AlertTriangle size={40} className="empty-icon" />
-                 <p>No granular intelligence packet available.</p>
-              </div>
-            ) : (
-              <div className="intelligence-grid animate-fade-in">
-                <div className="score-main-card">
-                   <span className="card-label">Overall Compliance Index</span>
-                   <h1 className="main-score">{result.overall?.final_score || 'N/A'}</h1>
-                   <span 
-                        className={`badge-status ${result.overall?.status?.toLowerCase().replace(/_/g, '')}`}
-                        style={
-                          audit.Status === 'Approve' ? { background: '#10b981', color: 'white', border: '1px solid #10b981' } :
-                          audit.Status === 'Reject' ? { background: '#ef4444', color: 'white', border: '1px solid #ef4444' } : {}
-                        }
-                      >
-                        {audit.Status === 'Approve' || result.overall?.status === 'GOOD_MATCH' ? <CheckCircle size={14} /> : <AlertTriangle size={14} />}
-                        {(audit.Status || result.overall?.status?.replace(/_/g, ' ') || 'Pending').toUpperCase()}
-                      </span>
-                </div>
-
-                <div className="match-metrics-list">
-                   <div className="metric-item">
-                     <span className="metric-label">Invoice Match Score</span>
-                     <span className="metric-value">{result.invoice_number_match?.invoice_vs_eway || '100%'}</span>
-                   </div>
-                   <div className="metric-item">
-                     <span className="metric-label">Vehicle identity Match</span>
-                     <span className="metric-value">{result.vehicle_match?.score || '100%'}</span>
-                   </div>
-                   
-                   <div className="metric-item has-tooltip">
-                     <span className="metric-label">Amount Match Accuracy</span>
-                     <span className="metric-value">{result.amount_match?.score || '100%'}</span>
-                     <div className="tooltip-content animate-fade-in">
-                        <div className="tooltip-row"><span>Inv Amount:</span> <strong>₹{result.amount_match?.invoice_amount?.toLocaleString()}</strong></div>
-                        <div className="tooltip-row"><span>EWB Amount:</span> <strong>₹{result.amount_match?.eway_amount?.toLocaleString()}</strong></div>
-                        <div className="tooltip-divider"></div>
-                        <div className="tooltip-row highlights"><span>Difference:</span> <strong>₹{Math.abs(result.amount_match?.difference || 0).toLocaleString()}</strong></div>
-                     </div>
-                   </div>
-
-                   <div className="metric-item has-tooltip">
-                     <span className="metric-label">Weight Matches</span>
-                     <span className="metric-value">{result.weight_match?.score || '100%'}</span>
-                     <div className="tooltip-content animate-fade-in">
-                        <div className="tooltip-row"><span>Inv Weight:</span> <strong>{result.weight_match?.invoice_weight_mt} MT</strong></div>
-                        <div className="tooltip-row"><span>EWB Weight:</span> <strong>{result.weight_match?.eway_weight_mt} MT</strong></div>
-                        <div className="tooltip-row"><span>LR Weight:</span> <strong>{result.weight_match?.lr_weight_mt} MT</strong></div>
-                        <div className="tooltip-divider"></div>
-                        <div className="tooltip-row highlights"><span>Max Diff:</span> <strong>{result.weight_match?.max_difference_kg} KG</strong></div>
-                     </div>
-                   </div>
-
-                    {result.issues?.length > 0 && (
-                      <div className="metric-item" style={{ background: '#fff1f2', padding: '0.75rem', borderRadius: '8px', borderBottom: 'none', marginTop: '4px' }}>
-                        <span className="metric-label" style={{ color: '#be123c', fontWeight: '700' }}>Compliance Exceptions</span>
-                        <span className="metric-value" style={{ color: '#be123c' }}>-{100 - parseInt(result.overall?.final_score || 100)}%</span>
-                      </div>
-                    )}
-                 </div>
-
-                <div className="issues-feedback-card">
-                   <h4 className="feedback-title">Intelligence Feedback & Issues</h4>
-                   <div className="issues-stack">
-                     {result.issues?.length > 0 ? (
-                       result.issues.map((issue, idx) => (
-                         <div key={idx} className="issue-row">
-                            <AlertTriangle size={18} className="text-error" />
-                            <span className="issue-text">{issue.replace(/_/g, ' ')}</span>
-                         </div>
-                       ))
-                     ) : (
-                       <div className="success-row">
-                          <CheckCircle size={18} />
-                          <span className="success-text">Zero discrepancies found. Operational integrity verified.</span>
-                       </div>
-                     )}
-                     {result.invoice_number_match?.remarks && (
-                       <div className="remarks-box">
-                         <strong>Technical Note:</strong> {result.invoice_number_match.remarks}
-                       </div>
-                     )}
-                   </div>
-                </div>
-              </div>
-            )
-          ) : (
-            <>
-              {/* ── Audit Score Header ── */}
-              <div className="audit-score-header glass-morphism">
-                <div className="score-header-left">
-                  <div className="audit-score-ring" style={{
-                    background: `conic-gradient(${auditScore >= 85 ? '#10b981' : auditScore >= 60 ? '#f59e0b' : '#ef4444'} ${auditScore}%, rgba(255,255,255,0.06) ${auditScore}%)`
-                  }}>
-                    <span className="audit-score-value">{auditScore}%</span>
-                  </div>
-                </div>
-                <div className="score-header-meta">
-                  <div className="score-header-top">
-                    <span className={`score-status-badge ${overallStatus === 'GOOD MATCH' || overallStatus === 'GOOD_MATCH' ? 'score-good' : overallStatus === 'PARTIAL MATCH' || overallStatus === 'PARTIAL_MATCH' || overallStatus === 'NEEDS_REVIEW' ? 'score-partial' : 'score-bad'}`}>
-                      {overallStatus.replace(/_/g, ' ')}
-                    </span>
-                    <span className={`risk-badge ${riskLevel === 'LOW' ? 'risk-low' : riskLevel === 'MEDIUM' ? 'risk-medium' : 'risk-high'}`}>
-                      {riskLevel} RISK
-                    </span>
-                    <span className="confidence-badge">AI Confidence: {confidence}</span>
-                  </div>
-                  <div className="score-header-stats">
-                    <span className="stat-chip match-chip"><Check size={11} /> {matchCount} Match</span>
-                    <span className="stat-chip partial-chip"><AlertTriangle size={11} /> {partialCount} Partial</span>
-                    <span className="stat-chip mismatch-chip"><X size={11} /> {mismatchCount} Issue{mismatchCount !== 1 ? 's' : ''}</span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="universal-table-wrapper animate-fade-in" style={{ padding: '0rem' }}>
-                <table className="comparison-table" style={{ fontSize: '0.75rem', width: '100%', borderCollapse: 'collapse' }}>
-                  <thead>
-                    <tr>
-                      <th className="field-col" style={{ width: '18%', padding: '0.75rem' }}>Field</th>
-                      <th className="doc-col invoice-col" style={{ padding: '0.75rem' }}>📄 Invoice</th>
-                      <th className="doc-col eway-col" style={{ padding: '0.75rem' }}>🚛 E-Way Bill</th>
-                      <th className="doc-col lr-col" style={{ padding: '0.75rem' }}>📋 LR Copy</th>
-                      <th className="doc-col grn-col" style={{ padding: '0.75rem' }}>📦 GRN</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {Object.entries(fieldMap).map(([fieldBase, vals]) => {
-                      const comp = comparisons[fieldBase];
-                      return (
-                        <tr key={fieldBase} className={`ledger-row ${comp?.status ? statusClass(comp.status) + '-row' : ''}`}>
-                          <td data-label="Field Identity" className="field-name-cell font-bold tracking-tight">
-                            <span className="field-label-text">{fieldBase.replace(/_/g, ' ')}</span>
-                            {comp?.status && (
-                              <span className={`row-status-badge ${statusClass(comp.status)}`} title={comp.reason || ''}>
-                                {statusIcon(comp.status)}
-                                <span className="badge-label">
-                                  {comp.status === 'DUPLICATE_LR_CASE' ? 'DUPLICATE LR' : comp.status === 'PARTIAL_MATCH' ? 'PARTIAL' : comp.status}
-                                </span>
-                              </span>
-                            )}
-                            {comp?.reason && <div className="row-tooltip">{comp.reason}</div>}
-                          </td>
-                          {renderCell(fieldBase, 'Invoice', vals['Invoice'])}
-                          {renderCell(fieldBase, 'E-Way Bill', vals['E-Way Bill'])}
-                          {renderCell(fieldBase, 'LR Copy', vals['LR Copy'])}
-                          {renderCell(fieldBase, 'GRN', vals['GRN'])}
-                        </tr>
-                      )
-                    })}
-                  </tbody>
-                </table>
-              </div>
-
-              {/* ── Audit Insights Panel ── */}
-              {insights.length > 0 && (
-                <div className="audit-insights-panel glass-morphism animate-fade-in">
-                  <div className="insights-header">
-                    <BarChart3 size={14} />
-                    <span>Audit Insights</span>
-                  </div>
-                  <div className="insights-list">
-                    {insights.map((insight, i) => (
-                      <div key={i} className="insight-item">
-                        <span className="insight-bullet" />
-                        <span>{insight}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </>
-          )}
-        </div>
-
-        <div className="modal-footer flex-between">
-          <p className="text-[10px] text-muted italic">4-way cross-document validation · {totalFields} fields analyzed</p>
-          <div className="flex gap-2">
-            <button className="btn btn-outline" onClick={onClose}>Close Detail</button>
-            <button 
-              className="btn" 
-              style={{ background: '#ef4444', color: 'white', border: 'none' }}
-              onClick={() => onDecision(audit.id, 'Reject')}
-              disabled={isProcessing}
-            >
-              {isProcessing ? 'Sending...' : 'Reject'}
-            </button>
-            <button 
-              className="btn" 
-              style={{ background: '#10b981', color: 'white', border: 'none' }}
-              onClick={() => onDecision(audit.id, 'Approve')}
-              disabled={isProcessing}
-            >
-              {isProcessing ? 'Sending...' : 'Approve'}
-            </button>
-          </div>
-        </div>
+    <div className={`sales-metric-card tone-${tone}`}>
+      <div className="sales-metric-head">
+        <span>{title}</span>
+        <span className="sales-metric-icon"><Icon size={14} /></span>
       </div>
+      <div className="sales-metric-value">{value}</div>
+      <div className="sales-metric-detail">{detail}</div>
     </div>
   )
 }
-
-const StatCard = ({ title, value, icon, trend, trendLabel, type = "default" }) => {
-  const Icon = icon;
-  const isPositive = type === 'success' || (type === 'default' && trend > 0);
-  
-  return (
-    <div className="card stat-card animate-fade-in">
-      <div className="stat-header">
-        <div className="stat-info">
-          <p className="stat-title">{title}</p>
-          <h3 className="stat-value">{value}</h3>
-        </div>
-        <div className={`stat-icon-wrapper ${type}`}>
-          <Icon size={24} />
-        </div>
-      </div>
-      <div className="stat-footer">
-        {trend !== undefined && (
-          <span className={`trend ${isPositive ? 'positive' : 'negative'}`}>
-            {trend > 0 ? '+' : ''}{trend}%
-          </span>
-        )}
-        <span className="trend-label">{trendLabel || 'Live update'}</span>
-      </div>
-    </div>
-  )
-}
-
-// ── Sales Analytics Helpers ───────────────────────────────────
-const getSalesGroupKey = (record) =>
-  record.so_number || record.so_po_number || record['so_number'] || 'Unknown';
-
-const getSalesInvoiceNo = getSalesGroupKey;
-
-const getSalesParty = (record) =>
-  record.so_customer_name || record.so_broker_name || record.po_customer_name || record.po_supplier_name ||
-  record.inv_bill_to_name || record.sheet_bill_to_name || record.bill_to_name || record.inv_broker_name ||
-  record.sheet_broker_name || record.broker_name || record.so_party_name || 'Unknown Party';
-
-const getSalesDecision = (record) => {
-  const raw = record.Result || record.result || record.Status || record.status;
-  const r = String(raw || '').toUpperCase();
-  if (r === 'APPROVE' || r === 'APPROVED' || r === 'YES') return 'Approve';
-  if (r === 'REJECT' || r === 'REJECTED' || r === 'NO') return 'Reject';
-  return null;
-};
-
-const getSalesScore = (record) => {
-  const I = record.intelligence || record;
-  const s = I.audit_score ?? record.audit_score ?? record.score ?? record.Score;
-  if (s === undefined || s === null || s === '') return null;
-  const n = parseInt(s);
-  return isNaN(n) ? null : n;
-};
-
-const getSalesAmount = (record) =>
-  parseFloat(String(record.inv_final_amount || record.po_total_amount || record.inv_amount || '0').replace(/[^0-9.-]/g, '')) || 0;
 
 const Dashboard = () => {
+  const [activeSide, setActiveSide] = useState('purchase')
   const [audits, setAudits] = useState([])
   const [salesAudits, setSalesAudits] = useState([])
-  const [activeSide, setActiveSide] = useState('purchase')
   const [isLoading, setIsLoading] = useState(true)
-  const [isSalesLoading, setIsSalesLoading] = useState(false)
-  const [error, setError] = useState(null)
-  const [salesError, setSalesError] = useState(null)
   const [isRefreshing, setIsRefreshing] = useState(false)
-  const [selectedAudit, setSelectedAudit] = useState(null)
-  const [decisionProcessing, setDecisionProcessing] = useState(null)
-  const [confirmDecision, setConfirmDecision] = useState(null)
+  const [loadError, setLoadError] = useState('')
+  const [tableSearch, setTableSearch] = useState('')
+  const [statusFilter, setStatusFilter] = useState('all')
+  const [sortOrder, setSortOrder] = useState('newest')
+  const [selectedAuditModal, setSelectedAuditModal] = useState(null)
+  const requestIdRef = useRef(0)
 
-  const handleDecisionClick = (auditId, decision) => {
-    setConfirmDecision({ id: auditId, decision });
-  }
+  const loadData = useCallback(async (refresh = false) => {
+    const side = activeSide
+    const requestId = requestIdRef.current + 1
+    requestIdRef.current = requestId
 
-  const executeDecision = async () => {
-    if (!confirmDecision) return;
-    const { id, decision } = confirmDecision;
-    setDecisionProcessing(id);
+    if (refresh) setIsRefreshing(true)
+    else setIsLoading(true)
+    setLoadError('')
+
     try {
-      const response = await fetch(import.meta.env.VITE_DECISION_WEBHOOK_URL || 'https://n8n.srv1010832.hstgr.cloud/webhook/1e6f6a92-5353-47ee-a10f-8e0b198cba84', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          reference: `REF: ${id}`,
-          decision: decision
-        })
-      });
-      if (!response.ok) throw new Error('Network response was not ok');
-      
-      setConfirmDecision(null);
-      setSelectedAudit(null);
-      await fetchAudits(false);
-    } catch (err) {
-      console.error('Decision submission failed', err);
-      alert('Failed to communicate with webhook.');
-      setConfirmDecision(null);
+      const data = side === 'purchase' ? await fetchPurchaseRecords() : await fetchSalesRecords()
+      if (requestId !== requestIdRef.current) return
+
+      if (side === 'purchase') setAudits(Array.isArray(data) ? data : [])
+      else setSalesAudits(Array.isArray(data) ? data : [])
+    } catch (error) {
+      if (requestId !== requestIdRef.current) return
+      if (side === 'purchase') setAudits([])
+      else setSalesAudits([])
+      setLoadError(error instanceof Error ? error.message : 'Unable to load the audit ledger.')
     } finally {
-      setDecisionProcessing(null);
-    }
-  }
-
-  const normalizeAuditResult = (result) => {
-    if (!result || !result.output?.overall_summary) return result;
-    const o = result.output;
-    const di = o.detailed_issues?.[0] || {};
-    const fi = o.field_issues || {};
-    const isMatch = (arr) => !arr?.length;
-    return {
-      overall: {
-        final_score: (o.overall_summary.average_score || '0').replace('%', ''),
-        status: o.overall_summary.overall_status || 'UNVERIFIED'
-      },
-      issues: di.key_issues || [],
-      invoice_number_match: {
-        invoice_vs_eway: isMatch(fi.invoice_number_lr_mismatch) && isMatch(fi.invoice_number_grn_mismatch) ? 'MATCH' : 'MISMATCH'
-      },
-      vehicle_match: { score: isMatch(fi.vehicle_mismatch) ? 'MATCH' : 'MISMATCH' },
-      amount_match: { score: isMatch(fi.amount_mismatch) ? 'MATCH' : 'MISMATCH' },
-      weight_match: { score: isMatch(fi.weight_mismatch) ? 'MATCH' : 'MISMATCH' },
-    };
-  };
-
-  const parseAuditResult = (resultStr) => {
-    if (!resultStr) return null;
-    try {
-      const parsed = typeof resultStr === 'string' ? JSON.parse(resultStr) : resultStr;
-      const extracted = Array.isArray(parsed) ? parsed[0] : parsed;
-      return normalizeAuditResult(extracted);
-    } catch (e) {
-      console.warn('Failed to parse audit result:', e);
-      return null;
-    }
-  }
-
-  const fetchAudits = async (showLoading = true) => {
-    if (showLoading) setIsLoading(true)
-    setError(null)
-    try {
-      const response = await fetch(AUDITS_WEBHOOK_URL)
-      if (!response.ok) throw new Error('Failed to fetch audits')
-      const data = await response.json()
-      
-      let auditData = [];
-      if (Array.isArray(data)) {
-        auditData = data;
-      } else if (data.audits && Array.isArray(data.audits)) {
-        auditData = data.audits;
-      } else if (data.data && Array.isArray(data.data)) {
-        auditData = data.data;
-      } else if (data && typeof data === 'object' && Object.keys(data).length > 0) {
-        auditData = [data];
+      if (requestId === requestIdRef.current) {
+        setIsLoading(false)
+        setIsRefreshing(false)
       }
-      
-      setAudits(prev => {
-        const merged = new Map();
-        // Add existing ones first
-        prev.forEach(item => merged.set(item.id, item));
-        // Add/Update with new ones
-        auditData.forEach(item => merged.set(item.id, item));
-        
-        // Convert to array and sort by created_at desc
-        return Array.from(merged.values()).sort((a, b) => 
-          new Date(b.created_at) - new Date(a.created_at)
-        );
-      });
-    } catch (err) {
-      console.error('Dashboard Fetch Error:', err)
-      setError('Connection failed. Using cached intelligence.')
-      setAudits([])
-    } finally {
-      setIsLoading(false)
-      setIsRefreshing(false)
     }
-  }
-
-  const fetchSalesAudits = async (showLoading = true) => {
-    if (showLoading) setIsSalesLoading(true)
-    setSalesError(null)
-    try {
-      const response = await fetch(SALES_HISTORY_URL)
-      if (!response.ok) throw new Error('Failed to fetch sales audits')
-      const data = await response.json()
-
-      let salesData = [];
-      if (Array.isArray(data)) {
-        salesData = data;
-      } else if (data && data.audits && Array.isArray(data.audits)) {
-        salesData = data.audits;
-      } else if (data && data.data && Array.isArray(data.data)) {
-        salesData = data.data;
-      } else if (data && typeof data === 'object' && Object.keys(data).length > 0) {
-        const arrayKey = Object.keys(data).find(k => Array.isArray(data[k]) && data[k].length > 0);
-        salesData = arrayKey ? data[arrayKey] : [data];
-      }
-
-      const unique = Array.from(new Map(salesData.map(item => [item.id || JSON.stringify(item), item])).values());
-      setSalesAudits(unique);
-    } catch (err) {
-      console.error('Sales Dashboard Fetch Error:', err)
-      setSalesError('Could not load sales analytics.')
-      setSalesAudits([])
-    } finally {
-      setIsSalesLoading(false)
-      setIsRefreshing(false)
-    }
-  }
+  }, [activeSide])
 
   useEffect(() => {
-    fetchAudits()
-    fetchSalesAudits()
-  }, [])
+    loadData()
+  }, [loadData])
 
-  const handleRefresh = () => {
-    setIsRefreshing(true)
-    fetchAudits(false)
-    fetchSalesAudits(false)
+  useSyncRefresh(() => loadData(true))
+
+  const handleSideChange = (side) => {
+    if (side === activeSide) return
+    requestIdRef.current += 1
+    setActiveSide(side)
+    setStatusFilter('all')
+    setTableSearch('')
+    setSelectedAuditModal(null)
+    setLoadError('')
   }
 
-  const processedData = useMemo(() => {
-    // ── Purchase Side Analytics ──
-    const pStats = { total: audits.length, matched: 0, pending: 0, mismatch: 0, totalValue: 0 }
-    const pBar = {}
+  const activeRecords = activeSide === 'purchase' ? audits : salesAudits
+  const normalizedRows = useMemo(
+    () => activeRecords.map((item, index) => normalizeRecord(item, activeSide, index)),
+    [activeRecords, activeSide]
+  )
+  const isSales = activeSide === 'sales'
+  const tableRows = useMemo(() => {
+    const query = tableSearch.trim().toLowerCase()
 
-    audits.forEach(audit => {
-      const result = parseAuditResult(audit.Audit_Result);
-      const decision = (audit.Result === 'Approve' || audit.Result === 'Reject') ? audit.Result : 
-                       (audit.Status === 'Approve' || audit.Status === 'Reject') ? audit.Status : null;
-      
-      const status = decision || result?.overall?.status || audit.Result || audit.Status;
-      const isMatched = status === 'GOOD_MATCH' || status === 'Completed' || status === 'Approve';
-      const isMismatch = status?.includes('MISMATCH') || status === 'Error' || status === 'PARTIAL_MATCH' || status === 'Reject';
-      
-      if (isMatched) pStats.matched++;
-      else if (isMismatch) pStats.mismatch++;
-      else pStats.pending++;
+    const filtered = query
+      ? normalizedRows.filter((row) => [row.identity, row.party, row.reference.primary, row.reference.secondary, row.reference.gatePass, row.issuesText]
+        .some((value) => asText(value).toLowerCase().includes(query)))
+      : normalizedRows
 
-      const amount = parseFloat(audit.Total_Amount_Invoice) || 0;
-      pStats.totalValue += amount;
+    const statusFiltered = statusFilter === 'all'
+      ? filtered
+      : filtered.filter((row) => row.status === statusFilter)
 
-      const dateStr = audit.created_at || audit.Audit_Date || audit.Created_At;
-      const date = dateStr ? new Date(dateStr) : new Date();
-      const month = date.toLocaleString('default', { month: 'short' });
-      if (!pBar[month]) pBar[month] = { name: month, Success: 0, Issues: 0 }
-      if (isMatched) pBar[month].Success++;
-      else pBar[month].Issues++;
+    const sortedRows = [...statusFiltered].sort((left, right) => {
+      if (isSales) return right.timestamp - left.timestamp
+      const difference = left.timestamp - right.timestamp
+      return sortOrder === 'newest' ? -difference : difference
     })
 
-    const purchase = {
-      stats: pStats,
-      charts: {
-        bar: Object.values(pBar),
-        pie: [
-          { name: 'Verified Match', value: pStats.matched },
-          { name: 'Pending Review', value: pStats.pending },
-          { name: 'Critical Mismatch', value: pStats.mismatch }
-        ]
-      }
-    }
+    return isSales ? sortedRows.slice(0, 5) : sortedRows
+  }, [isSales, normalizedRows, statusFilter, sortOrder, tableSearch])
 
-    // ── Sales Side Analytics ──
-    const sStats = { total: 0, matched: 0, pending: 0, mismatch: 0, totalValue: 0 }
-    const sBar = {}
-    const salesGroups = {}
-
-    salesAudits.forEach(record => {
-      const key = getSalesInvoiceNo(record)
-      if (!salesGroups[key]) {
-        salesGroups[key] = { invoiceNumber: key, records: [], partyName: getSalesParty(record), latestDate: record.created_at }
-      }
-      salesGroups[key].records.push(record)
-      if (record.created_at && (!salesGroups[key].latestDate || new Date(record.created_at) > new Date(salesGroups[key].latestDate))) {
-        salesGroups[key].latestDate = record.created_at
-      }
-    })
-
-    Object.values(salesGroups).forEach(group => {
-      const decisions = group.records.map(getSalesDecision).filter(Boolean)
-      let status = 'pending'
-      if (decisions.includes('Reject')) status = 'mismatch'
-      else if (decisions.includes('Approve')) status = 'matched'
-
-      sStats.total++
-      if (status === 'matched') sStats.matched++
-      else if (status === 'mismatch') sStats.mismatch++
-      else sStats.pending++
-
-      group.records.forEach(record => { sStats.totalValue += getSalesAmount(record) })
-
-      const date = group.latestDate ? new Date(group.latestDate) : new Date()
-      const month = date.toLocaleString('default', { month: 'short' })
-      if (!sBar[month]) sBar[month] = { name: month, Success: 0, Issues: 0 }
-      if (status === 'matched') sBar[month].Success++
-      else sBar[month].Issues++
-    })
-
-    const recentSales = Object.values(salesGroups)
-      .sort((a, b) => new Date(b.latestDate || 0) - new Date(a.latestDate || 0))
-      .slice(0, 8)
-
-    const sales = {
-      stats: sStats,
-      charts: {
-        bar: Object.values(sBar),
-        pie: [
-          { name: 'Verified Match', value: sStats.matched },
-          { name: 'Pending Review', value: sStats.pending },
-          { name: 'Critical Mismatch', value: sStats.mismatch }
-        ]
-      },
-      recent: recentSales
-    }
-
-    return { purchase, sales }
-  }, [audits, salesAudits])
-
-  const isSalesSide = activeSide === 'sales'
-  const activeStats = isSalesSide ? processedData.sales.stats : processedData.purchase.stats
-  const activeCharts = isSalesSide ? processedData.sales.charts : processedData.purchase.charts
-
-  if (isLoading) {
-    return (
-      <div className="dashboard-loading flex-center" style={{ height: '80vh', flexDirection: 'column', gap: '1.5rem' }}>
-        <Loader2 className="animate-spin text-primary" size={50} />
-        <h2 className="text-xl font-bold">Synchronizing Global Audit Intelligence</h2>
-        <p className="text-muted">Fetching records from centralized registry...</p>
-      </div>
-    )
-  }
+  const dashboardStats = useMemo(() => buildDashboardStats(normalizedRows), [normalizedRows])
+  const salesStats = useMemo(
+    () => isSales ? buildSalesStats(normalizedRows) : null,
+    [isSales, normalizedRows]
+  )
+  const tableTitle = isSales ? 'Recent Sales Audits' : 'Recent Purchase Audits'
+  const tableSubtitle = isSales ? 'Latest 5 sales order, invoice, and logistics compliance records' : 'Invoice, e-way, LR, and GRN compliance'
+  const searchPlaceholder = isSales ? 'Search order, customer, reference...' : 'Search invoice, supplier, reference...'
+  const sourceLabel = isSales ? 'public."Audit Checker Sales"' : 'public."Audit Checker"'
 
   return (
-    <div className="dashboard">
-      <div className="page-header">
-        <div>
-          <h1 className="page-title">Executive Overview</h1>
-          <p className="page-subtitle">
-            {isSalesSide ? 'Sales side analytics — order-to-dispatch compliance' : 'Unified surveillance of purchase and logistics compliance'}
-          </p>
-          {error && !isSalesSide && <span className="error-badge">{error}</span>}
-          {salesError && isSalesSide && <span className="error-badge">{salesError}</span>}
+    <div className="dashboard-wrapper">
+      <div className="executive-header">
+        <div className="header-text-block">
+          <div className="header-meta-row">
+            <span className="corp-name">ZV STEELS PVT. LTD.</span>
+            <span className="meta-bullet">•</span>
+            <span className="module-badge">{isSales ? 'SALES COMPLIANCE' : 'PURCHASE COMPLIANCE'}</span>
+          </div>
+          <h1 className="main-title">Executive Overview</h1>
+          <p className="main-subtitle">Live {isSales ? 'sales' : 'purchase'} compliance data from the audit ledger</p>
         </div>
-        <div className="header-actions">
-          <div className="side-toggle-group">
+
+        <div className="header-action-block">
+          <div className="audit-segment-control">
             <button
-              className={`side-toggle-btn ${!isSalesSide ? 'active-purchase' : ''}`}
-              onClick={() => setActiveSide('purchase')}
+              type="button"
+              className={`segment-btn ${!isSales ? 'active' : ''}`}
+              onClick={() => handleSideChange('purchase')}
             >
-              🛒 Purchase
+              Purchase Audit
             </button>
             <button
-              className={`side-toggle-btn ${isSalesSide ? 'active-sales' : ''}`}
-              onClick={() => setActiveSide('sales')}
+              type="button"
+              className={`segment-btn ${isSales ? 'active' : ''}`}
+              onClick={() => handleSideChange('sales')}
             >
-              💰 Sales
+              Sales Audit
             </button>
           </div>
-          <button className="btn btn-outline flex items-center gap-2" onClick={handleRefresh} disabled={isRefreshing}>
-            <RefreshCw size={16} className={isRefreshing ? 'animate-spin' : ''} /> Sync Webhook
+
+          <button
+            type="button"
+            className="btn btn-outline ledger-refresh-btn"
+            onClick={() => loadData(true)}
+            disabled={isRefreshing || isLoading}
+          >
+            {isRefreshing ? <Loader2 size={13} className="spin" /> : <RefreshCw size={13} />}
+            <span>Refresh Ledger</span>
           </button>
-          <button className="btn btn-primary">Surveillance Report</button>
         </div>
       </div>
 
-      <div className="stats-grid">
-        {isSalesSide ? (
-          <>
-            <StatCard 
-              title="Sales Orders Audited" 
-              value={activeStats.total} 
-              icon={FileText} 
-              trendLabel="Active sales ledger entries"
-              type="primary"
-            />
-            <StatCard 
-              title="Order Match Rate" 
-              value={`${activeStats.total ? Math.round((activeStats.matched / activeStats.total) * 100) : 0}%`}
-              icon={CheckCircle} 
-              type="success"
-              trendLabel="Across all sales documents"
-            />
-            <StatCard 
-              title="Sales Discrepancies" 
-              value={activeStats.mismatch} 
-              icon={AlertTriangle} 
-              type="error"
-              trendLabel="Requires immediate action"
-            />
-            <StatCard 
-              title="Total Sales Value" 
-              value={`₹${(activeStats.totalValue / 10000000).toFixed(2)} Cr`} 
-              icon={TrendingDown} 
-              type="warning"
-              trendLabel="Live sales volume in Crores"
-            />
-          </>
-        ) : (
-          <>
-            <StatCard 
-              title="Total Invoices Audited" 
-              value={activeStats.total} 
-              icon={FileText} 
-              trendLabel="Active ledger entries"
-              type="primary"
-            />
-            <StatCard 
-              title="Compliance Match Rate" 
-              value={`${activeStats.total ? Math.round((activeStats.matched / activeStats.total) * 100) : 0}%`}
-              icon={CheckCircle} 
-              type="success"
-              trendLabel="Across all documents"
-            />
-            <StatCard 
-              title="Audit Discrepancies" 
-              value={activeStats.mismatch} 
-              icon={AlertTriangle} 
-              type="error"
-              trendLabel="Requires immediate action"
-            />
-            <StatCard 
-              title="Total Audit Value" 
-              value={`₹${(activeStats.totalValue / 10000000).toFixed(2)} Cr`} 
-              icon={TrendingDown} 
-              type="warning"
-              trendLabel="Live transactional volume in Crores"
-            />
-          </>
-        )}
+      <div className="kpi-row-grid">
+        <div className="kpi-panel">
+          <div className="kpi-panel-head">
+            <span className="kpi-title">{isSales ? 'Sales Orders Audited' : 'Invoices Audited'}</span>
+            <FileText size={15} className="kpi-ico" />
+          </div>
+          <div className="kpi-num">{dashboardStats.total.toLocaleString('en-IN')}</div>
+          <div className="kpi-sub">Active ledger entries</div>
+        </div>
+
+        <div className="kpi-panel">
+          <div className="kpi-panel-head">
+            <span className="kpi-title">Compliance Match Rate</span>
+            <CheckCircle size={15} className="kpi-ico ico-success" />
+          </div>
+          <div className="kpi-num">{dashboardStats.matchRate}%</div>
+          <div className="kpi-sub">Verified records across all documents</div>
+        </div>
+
+        <div className="kpi-panel">
+          <div className="kpi-panel-head">
+            <span className="kpi-title">Audit Discrepancies</span>
+            <AlertTriangle size={15} className="kpi-ico ico-warning" />
+          </div>
+          <div className="kpi-num">{dashboardStats.discrepancyCount.toLocaleString('en-IN')}</div>
+          <div className="kpi-sub">Requires review or action</div>
+        </div>
+
+        <div className="kpi-panel">
+          <div className="kpi-panel-head">
+            <span className="kpi-title">Total Audit Value</span>
+            <span className="kpi-currency">₹</span>
+          </div>
+          <div className="kpi-num">{formatCurrency(dashboardStats.totalValue)}</div>
+          <div className="kpi-sub">Live transactional volume</div>
+        </div>
       </div>
 
-      <div className="charts-grid">
-        <div className="card chart-card">
-          <div className="card-header pb-4 border-b">
-            <h3 className="card-title">Compliance Intelligence Timeline</h3>
+      {isSales && salesStats && (
+        <section className="sales-insights-section">
+          <div className="section-heading-row">
+            <div>
+              <h2 className="section-title">Sales intelligence</h2>
+              <p className="section-subtitle">Operational, financial, and document coverage signals</p>
+            </div>
+            <span className="section-data-note">Based on {dashboardStats.total.toLocaleString('en-IN')} sales records</span>
           </div>
-          <div className="chart-container pt-6">
-            <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={activeCharts.bar}>
-                <CartesianGrid strokeDasharray="3" vertical={false} stroke="var(--border)" opacity={0.3} />
-                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: 'var(--text-muted)', fontSize: 11 }} dy={8} />
-                <YAxis axisLine={false} tickLine={false} tick={{ fill: 'var(--text-muted)', fontSize: 11 }} />
-                <Tooltip 
-                  cursor={{fill: 'var(--text-muted)', opacity: 0.05}} 
+
+          <div className="sales-metric-grid">
+            <SalesMetricCard
+              icon={ReceiptIndianRupee}
+              title="Average order value"
+              value={formatCurrency(salesStats.averageOrderValue)}
+              detail={`${salesStats.pricedCount.toLocaleString('en-IN')} priced orders`}
+              tone="blue"
+            />
+            <SalesMetricCard
+              icon={Gauge}
+              title="Average audit score"
+              value={salesStats.averageScore === null ? '—' : `${formatNumber(salesStats.averageScore)}%`}
+              detail={`${salesStats.scoredCount.toLocaleString('en-IN')} scored orders`}
+              tone="green"
+            />
+            <SalesMetricCard
+              icon={Users}
+              title="Active customers"
+              value={salesStats.customerCount.toLocaleString('en-IN')}
+              detail="Distinct sales customers"
+              tone="purple"
+            />
+            <SalesMetricCard
+              icon={FileCheck2}
+              title="Document coverage"
+              value={`${salesStats.documentCoverageRate}%`}
+              detail={`${salesStats.completeDocumentCount.toLocaleString('en-IN')} complete document sets`}
+              tone="teal"
+            />
+            <SalesMetricCard
+              icon={Boxes}
+              title="Billed volume"
+              value={formatQuantity(salesStats.totalQuantity, salesStats.quantityUnit)}
+              detail={`${salesStats.quantityCount.toLocaleString('en-IN')} orders with quantity`}
+              tone="blue"
+            />
+            <SalesMetricCard
+              icon={ReceiptIndianRupee}
+              title="Tax captured"
+              value={formatCurrency(salesStats.totalTax)}
+              detail={`${salesStats.taxCount.toLocaleString('en-IN')} tax records`}
+              tone="green"
+            />
+          </div>
+        </section>
+      )}
+
+      <div className="charts-flex-grid">
+        <div className="panel-box chart-panel-left">
+          <div className="panel-box-header">
+            <div>
+              <h3 className="panel-title">Audit Activity</h3>
+              <p className="panel-sub">Total audits vs verified matches</p>
+            </div>
+            <div className="chart-legend">
+              <span className="leg-item"><span className="leg-dot slate"></span> Total Audits</span>
+              <span className="leg-item"><span className="leg-dot green"></span> Verified Matches</span>
+            </div>
+          </div>
+
+          <div className="chart-wrapper">
+            <ResponsiveContainer width="100%" height={240}>
+              <BarChart data={dashboardStats.monthlyActivity} margin={{ top: 15, right: 10, left: -25, bottom: 0 }}>
+                <CartesianGrid stroke="var(--border)" strokeDasharray="3 3" vertical={false} />
+                <XAxis dataKey="month" stroke="var(--text-muted)" tickLine={false} fontSize={11} />
+                <YAxis stroke="var(--text-muted)" tickLine={false} fontSize={11} allowDecimals={false} />
+                <Tooltip
                   contentStyle={{
-                    backgroundColor: 'var(--surface)', 
-                    border: '1px solid var(--border)', 
-                    borderRadius: '12px',
-                    boxShadow: 'var(--shadow-lg)',
-                    color: 'var(--text)'
+                    backgroundColor: 'var(--surface)',
+                    borderColor: 'var(--border)',
+                    borderRadius: '6px',
+                    color: 'var(--text)',
+                    fontSize: '11px'
                   }}
-                  itemStyle={{ color: 'var(--text)', fontSize: '12px' }}
+                  cursor={{ fill: 'rgba(127, 127, 127, 0.04)' }}
                 />
-                <Legend iconType="circle" verticalAlign="top" height={36} wrapperStyle={{ fontSize: '11px', fontWeight: 'bold', color: 'var(--text)' }} />
-                <Bar dataKey="Success" name="Verified Matches" fill="#10B981" radius={[4, 4, 0, 0]} barSize={32} />
-                <Bar dataKey="Issues" name="Mismatches/Pending" fill="#475569" radius={[4, 4, 0, 0]} barSize={32} />
+                <Bar dataKey="totalAudits" name="Total Audits" fill="#718096" maxBarSize={32} />
+                <Bar dataKey="verifiedMatches" name="Verified Matches" fill={COLOR_VERIFIED} maxBarSize={32} />
               </BarChart>
             </ResponsiveContainer>
           </div>
         </div>
 
-        <div className="card chart-card">
-          <div className="header border-b pb-4">
-             <h3 className="card-title px-6">Verification Integrity</h3>
+        <div className="panel-box chart-panel-right">
+          <div className="panel-box-header">
+            <div>
+              <h3 className="panel-title">Verification Status</h3>
+              <p className="panel-sub">Compliance distribution across ledger</p>
+            </div>
           </div>
-          <div className="chart-container flex-center">
-            <ResponsiveContainer width="100%" height={300}>
-              <PieChart>
-                <Pie
-                  data={activeCharts.pie}
-                  cx="50%"
-                  cy="50%"
-                  innerRadius={75}
-                  outerRadius={105}
-                  paddingAngle={8}
-                  dataKey="value"
-                >
-                  {activeCharts.pie.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                  ))}
-                </Pie>
-                <Tooltip 
-                  contentStyle={{ 
-                    backgroundColor: 'var(--surface)', 
-                    border: '1px solid var(--border)',
-                    borderRadius: '12px',
-                    boxShadow: 'var(--shadow-lg)',
-                    color: 'var(--text)'
-                  }}
-                  itemStyle={{ color: 'var(--text)', fontSize: '12px' }}
-                />
-              </PieChart>
-            </ResponsiveContainer>
-            <div className="pie-center-text">
-              <span className="pie-percent" style={{ fontSize: '1.5rem' }}>
-                {activeStats.total ? Math.round((activeStats.matched / activeStats.total) * 100) : 0}%
-              </span>
-              <span className="pie-label">Integrity</span>
+
+          <div className="donut-panel-content">
+            <div className="donut-graphics">
+              <ResponsiveContainer width={150} height={150}>
+                <PieChart>
+                  <Pie
+                    data={dashboardStats.statusData}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={48}
+                    outerRadius={70}
+                    paddingAngle={3}
+                    dataKey="count"
+                    stroke="var(--surface)"
+                  >
+                    {dashboardStats.statusData.map((entry) => (
+                      <Cell key={entry.key} fill={entry.color} />
+                    ))}
+                  </Pie>
+                </PieChart>
+              </ResponsiveContainer>
+              <div className="donut-center">
+                <span className="donut-pct">{dashboardStats.matchRate}%</span>
+                <span className="donut-lbl">Verified</span>
+              </div>
+            </div>
+
+            <div className="status-legend-stack">
+              {dashboardStats.statusData.map((item) => (
+                <div key={item.key} className="status-legend-row">
+                  <div className="status-legend-left">
+                    <span className="sq-indicator" style={{ backgroundColor: item.color }}></span>
+                    <span className="status-name">{item.name}</span>
+                  </div>
+                  <div className="status-legend-right">
+                    <span className="status-count">{item.count.toLocaleString('en-IN')}</span>
+                    <span className="status-pct">({item.percentage}%)</span>
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
         </div>
       </div>
 
-      <div className="card table-card overflow-hidden">
-        <div className="card-header flex-between border-b p-6">
-          <h3 className="card-title">{isSalesSide ? 'Recent Sales Order Snapshots' : 'Recent Intelligence Snapshots'}</h3>
-          <p className="text-xs text-muted font-bold italic">
-            {isSalesSide ? 'Latest sales order groups' : 'Click any audit row to Drill-down'}
-          </p>
-        </div>
-        {isSalesSide ? (
-          <div className="table-responsive">
-            {isSalesLoading ? (
-              <div className="flex-center" style={{ height: '300px', flexDirection: 'column', gap: '1.5rem' }}>
-                <Loader2 size={40} className="animate-spin text-primary" />
-                <p className="text-muted font-bold tracking-widest uppercase text-xs">Syncing Sales Records...</p>
-              </div>
-            ) : processedData.sales.recent.length === 0 ? (
-              <div className="empty-state">
-                <AlertTriangle size={40} className="empty-icon" />
-                <p>{salesError || 'No sales records found in system registry.'}</p>
-              </div>
-            ) : (
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th>Order Identity</th>
-                    <th>Customer / Party</th>
-                    <th>Order Value</th>
-                    <th className="text-right">Compliance Score</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {processedData.sales.recent.map((group) => {
-                    const decisions = group.records.map(getSalesDecision).filter(Boolean);
-                    const finalDecision = decisions.includes('Reject') ? 'Reject' :
-                                          decisions.includes('Approve') ? 'Approve' : null;
-                    const score = group.records.map(getSalesScore).filter(s => s !== null);
-                    const avgScore = score.length
-                      ? Math.round(score.reduce((a, b) => a + b, 0) / score.length)
-                      : null;
-                    const amount = group.records.reduce((acc, r) => acc + getSalesAmount(r), 0);
-                    const rowBg = finalDecision === 'Approve' ? 'rgba(16, 185, 129, 0.2)' :
-                                  finalDecision === 'Reject' ? 'rgba(239, 68, 68, 0.2)' : undefined;
-                    return (
-                      <tr key={group.invoiceNumber} className="audit-row hover:bg-primary/5 transition-all" style={{ cursor: 'pointer', backgroundColor: rowBg }}>
-                        <td className="font-bold text-primary" style={{ fontSize: '1.1rem' }}>
-                          {group.invoiceNumber}
-                          {group.records.length > 1 && (
-                            <span className="text-xs text-muted opacity-60 ml-2">{group.records.length} items</span>
-                          )}
-                        </td>
-                        <td className="font-medium text-gray-700">{group.partyName}</td>
-                        <td className="font-semibold text-gray-800">₹{(amount / 100000).toFixed(2)} L</td>
-                        <td className="text-right">
-                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '0.75rem' }}>
-                            <div
-                              className={`score-badge ${avgScore !== null && avgScore > 80 ? 'high' : 'review'}`}
-                              style={{
-                                padding: '4px 12px', borderRadius: '20px', fontSize: '14px', fontWeight: '900',
-                                background: avgScore !== null && avgScore > 80 ? 'rgba(16, 185, 129, 0.1)' : 'rgba(245, 158, 11, 0.1)',
-                                color: avgScore !== null && avgScore > 80 ? 'var(--success)' : 'var(--warning)',
-                                border: `1px solid ${avgScore !== null && avgScore > 80 ? 'rgba(16, 185, 129, 0.2)' : 'rgba(245, 158, 11, 0.2)'}`
-                              }}
-                            >
-                              {avgScore !== null ? `${avgScore}%` : 'N/A'}
-                            </div>
-                            {finalDecision === 'Approve' && <CheckCircle size={16} className="text-success" />}
-                            {finalDecision === 'Reject' && <AlertTriangle size={16} className="text-error" />}
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+      <div className="panel-box table-panel">
+        <div className="table-toolbar">
+          <div>
+            <h3 className="panel-title">{tableTitle}</h3>
+            <p className="panel-sub">{tableSubtitle}</p>
+          </div>
+
+          <div className="table-toolbar-actions">
+            <div className="toolbar-search-box">
+              <Search size={13} className="search-ico" />
+              <input
+                type="text"
+                placeholder={searchPlaceholder}
+                value={tableSearch}
+                onChange={(event) => setTableSearch(event.target.value)}
+              />
+              {tableSearch && (
+                <button type="button" className="clear-btn" onClick={() => setTableSearch('')}>
+                  <X size={11} />
+                </button>
+              )}
+            </div>
+
+            <div className="toolbar-select-box">
+              <Filter size={12} className="select-ico" />
+              <select
+                value={statusFilter}
+                onChange={(event) => setStatusFilter(event.target.value)}
+                className="toolbar-select"
+                aria-label="Filter by status"
+              >
+                <option value="all">All Statuses</option>
+                <option value="verified">Verified</option>
+                <option value="mismatch">Discrepancies</option>
+                <option value="pending">Pending</option>
+                <option value="unavailable">Not Available</option>
+              </select>
+            </div>
+
+            {!isSales && (
+              <button
+                type="button"
+                className="btn btn-outline sort-toggle-btn"
+                onClick={() => setSortOrder((current) => current === 'newest' ? 'oldest' : 'newest')}
+              >
+                <ArrowUpDown size={12} />
+                <span>{sortOrder === 'newest' ? 'Newest' : 'Oldest'}</span>
+              </button>
             )}
           </div>
-        ) : (
-        <div className="table-responsive">
-          <table className="data-table">
+        </div>
+
+        <div className="table-scroll-container">
+          <table className="dense-audit-table">
             <thead>
               <tr>
-                <th>Invoice Identity</th>
-                <th>Supplier Asset</th>
-                <th className="text-right">Compliance Score</th>
+                <th style={{ width: '16%' }}>{isSales ? 'Invoice / Order' : 'Invoice ID'}</th>
+                <th style={{ width: '32%' }}>{isSales ? 'Customer / Party' : 'Supplier'}</th>
+                <th style={{ width: '20%' }}>Reference Tracking</th>
+                <th style={{ width: '12%' }}>Audit Value</th>
+                <th style={{ width: '12%' }}>Audit Date</th>
+                <th style={{ width: '8%' }}>Status</th>
+                <th style={{ width: '0%', textAlign: 'right' }}>Actions</th>
               </tr>
             </thead>
             <tbody>
-              {audits.slice(0, 8).map((record) => {
-                const result = parseAuditResult(record.Audit_Result);
-                const score = result?.overall?.final_score || 'N/A';
-                
-                const finalDecision = (record.Result === 'Approve' || record.Result === 'Reject') ? record.Result : 
-                                      (record.Status === 'Approve' || record.Status === 'Reject') ? record.Status : null;
-
-                const rowBg = finalDecision === 'Approve' ? 'rgba(16, 185, 129, 0.2)' : 
-                              finalDecision === 'Reject' ? 'rgba(239, 68, 68, 0.2)' : undefined;
-                
-                return (
-                  <tr 
-                    key={record.id} 
-                    onClick={() => setSelectedAudit(record)}
-                    style={{ cursor: 'pointer', backgroundColor: rowBg }}
-                    className="audit-row hover:bg-primary/5 transition-all"
-                  >
-                    <td className="font-bold text-primary" style={{ fontSize: '1.1rem' }}>
-                      {record.Invoice_Number_Invoice || `REF-${record.id}`}
-                    </td>
-                    <td className="font-medium text-gray-700">
-                      {record.Supplier_Name_Invoice || 'System Record'}
-                    </td>
-                    <td className="text-right">
-                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '0.75rem' }}>
-                          <div className={`score-badge ${parseInt(score) > 80 ? 'high' : 'review'}`} style={{
-                            padding: '4px 12px',
-                            borderRadius: '20px',
-                            fontSize: '14px',
-                            fontWeight: '900',
-                            background: parseInt(score) > 80 ? 'rgba(16, 185, 129, 0.1)' : 'rgba(245, 158, 11, 0.1)',
-                            color: parseInt(score) > 80 ? 'var(--success)' : 'var(--warning)',
-                            border: `1px solid ${parseInt(score) > 80 ? 'rgba(16, 185, 129, 0.2)' : 'rgba(245, 158, 11, 0.2)'}`
-                          }}>
-                            {score}%
-                          </div>
-                          <Info size={16} className="text-muted opacity-40" />
-                       </div>
-                    </td>
-                  </tr>
-                )
-              })}
-              {audits.length === 0 && (
+              {isLoading ? (
                 <tr>
-                  <td colSpan="3" className="text-center p-20 text-muted">
-                    <Loader2 size={40} className="animate-spin mb-4" />
-                    <p>No active intelligence reports found in system registry.</p>
+                  <td colSpan={7} className="state-cell">
+                    <Loader2 size={16} className="spin" />
+                    <span>Querying {isSales ? 'sales' : 'purchase'} ledger...</span>
                   </td>
                 </tr>
+              ) : loadError ? (
+                <tr>
+                  <td colSpan={7} className="state-cell">{loadError}</td>
+                </tr>
+              ) : tableRows.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="state-cell">No matching audit entries found.</td>
+                </tr>
+              ) : (
+                tableRows.map((row) => (
+                  <tr key={row.key}>
+                    <td className="cell-id"><span>{row.identity}</span></td>
+                    <td className="cell-party"><span title={row.party}>{row.party}</span></td>
+                    <td className="cell-ref">
+                      <div className="ref-lines">
+                        <span>{row.reference.primaryLabel}: <strong>{row.reference.primary}</strong></span>
+                        <span className="muted">{row.reference.secondaryLabel}: <strong>{row.reference.secondary}</strong></span>
+                        {row.reference.gatePass && (
+                          <span className="muted">{row.reference.gatePassLabel}: <strong>{row.reference.gatePass}</strong></span>
+                        )}
+                      </div>
+                    </td>
+                    <td className="cell-val"><span>{formatCurrency(row.amount)}</span></td>
+                    <td className="cell-date"><span>{formatDate(row.date)}</span></td>
+                    <td className="cell-badge">
+                      <span className={`badge-tag ${statusBadgeClass(row.status)}`}>
+                        {row.status === 'verified' && '✓ Verified'}
+                        {row.status === 'mismatch' && `⚠ ${row.issuesCount} Issue${row.issuesCount === 1 ? '' : 's'}`}
+                        {row.status === 'pending' && 'Pending'}
+                        {row.status === 'unavailable' && 'Not Available'}
+                      </span>
+                    </td>
+                    <td className="cell-act" style={{ textAlign: 'right' }}>
+                      <button
+                        type="button"
+                        className="eye-btn"
+                        onClick={() => setSelectedAuditModal(row)}
+                        title="View audit details"
+                        aria-label={`View details for ${row.identity}`}
+                      >
+                        <Eye size={14} />
+                      </button>
+                    </td>
+                  </tr>
+                ))
               )}
             </tbody>
           </table>
         </div>
-        )}
+
+        <div className="table-footer">
+          <span>{isSales ? `Showing ${tableRows.length} latest sales entries` : `Showing ${tableRows.length} audit entries`}</span>
+          <span>Data source: {sourceLabel}</span>
+        </div>
       </div>
 
-      {selectedAudit && (
-        <DetailModal 
-          audit={selectedAudit} 
-          onClose={() => setSelectedAudit(null)} 
-          onDecision={handleDecisionClick}
-          isProcessing={decisionProcessing === selectedAudit.id}
-        />
-      )}
+      {selectedAuditModal && (
+        <div className="modal-backdrop" onClick={() => setSelectedAuditModal(null)}>
+          <div className="modal-content-box" onClick={(event) => event.stopPropagation()}>
+            <div className="modal-header-row">
+              <div>
+                <span className="modal-kicker">AUDIT DISCREPANCY REPORT</span>
+                <h3 className="modal-title-text">{selectedAuditModal.identity}</h3>
+              </div>
+              <button type="button" className="modal-close" onClick={() => setSelectedAuditModal(null)} aria-label="Close details">
+                <X size={16} />
+              </button>
+            </div>
 
-      {confirmDecision && (
-        <div className="modal-overlay animate-fade-in" style={{ zIndex: 9999 }} onClick={() => !decisionProcessing && setConfirmDecision(null)}>
-          <div className="card modal-content text-center" style={{ maxWidth: '400px', padding: '2rem' }} onClick={e => e.stopPropagation()}>
-             <h3 style={{ marginBottom: '1rem', color: confirmDecision.decision === 'Approve' ? '#10b981' : '#ef4444', fontSize: '1.25rem', fontWeight: 'bold' }}>
-               Confirm {confirmDecision.decision}
-             </h3>
-             <p style={{ marginBottom: '2rem', color: 'var(--text-muted)' }}>
-               Are you sure you want to {confirmDecision.decision.toLowerCase()} audit record <strong>REF: {confirmDecision.id}</strong>?
-             </p>
-             <div className="flex justify-center gap-3">
-               <button className="btn btn-outline" onClick={() => setConfirmDecision(null)} disabled={decisionProcessing}>No, Cancel</button>
-               <button 
-                 className="btn" 
-                 style={{ background: confirmDecision.decision === 'Approve' ? '#10b981' : '#ef4444', color: 'white', border: 'none' }}
-                 onClick={executeDecision}
-                 disabled={decisionProcessing}
-               >
-                 {decisionProcessing ? 'Sending...' : 'Yes, Proceed'}
-               </button>
-             </div>
+            <div className="modal-body-area">
+              <div className="modal-info-grid">
+                <div className="info-block">
+                  <span className="info-lbl">{selectedAuditModal.partyLabel}</span>
+                  <span className="info-val">{selectedAuditModal.party}</span>
+                </div>
+                <div className="info-block">
+                  <span className="info-lbl">{selectedAuditModal.amountLabel}</span>
+                  <span className="info-val">{formatCurrency(selectedAuditModal.amount)}</span>
+                </div>
+                <div className="info-block">
+                  <span className="info-lbl">{selectedAuditModal.reference.primaryLabel}</span>
+                  <span className="info-val">{selectedAuditModal.reference.primary}</span>
+                </div>
+                <div className="info-block">
+                  <span className="info-lbl">{selectedAuditModal.reference.secondaryLabel}</span>
+                  <span className="info-val">{selectedAuditModal.reference.secondary}</span>
+                </div>
+                {selectedAuditModal.reference.gatePass && (
+                  <div className="info-block">
+                    <span className="info-lbl">{selectedAuditModal.reference.gatePassLabel}</span>
+                    <span className="info-val">{selectedAuditModal.reference.gatePass}</span>
+                  </div>
+                )}
+                <div className="info-block">
+                  <span className="info-lbl">Audit Date</span>
+                  <span className="info-val">{formatDate(selectedAuditModal.date)}</span>
+                </div>
+                <div className="info-block">
+                  <span className="info-lbl">Status</span>
+                  <span className={`info-val ${selectedAuditModal.status === 'verified' ? 'clr-success' : 'clr-warning'}`}>
+                    {selectedAuditModal.status === 'verified' && '✓ Verified'}
+                    {selectedAuditModal.status === 'mismatch' && `⚠ ${selectedAuditModal.issuesCount} issue${selectedAuditModal.issuesCount === 1 ? '' : 's'}`}
+                    {selectedAuditModal.status === 'pending' && 'Pending'}
+                    {selectedAuditModal.status === 'unavailable' && 'Not available'}
+                  </span>
+                </div>
+              </div>
+
+              <div className={`modal-remarks-card ${selectedAuditModal.status === 'verified' ? 'verified' : ''}`}>
+                <div className="remarks-top">
+                  <Info size={13} />
+                  <span>Audit Remarks & Discrepancy Log</span>
+                </div>
+                <p className="remarks-text">
+                  {selectedAuditModal.score !== null ? `Compliance score: ${selectedAuditModal.score}%. ` : ''}
+                  {selectedAuditModal.issuesText}
+                </p>
+              </div>
+            </div>
+
+            <div className="modal-footer-row">
+              <button type="button" className="btn btn-outline" onClick={() => setSelectedAuditModal(null)}>
+                Close Report
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -1393,5 +1134,3 @@ const Dashboard = () => {
 }
 
 export default Dashboard
-
-

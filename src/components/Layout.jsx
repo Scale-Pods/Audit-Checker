@@ -7,29 +7,43 @@ import {
   FileText, 
   History, 
   LogOut,
-  Bell,
   Search,
   User,
-  Sun,
-  Moon,
   Menu,
-  X
+  X,
+  RefreshCw,
+  Calendar,
+  Layers
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
+import { useSync } from '../context/SyncContext'
+import { ThemeToggle } from './ui/theme-toggle'
 import './Layout.css'
 
-const SidebarItem = ({ to, icon, label, onClick }) => {
+const SidebarItem = ({ to, icon, label, disabled = false, badgeText = null, onClick, className = '' }) => {
   const location = useLocation()
   const Icon = icon
   const isActive = location.pathname === to
 
+  if (disabled) {
+    return (
+      <div className={`sidebar-item disabled ${className}`}>
+        <Icon size={18} />
+        <div className="sidebar-item-content">
+          <span>{label}</span>
+          {badgeText && <span className="dev-badge">{badgeText}</span>}
+        </div>
+      </div>
+    )
+  }
+
   return (
     <Link 
       to={to} 
-      className={`sidebar-item ${isActive ? 'active' : ''}`}
+      className={`sidebar-item ${isActive ? 'active' : ''} ${className}`}
       onClick={onClick}
     >
-      <Icon size={20} />
+      <Icon size={18} />
       <span>{label}</span>
     </Link>
   )
@@ -38,18 +52,15 @@ const SidebarItem = ({ to, icon, label, onClick }) => {
 const Layout = () => {
   const navigate = useNavigate()
   const { currentUser, logout } = useAuth()
-  const [theme, setTheme] = useState(localStorage.getItem('theme') || 'light')
+  const { isSyncing, syncNow } = useSync()
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
   const [isSearchVisible, setIsSearchVisible] = useState(false)
+  const [dateRange, setDateRange] = useState('30d')
 
   useEffect(() => {
-    document.documentElement.setAttribute('data-theme', theme)
-    localStorage.setItem('theme', theme)
-  }, [theme])
-
-  const toggleTheme = () => {
-    setTheme(prev => prev === 'light' ? 'dark' : 'light')
-  }
+    const stored = localStorage.getItem('theme') || 'dark'
+    document.documentElement.setAttribute('data-theme', stored)
+  }, [])
 
   const handleLogout = async () => {
     try {
@@ -67,84 +78,120 @@ const Layout = () => {
     <div className="app-container">
       {isMobileMenuOpen && <div className="mobile-overlay" onClick={closeMobileMenu}></div>}
       
+      {/* ── Left Sidebar ── */}
       <aside className={`sidebar ${isMobileMenuOpen ? 'mobile-open' : ''}`}>
         <div className="sidebar-header">
-          <div className="logo-container" style={{ flexDirection: 'column', alignItems: 'center', textAlign: 'center', gap: '15px', width: '100%', padding: '1rem 0' }}>
-            <img src="https://zvsteels.com/assets/img/zv_logo.png" alt="ZV Steels" style={{ height: '80px', objectFit: 'contain', filter: 'var(--zv-filter)' }} />
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px', fontSize: '11px', color: 'var(--text-muted)', fontWeight: 500 }}>
-              <span>Powered By</span>
-              <div style={{ height: '24px', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', marginTop: '3px' }}>
-                <img src="https://framerusercontent.com/images/sTvMZBHEzwH4fTjPgKO2PS3htho.png?scale-down-to=2048&width=2363&height=2363" alt="Scalepods" style={{ width: '90px', filter: 'var(--scalepods-filter)' }} />
-              </div>
+          <div className="enterprise-brand">
+            <div className="brand-logo-wrap">
+              <img 
+                src="https://zvsteels.com/assets/img/zv_logo.png" 
+                alt="ZV Steels" 
+                className="zv-logo-img" 
+              />
             </div>
           </div>
         </div>
+
+        <div className="sidebar-divider" />
         
         <nav className="sidebar-nav">
           <div className="nav-group">
-            <p className="nav-group-title">MAIN</p>
+            <p className="nav-group-title">Overview</p>
             <SidebarItem to="/dashboard" icon={LayoutDashboard} label="Dashboard" onClick={closeMobileMenu} />
             <SidebarItem to="/analytics" icon={TrendingUp} label="Analytics" onClick={closeMobileMenu} />
           </div>
 
           <div className="nav-group">
-            <p className="nav-group-title">AUDIT MODULES</p>
+            <p className="nav-group-title">Audits</p>
             <SidebarItem to="/purchase" icon={ShoppingBag} label="Purchase Audit" onClick={closeMobileMenu} />
             <SidebarItem to="/sales" icon={FileText} label="Sales Audit" onClick={closeMobileMenu} />
-            <div className="sidebar-item disabled">
-              <FileText size={20} />
-              <div className="sidebar-item-content">
-                <span>TDC to MTC Checker</span>
-                <span className="dev-badge">Under Development</span>
-              </div>
-            </div>
+            <SidebarItem 
+              to="#" 
+              icon={Layers} 
+              label="TDC to MTC Checker" 
+              disabled={true} 
+              badgeText="Future Scope" 
+            />
           </div>
 
           <div className="nav-group">
-            <p className="nav-group-title">RECORDS</p>
-            <SidebarItem to="/history" icon={History} label="Audit History" onClick={closeMobileMenu} />
+            <p className="nav-group-title">Records</p>
+            <SidebarItem to="/history" icon={History} label="Audit History" onClick={closeMobileMenu} className="sidebar-item-large" />
           </div>
         </nav>
 
         <div className="sidebar-footer">
+          <div className="sidebar-footer-divider" />
+          <div className="theme-toggle-slot">
+            <ThemeToggle />
+          </div>
+          <div className="power-tag">
+            <span>Powered by Scalepods</span>
+          </div>
           <button onClick={handleLogout} className="logout-btn">
-            <LogOut size={20} />
-            <span>Logout</span>
+            <LogOut size={18} />
+            <span>Log out</span>
           </button>
         </div>
       </aside>
 
+      {/* ── Main Top Bar Navigation ── */}
       <main className="main-content">
         <header className="topbar">
           <div className="topbar-left">
             <button className="mobile-menu-toggle" onClick={toggleMobileMenu}>
-              {isMobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
+              {isMobileMenuOpen ? <X size={18} /> : <Menu size={18} />}
             </button>
             <div className={`topbar-search ${isSearchVisible ? 'mobile-visible' : ''}`}>
-              <Search size={18} className="search-icon" />
-              <input type="text" placeholder="Search audits..." />
-              <button className="search-close" onClick={() => setIsSearchVisible(false)}><X size={18} /></button>
+              <Search size={15} className="search-icon" />
+              <input 
+                type="text" 
+                placeholder="Search invoices, suppliers, audit ID..." 
+                id="global-search-input"
+              />
+              <button className="search-close" onClick={() => setIsSearchVisible(false)}>
+                <X size={15} />
+              </button>
             </div>
           </div>
+
           <div className="topbar-actions">
-            <button className="action-btn mobile-only" onClick={() => setIsSearchVisible(true)}>
-              <Search size={20} />
+            {/* Date Range Picker */}
+            <div className="date-picker-wrap">
+              <Calendar size={13} className="date-icon" />
+              <select 
+                value={dateRange} 
+                onChange={(e) => setDateRange(e.target.value)}
+                className="date-select"
+              >
+                <option value="30d">Last 30 Days</option>
+                <option value="90d">Q3 2026</option>
+                <option value="ytd">Year to Date</option>
+              </select>
+            </div>
+
+            {/* Sync Data Button */}
+            <button 
+              className={`btn btn-outline sync-btn ${isSyncing ? 'syncing' : ''}`}
+              onClick={syncNow}
+              disabled={isSyncing}
+              title="Synchronize real-time audit ledger"
+            >
+              <RefreshCw size={13} className={isSyncing ? 'spin' : ''} />
+              <span className="sync-label">{isSyncing ? 'Syncing' : 'Sync Data'}</span>
             </button>
-            <button className="action-btn" onClick={toggleTheme}>
-              {theme === 'light' ? <Moon size={20} /> : <Sun size={20} />}
-            </button>
-            <button className="action-btn"><Bell size={20} /></button>
+
+            {/* User Profile */}
             <div className="user-profile">
-              <div className="user-avatar" style={{ overflow: 'hidden' }}>
-                {currentUser?.photoURL ? (
-                  <img src={currentUser.photoURL} alt="User profile" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                ) : (
-                  <User size={18} />
-                )}
+              <div className="user-avatar">
+                <User size={15} />
               </div>
-              <span className="user-name" style={{ maxWidth: '120px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {currentUser?.email?.split('@')[0] || 'Auditor'}
-              </span>
+              <div className="user-info">
+                <span className="user-name">
+                  {currentUser?.email?.split('@')[0] || 'Auditor'}
+                </span>
+                <span className="user-role">Finance Auditor</span>
+              </div>
             </div>
           </div>
         </header>

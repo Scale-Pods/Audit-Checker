@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useMemo } from 'react'
 import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, Legend } from 'recharts'
 import { RefreshCw, Loader2, AlertTriangle, TrendingUp, ShieldCheck, Zap, Activity, IndianRupee } from 'lucide-react'
+import { fetchPurchaseRecords } from '../../api/audits.js'
+import { useSyncRefresh } from '../../context/SyncContext'
 import './Analytics.css'
-
-const AUDITS_WEBHOOK_URL = import.meta.env.VITE_AUDITS_HISTORY_URL || 'https://n8n.srv1010832.hstgr.cloud/webhook/40a6351a-d510-492f-918b-7ec9bae2bd2a'
 
 const AnalyticsCard = ({ title, value, subtitle, icon: Icon, color = 'var(--primary)' }) => (
   <div className="card analytics-metric glass" style={{
@@ -48,9 +48,7 @@ const Analytics = () => {
   const fetchAnalyticsData = async (showLoading = true) => {
     if (showLoading) setIsLoading(true)
     try {
-      const response = await fetch(AUDITS_WEBHOOK_URL)
-      if (!response.ok) throw new Error('Data sync failed')
-      const data = await response.json()
+      const data = await fetchPurchaseRecords()
       
       let auditData = [];
       if (Array.isArray(data)) {
@@ -73,6 +71,8 @@ const Analytics = () => {
   useEffect(() => {
     fetchAnalyticsData()
   }, [])
+
+  useSyncRefresh(() => fetchAnalyticsData(false))
 
   const analyticsData = useMemo(() => {
     const defaultData = { total: 0, errorRate: '0.0', trend: [], health: 0, failedAudits: [], savings: 0 };

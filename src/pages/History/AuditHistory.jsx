@@ -1,12 +1,88 @@
 import React, { useState, useEffect, useMemo } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { FileText, Filter, CheckCircle, AlertTriangle, Eye, Download, RefreshCw, Loader2, Search, Truck, Hash, X, Info, IndianRupee, Activity, ChevronLeft, ChevronRight, Check, Shield, TrendingUp, BarChart3, UploadCloud, FileUp } from 'lucide-react'
+import { FileText, Filter, CheckCircle, AlertTriangle, Eye, Download, Loader2, Search, Truck, Hash, X, Info, IndianRupee, Activity, ChevronLeft, ChevronRight, Check, Shield, TrendingUp, BarChart3, UploadCloud, FileUp, Mail, FileSpreadsheet, ShoppingCart, ClipboardList, Scale } from 'lucide-react'
+import { fetchSalesRecords } from '../../api/sales.js'
+import { fetchPurchaseRecords } from '../../api/audits.js'
+import { useSyncRefresh } from '../../context/SyncContext'
 import './AuditHistory.css'
 
 const AUDITS_WEBHOOK_URL = import.meta.env.VITE_AUDITS_HISTORY_URL || 'https://n8n.srv1010832.hstgr.cloud/webhook/40a6351a-d510-492f-918b-7ec9bae2bd2a'
 const SALES_WEBHOOK_URL = 'https://n8n.srv1010832.hstgr.cloud/webhook/10916618-e795-416f-9d0a-6646da9aba06'
 const SALES_DECISION_WEBHOOK_URL = 'https://n8n.srv1010832.hstgr.cloud/webhook/0c5dfbd4-db17-4d71-87ab-96fa2fb7369e'
 const PENDING_DOCS_UPLOAD_WEBHOOK = 'https://n8n.srv1010832.hstgr.cloud/webhook/9f099219-ec9c-465d-83f4-6a048fa7dc85'
+const LEDGERS_PER_PAGE = 15
+
+const getPageItems = (currentPage, totalPages) => {
+  if (totalPages <= 7) return Array.from({ length: totalPages }, (_, index) => index + 1)
+
+  const items = []
+  for (let page = 1; page <= totalPages; page += 1) {
+    const isEdge = page === 1 || page === totalPages
+    const isNearCurrent = page >= currentPage - 1 && page <= currentPage + 1
+    if (isEdge || isNearCurrent) {
+      items.push(page)
+    } else if (items[items.length - 1] !== 'ellipsis') {
+      items.push('ellipsis')
+    }
+  }
+  return items
+}
+
+const LedgerPagination = ({ totalItems, currentPage, onPageChange, itemLabel }) => {
+  const totalPages = Math.max(1, Math.ceil(totalItems / LEDGERS_PER_PAGE))
+  const page = Math.min(Math.max(currentPage, 1), totalPages)
+  const startItem = totalItems === 0 ? 0 : (page - 1) * LEDGERS_PER_PAGE + 1
+  const endItem = Math.min(page * LEDGERS_PER_PAGE, totalItems)
+  const pageItems = getPageItems(page, totalPages)
+
+  return (
+    <div className="pagination ledger-pagination">
+      <span>
+        {totalItems === 0 ? `No ${itemLabel}` : `${startItem}–${endItem} of ${totalItems} ${itemLabel}`}
+      </span>
+      {totalItems > 0 && (
+        <div className="pagination-controls">
+          <button
+            type="button"
+            className="btn btn-outline btn-sm pagination-nav-btn"
+            onClick={() => onPageChange(page - 1)}
+            disabled={page === 1}
+            aria-label="Previous page"
+          >
+            <ChevronLeft size={15} />
+            <span className="hide-mobile">Prev</span>
+          </button>
+          <div className="pagination-pages">
+            {pageItems.map((pageItem, index) => pageItem === 'ellipsis' ? (
+              <span key={`ellipsis-${index}`} className="pagination-ellipsis" aria-hidden="true">…</span>
+            ) : (
+              <button
+                key={pageItem}
+                type="button"
+                className={`btn btn-sm pagination-page-btn ${pageItem === page ? 'btn-primary' : 'btn-outline'}`}
+                onClick={() => onPageChange(pageItem)}
+                aria-label={`Go to page ${pageItem}`}
+                aria-current={pageItem === page ? 'page' : undefined}
+              >
+                {pageItem}
+              </button>
+            ))}
+          </div>
+          <button
+            type="button"
+            className="btn btn-outline btn-sm pagination-nav-btn"
+            onClick={() => onPageChange(page + 1)}
+            disabled={page === totalPages}
+            aria-label="Next page"
+          >
+            <span className="hide-mobile">Next</span>
+            <ChevronRight size={15} />
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
 
 // Known ZV Steels address tokens for fuzzy checking
 const BILL_TO_TOKENS = ['zv steels', 'zvsteels', 'zv metal', 'aaacz0915c', 'gupta bhavan', 'masjid', 'carnac bunder', 'masjid bandar', '400009', 'mumbai', 'maharashtra']
@@ -726,20 +802,24 @@ const UnifiedAuditModal = ({ audit, onClose, onDecision, isProcessing }) => {
 // ── Sales field comparison map ─────────────────────────────────
 const SALES_COMPARE_FIELDS = [
   { label: 'Order Number',       invoice: 'inv_order_number',        so: 'so_number',            po: null,                    gp: 'gp_so_number',         ws: null,                       type: 'text', nowrap: true },
-  { label: 'PO Number',          invoice: 'inv_party_order_number',  so: 'so_po_number',         po: 'po_number',             gp: 'gp_so_number',         ws: null,                       type: 'text', nowrap: true },
+  { label: 'PO Number',          invoice: 'inv_party_order_number',  so: 'so_po_number',         po: 'po_number',             gp: 'gp_po_number',          ws: null,                       type: 'text', nowrap: true },
+  { label: 'Gate Pass Number',   invoice: null,                      so: null,                   po: null,                    gp: 'gp_number',            ws: null,                       type: 'text', nowrap: true },
   { label: 'Customer / Party',   invoice: 'inv_bill_to_name',        so: 'so_customer_name',     po: 'po_customer_name',      gp: 'gp_party_name',        ws: 'ws_party_name',            type: 'name' },
   { label: 'Supplier',           invoice: null,                      so: null,                   po: 'po_supplier_name',      gp: null,                    ws: null,                       type: 'text', conditional: 'po' },
   { label: 'Broker',             invoice: 'inv_broker_name',         so: 'so_broker_name',       po: null,                    gp: null,                    ws: null,                       type: 'broker' },
   { label: 'Rate',               invoice: 'inv_rate',                so: 'so_rate',              po: 'po_rate',              gp: null,                    ws: null,                       type: 'numeric' },
   { label: 'Quantity',           invoice: 'inv_quantity',            so: 'so_quantity',          po: 'po_quantity',          gp: 'gp_quantity',          ws: 'ws_net_weight',            type: 'quantity' },
   { label: 'Unit',               invoice: 'inv_unit',                so: 'so_unit',              po: 'po_unit',              gp: 'gp_unit',               ws: null,                       type: 'text' },
+  { label: 'Weight',             invoice: null,                      so: null,                   po: null,                    gp: 'gp_weight',             ws: 'ws_gross_weight',         wsExtra: 'ws_net_weight', wsLabel: 'Gross', wsExtraLabel: 'Net', type: 'quantity' },
   { label: 'Payment Terms',      invoice: 'inv_payment_terms',       so: 'so_payment_terms',     po: 'po_payment_terms',     gp: null,                    ws: null,                       type: 'text' },
   { label: 'Delivery Terms',     invoice: null,                      so: 'so_delivery_terms',    po: 'po_delivery_terms',    gp: null,                    ws: null,                       type: 'text' },
   { label: 'Thickness',          invoice: 'inv_thickness',           so: 'so_thickness',         po: 'po_thickness',          gp: 'gp_thickness',          ws: null,                       type: 'numeric' },
-  { label: 'Width',              invoice: 'inv_width',               so: 'so_width',             po: 'po_width',              gp: 'gp_width',              ws: null,                       type: 'numeric' },
-  { label: 'Length',             invoice: 'inv_length',              so: 'so_length',            po: 'po_length',             gp: 'gp_length',             ws: null,                       type: 'numeric' },
+  { label: 'Width',              invoice: 'inv_width',               so: 'so_width',              po: 'po_width',              gp: 'gp_width',              ws: null,                       type: 'numeric' },
+  { label: 'Length',             invoice: 'inv_length',              so: 'so_length',             po: 'po_length',             gp: 'gp_length',              ws: null,                       type: 'numeric' },
   { label: 'Vehicle Number',     invoice: 'inv_vehicle_number',      so: null,                   po: null,                    gp: 'gp_vehicle_number',    ws: 'ws_vehicle_number',        type: 'text', nowrap: true },
-  { label: 'Material',           invoice: 'inv_product',             so: 'so_product',           po: 'po_material_grade',     gp: 'gp_product',            ws: 'ws_material_description',  type: 'text', poFallback: 'po_material_description' },
+  { label: 'Material',           invoice: 'inv_notes',                so: 'so_product',           po: 'po_material_grade',     gp: 'gp_product',            ws: 'ws_material_description',  type: 'text', invoiceFallback: 'inv_product', poFallback: 'po_material_description' },
+  { label: 'Material Description', invoice: null,                      so: null,                   po: null,                    gp: 'gp_material_description', ws: null,                       type: 'text' },
+  { label: 'Gate Pass Date',     invoice: null,                      so: null,                   po: null,                    gp: 'gp_date',               ws: null,                       type: 'text' },
   { label: 'Coil Number',        invoice: null,                      so: 'so_coil_number',       po: null,                    gp: 'gp_coil_number',        ws: null,                       type: 'text', nowrap: true },
   { label: 'GSTIN',              invoice: 'inv_gstin',               so: null,                   po: 'po_gstin',              gp: null,                    ws: null,                       type: 'text' },
 ];
@@ -899,14 +979,39 @@ const salesValuesMatch = (a, b, type = 'text') => {
     'tmt', 'wr', 'is2062', 'e250', 'e350', 'e34', 'e410', 'ys350', 'sailhard',
     'st52', 'c45', 'en8', 'ss304', 'ss316'
   ]);
-  const formTerms = new Set(['slit', 'coil', 'sheet', 'plate', 'patta', 'strip', 'cut', 'pkt', 'bundle']);
+
+  // Grade labels that denote the same material under different trade names.
+  // e.g. "CRCA 1" and "CR1" are both cold-rolled close annealed.
+  // Extend this map as further equivalences come in.
+  const gradeAliases = { cr: 'crca', cr1: 'crca', crca: 'crca', crc: 'crca' };
+  const canonicalGrade = (token) => gradeAliases[token] || token;
+
+  // Spelled-out grade names resolve to the same token as their acronym, so
+  // "Cold Rolled Plates 2 mm" carries the same grade as "CRCA".
+  const gradePhrases = [
+    [/\bcold[\s-]*rolled\b/g, 'crca'],
+    [/\bhot[\s-]*rolled\b/g, 'hrpo'],
+    [/\bgalvani[sz]ed\b/g, 'gi'],
+    [/\bpre[\s-]*galvani[sz]ed\b/g, 'gp'],
+  ];
+  const applyGradePhrases = (str) =>
+    gradePhrases.reduce((acc, [pattern, token]) => acc.replace(pattern, token), str);
+
+  const formTerms = new Set(['slit', 'coil', 'sheet', 'plate', 'patta', 'strip', 'cut', 'pkt', 'bundle',
+    'slits', 'coils', 'sheets', 'plates', 'pattas', 'strips', 'bundles']);
 
   // Token overlap matching for material descriptions, products, and text
-  const stopWords = new Set(['x', 'mm', 'tolerance', 'to', 'and', 'the', 'of', 'for', 'with', 'in', 'min', 'mpa', 'uts', 'ys']);
+  const stopWords = new Set(['x', 'mm', 'tolerance', 'to', 'and', 'the', 'of', 'for', 'with', 'in', 'min', 'mpa', 'uts', 'ys',
+    'pcs', 'nos', 'qty', 'no']);
+  // Dimension expressions such as "2x1250" or "00x1250x2500" are compared in their
+  // own rows, so they must not let two different grades match on a shared size.
+  const isDimensionToken = (t) => /^\d+(?:\.\d+)?x\d/i.test(t);
   const getTokens = (str) =>
-    str.replace(/[^a-z0-9\s]/g, ' ')
+    applyGradePhrases(str)
+       .replace(/[^a-z0-9\s]/g, ' ')
        .split(/\s+/)
-       .filter(t => t.length >= 2 && !stopWords.has(t) && !/^\d+(\.\d+)?$/.test(t));
+       .filter(t => t.length >= 2 && !stopWords.has(t) && !/^\d+(\.\d+)?$/.test(t) && !isDimensionToken(t))
+       .map(canonicalGrade);
 
   const ta = getTokens(ca);
   const tb = getTokens(cb);
@@ -935,6 +1040,7 @@ const INTELLIGENCE_KEYS = new Set([
   'date_match', 'gst_match', 'amount_match',
   'dimension_match', 'rate_match', 'payment_terms_match',
   'delivery_terms_match', 'weight_match', 'coil_match',
+  'grade_match', 'packing_match',
   'critical_mismatches', 'warnings', 'missing_documents'
 ]);
 
@@ -946,22 +1052,398 @@ const SCORE_COLOR = (score) => {
   return { bg: 'rgba(239,68,68,0.12)', text: '#ef4444', border: 'rgba(239,68,68,0.25)' };
 };
 
-const MATCH_BADGE = (val) => {
-  if (!val || val === 'N/A') return { label: 'N/A', bg: 'rgba(100,116,139,0.08)', text: '#64748b', border: 'rgba(100,116,139,0.15)' };
-  const v = String(val).toUpperCase();
-  if (v === 'YES' || v === 'MATCH' || v === 'TRUE' || v === 'PASS') return { label: 'YES', bg: 'rgba(16,185,129,0.12)', text: '#10b981', border: 'rgba(16,185,129,0.25)' };
-  if (v === 'PARTIAL' || v === 'NEEDS_REVIEW') return { label: 'PARTIAL', bg: 'rgba(245,158,11,0.12)', text: '#f59e0b', border: 'rgba(245,158,11,0.25)' };
-  if (v === 'NO' || v === 'MISMATCH' || v === 'FAIL') return { label: 'NO', bg: 'rgba(239,68,68,0.12)', text: '#ef4444', border: 'rgba(239,68,68,0.25)' };
-  return { label: v, bg: 'rgba(100,116,139,0.08)', text: '#64748b', border: 'rgba(100,116,139,0.15)' };
+// Match statuses are normalised to a single visual language so an auditor reads
+// every check the same way: MATCH/YES = verified, MISMATCH/NO = failed,
+// PARTIAL = needs review, missing (null) = never evaluated.
+// ── Sales detail value formatters ───────────────────────────────
+// Source columns arrive from the database as raw strings/numbers, so every
+// formatter here is strictly a presentation layer: it never derives a value
+// that is not present in the record, and it never renders a missing value as
+// literal text — missing data is always shown as a dash.
+const MISSING_TEXT = new Set(['', 'null', 'undefined', 'nan']);
+
+const hasSourceValue = (val) => {
+  if (val === null || val === undefined) return false;
+  if (typeof val === 'number') return !Number.isNaN(val);
+  if (typeof val === 'string') return !MISSING_TEXT.has(val.trim().toLowerCase());
+  return true;
+};
+
+const showText = (val) => (hasSourceValue(val) ? String(val).trim() : '—');
+
+const parseAmount = (val) => {
+  if (!hasSourceValue(val)) return null;
+  const match = String(val).replace(/,/g, '').match(/-?\d+(?:\.\d+)?/);
+  if (!match) return null;
+  const n = parseFloat(match[0]);
+  return Number.isNaN(n) ? null : n;
+};
+
+const showMoney = (val) => {
+  if (!hasSourceValue(val)) return '—';
+  const n = parseAmount(val);
+  if (n === null) return String(val).trim();
+  return `₹${n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+};
+
+const showRate = (val) => {
+  if (!hasSourceValue(val)) return '—';
+  const n = parseAmount(val);
+  if (n === null) return String(val).trim();
+  return `₹${n.toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
+};
+
+// Quantities always carry the unit of the document they came from
+// (e.g. "3.02 MT", "3000 KG", "292 PCS"); no unit is assumed when absent.
+const showQuantity = (val, unit) => {
+  if (!hasSourceValue(val)) return '—';
+  const text = String(val).trim();
+  return hasSourceValue(unit) ? `${text} ${String(unit).trim()}` : text;
+};
+
+// Dimensions render as Thickness × Width × Length, skipping only the
+// dimensions the source did not record.
+const showDimensions = (...parts) => {
+  const dims = parts.filter(hasSourceValue).map(part => String(part).trim());
+  return dims.length ? dims.join(' × ') : '—';
+};
+
+// Findings may arrive as plain sentences or as structured objects; both are
+// rendered without inventing content.
+const findingText = (item) => {
+  if (!hasSourceValue(item)) return null;
+  if (typeof item !== 'object') return String(item).trim();
+  const parts = Object.entries(item)
+    .filter(([, val]) => hasSourceValue(val))
+    .map(([key, val]) => `${key.replace(/_/g, ' ')}: ${showText(val)}`);
+  return parts.length ? parts.join(' · ') : null;
+};
+
+const toList = (items) => {
+  if (!Array.isArray(items)) return [];
+  return items.map(findingText).filter(Boolean);
+};
+
+// Match statuses are normalised to a single visual language so an auditor reads
+// every check the same way: MATCH/YES = verified, MISMATCH/NO = failed,
+// PARTIAL = needs review, missing (null) = never evaluated.
+const MATCH_TONES = {
+  positive: { bg: 'rgba(16,185,129,0.12)', text: '#10b981', border: 'rgba(16,185,129,0.25)' },
+  negative: { bg: 'rgba(239,68,68,0.12)', text: '#ef4444', border: 'rgba(239,68,68,0.25)' },
+  warning:  { bg: 'rgba(245,158,11,0.12)', text: '#f59e0b', border: 'rgba(245,158,11,0.25)' },
+  neutral:  { bg: 'rgba(100,116,139,0.08)', text: '#94a3b8', border: 'rgba(100,116,139,0.2)' },
+};
+
+const matchTone = (val) => {
+  if (!hasSourceValue(val)) return 'neutral';
+  const raw = String(val).trim().toUpperCase().replace(/\s+/g, '_');
+  if (raw.includes('MISMATCH')) return 'negative';
+  if (raw.includes('PARTIAL')) return 'warning';
+  if (raw.startsWith('NOT') || raw === 'N/A' || raw === 'NA' || raw === 'PENDING' || raw.includes('UNVERIFIED') || raw.includes('UNKNOWN') || raw.includes('SKIPPED')) return 'neutral';
+  if (raw.startsWith('NO') || raw.includes('FAIL') || raw.includes('REJECT') || raw.includes('FALSE')) return 'negative';
+  if (raw.includes('MATCH') || raw.includes('YES') || raw.includes('PASS') || raw.includes('TRUE') || raw.includes('VERIFIED') || raw === 'OK' || raw === 'GOOD') return 'positive';
+  return 'neutral';
+};
+
+const MATCH_STATUS_BADGE = (val) => {
+  const tone = matchTone(val);
+  const label = { positive: 'MATCH', negative: 'MISMATCH', warning: 'PARTIAL', neutral: 'NOT CHECKED' }[tone];
+  return { label, tone, ...MATCH_TONES[tone] };
+};
+
+const AUDIT_STATUS_BADGE = (val) => {
+  const tone = matchTone(val);
+  return {
+    label: hasSourceValue(val) ? String(val).trim().replace(/_/g, ' ').toUpperCase() : 'NOT RECORDED',
+    tone,
+    ...MATCH_TONES[tone],
+  };
 };
 
 const fmt = (v) => (v !== null && v !== undefined && v !== '') ? v.toString() : null;
 
-const fmtCurrency = (v) => {
-  if (v === null || v === undefined || v === '') return '—';
-  const n = parseFloat(v.toString().replace(/[₹,]/g, ''));
-  return isNaN(n) ? v : `₹${n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+// ── Sales detail building blocks ────────────────────────────────
+const DOC_ACCENTS = {
+  so:      { icon: FileSpreadsheet, label: 'Sales Order',   color: '#10b981', bg: 'rgba(16,185,129,0.10)' },
+  po:      { icon: ShoppingCart,    label: 'Purchase Order', color: '#f59e0b', bg: 'rgba(245,158,11,0.10)' },
+  invoice: { icon: FileText,        label: 'Invoice',       color: '#3b82f6', bg: 'rgba(37,99,235,0.10)' },
+  gp:      { icon: ClipboardList,   label: 'Gate Pass',     color: '#06b6d4', bg: 'rgba(6,182,212,0.10)' },
+  ws:      { icon: Scale,           label: 'Weight Slip',   color: '#f43f5e', bg: 'rgba(244,63,94,0.10)' },
 };
+
+const MatchBadge = ({ value }) => {
+  const b = MATCH_STATUS_BADGE(value);
+  const ToneIcon = { positive: CheckCircle, negative: X, warning: AlertTriangle, neutral: Info }[b.tone];
+  return (
+    <span style={{
+      display: 'inline-flex', alignItems: 'center', gap: '0.3rem', whiteSpace: 'nowrap',
+      padding: '0.2rem 0.6rem', borderRadius: '6px', fontSize: '0.68rem', fontWeight: 800,
+      backgroundColor: b.bg, color: b.text, border: `1px solid ${b.border}`,
+      textTransform: 'uppercase', letterSpacing: '0.04em'
+    }}>
+      <ToneIcon size={10} />
+      {b.label}
+    </span>
+  );
+};
+
+const AuditStatusBadge = ({ value }) => {
+  const b = AUDIT_STATUS_BADGE(value);
+  const ToneIcon = { positive: CheckCircle, negative: AlertTriangle, warning: AlertTriangle, neutral: Info }[b.tone];
+  return (
+    <span style={{
+      display: 'inline-flex', alignItems: 'center', gap: '0.35rem', whiteSpace: 'nowrap',
+      padding: '0.25rem 0.7rem', borderRadius: '50px', fontSize: '0.68rem', fontWeight: 800,
+      backgroundColor: b.bg, color: b.text, border: `1px solid ${b.border}`,
+      textTransform: 'uppercase', letterSpacing: '0.05em'
+    }}>
+      <ToneIcon size={11} />
+      {b.label}
+    </span>
+  );
+};
+
+const ScoreBadge = ({ value }) => {
+  const n = parseAmount(value);
+  if (n === null) return <span style={{ fontSize: '0.85rem', fontWeight: 800, color: '#94a3b8', fontFamily: 'monospace' }}>—</span>;
+  const c = SCORE_COLOR(n);
+  return (
+    <span style={{
+      display: 'inline-flex', alignItems: 'baseline', gap: '0.15rem',
+      padding: '0.25rem 0.7rem', borderRadius: '8px', fontSize: '0.95rem', fontWeight: 800,
+      fontFamily: 'monospace', backgroundColor: c.bg, color: c.text, border: `1px solid ${c.border}`
+    }}>
+      {Number.isInteger(n) ? n : n.toFixed(1)}
+    </span>
+  );
+};
+
+const StatCard = ({ label, value }) => {
+  const display = showText(value);
+  const isEmpty = display === '—';
+  return (
+    <div style={{
+      padding: '0.6rem 0.75rem', borderRadius: '10px',
+      border: '1px solid var(--border)', background: 'rgba(0,0,0,0.015)'
+    }}>
+      <div style={{
+        fontSize: '0.62rem', fontWeight: 700, textTransform: 'uppercase',
+        letterSpacing: '0.06em', color: 'var(--text-muted)', marginBottom: '0.3rem'
+      }}>{label}</div>
+      <div style={{
+        fontSize: '0.92rem', fontWeight: 800, fontFamily: 'monospace',
+        color: isEmpty ? '#94a3b8' : 'var(--text)', wordBreak: 'break-word', lineHeight: 1.3
+      }}>{display}</div>
+    </div>
+  );
+};
+
+const DetailRow = ({ label, value }) => {
+  const display = showText(value);
+  const isEmpty = display === '—';
+  return (
+    <div style={{
+      display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: '0.75rem',
+      padding: '0.3rem 0', borderBottom: '1px solid rgba(0,0,0,0.04)', fontSize: '0.78rem'
+    }}>
+      <span style={{ fontWeight: 600, color: 'var(--text-muted)', flexShrink: 0 }}>{label}</span>
+      <span style={{
+        fontWeight: 700, color: isEmpty ? '#94a3b8' : 'var(--text)', textAlign: 'right',
+        wordBreak: 'break-word', fontFamily: 'monospace', fontSize: '0.75rem', lineHeight: 1.35
+      }}>{display}</span>
+    </div>
+  );
+};
+
+// A per-document block. Values are never merged across documents so the
+// auditor always knows whether a figure came from the SO, PO, Invoice,
+// Gate Pass or Weight Slip.
+const DocPanel = ({ kind, title, rows }) => {
+  const accent = DOC_ACCENTS[kind] || DOC_ACCENTS.invoice;
+  const PanelIcon = accent.icon;
+  const filled = rows.filter(row => showText(row.value) !== '—').length;
+
+  return (
+    <div style={{
+      border: '1px solid var(--border)', borderRadius: '10px',
+      background: 'rgba(0,0,0,0.015)', overflow: 'hidden'
+    }}>
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: '0.45rem',
+        padding: '0.45rem 0.7rem', background: 'rgba(0,0,0,0.02)',
+        borderBottom: '1px solid var(--border)'
+      }}>
+        <span style={{
+          display: 'inline-flex', padding: '0.22rem', borderRadius: '6px',
+          background: accent.bg, color: accent.color
+        }}>
+          <PanelIcon size={12} />
+        </span>
+        <span style={{
+          fontSize: '0.65rem', fontWeight: 800, textTransform: 'uppercase',
+          letterSpacing: '0.08em', color: accent.color
+        }}>{title || accent.label}</span>
+        <span style={{
+          marginLeft: 'auto', fontSize: '0.6rem', fontWeight: 700,
+          fontFamily: 'monospace', color: 'var(--text-muted)'
+        }}>{filled}/{rows.length}</span>
+      </div>
+      <div style={{ padding: '0.4rem 0.7rem 0.5rem' }}>
+        {rows.map((row, index) => (
+          <DetailRow key={`${row.label}-${index}`} label={row.label} value={row.value} />
+        ))}
+      </div>
+    </div>
+  );
+};
+
+const SectionLabel = ({ children, action }) => (
+  <div style={{
+    display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem',
+    marginBottom: '0.5rem'
+  }}>
+    <span style={{
+      fontSize: '0.62rem', fontWeight: 800, textTransform: 'uppercase',
+      letterSpacing: '0.1em', color: 'var(--text-muted)'
+    }}>{children}</span>
+    {action}
+  </div>
+);
+
+const MatchStrip = ({ title, items }) => (
+  <div style={{
+    marginTop: '0.8rem', padding: '0.6rem 0.75rem', borderRadius: '10px',
+    border: '1px solid var(--border)', background: 'rgba(0,0,0,0.015)'
+  }}>
+    <SectionLabel>{title}</SectionLabel>
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.45rem' }}>
+      {items.map(item => (
+        <div key={item.label} style={{
+          display: 'flex', alignItems: 'center', gap: '0.45rem',
+          padding: '0.28rem 0.6rem', borderRadius: '8px',
+          border: '1px solid var(--border)', background: 'var(--surface)'
+        }}>
+          <span style={{ fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-muted)' }}>{item.label}</span>
+          <MatchBadge value={item.value} />
+        </div>
+      ))}
+    </div>
+  </div>
+);
+
+const CheckRow = ({ label, value }) => {
+  const b = MATCH_STATUS_BADGE(value);
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem',
+      padding: '0.35rem 0.65rem', borderRadius: '8px', border: '1px solid var(--border)',
+      background: b.tone === 'neutral' ? 'rgba(0,0,0,0.015)' : b.bg
+    }}>
+      <span style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text)' }}>{label}</span>
+      <MatchBadge value={value} />
+    </div>
+  );
+};
+
+const FINDING_TONES = {
+  critical: { color: '#ef4444', bg: 'rgba(239,68,68,0.06)', border: 'rgba(239,68,68,0.15)' },
+  warning:  { color: '#f59e0b', bg: 'rgba(245,158,11,0.06)', border: 'rgba(245,158,11,0.15)' },
+  missing:  { color: '#94a3b8', bg: 'rgba(100,116,139,0.06)', border: 'rgba(100,116,139,0.15)' },
+};
+
+const FindingList = ({ tone, title, items, emptyText, icon }) => {
+  const colors = FINDING_TONES[tone] || FINDING_TONES.missing;
+  const ToneIcon = icon || AlertTriangle;
+  const entries = toList(items);
+
+  return (
+    <div style={{ marginBottom: '0.75rem' }}>
+      <SectionLabel action={(
+        <span style={{
+          fontSize: '0.6rem', fontWeight: 800, fontFamily: 'monospace',
+          padding: '0.1rem 0.4rem', borderRadius: '4px',
+          background: colors.bg, color: colors.color, border: `1px solid ${colors.border}`
+        }}>{entries.length}</span>
+      )}>{title}</SectionLabel>
+
+      {entries.length ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+          {entries.map((entry, index) => (
+            <div key={index} style={{
+              display: 'flex', alignItems: 'flex-start', gap: '0.5rem',
+              padding: '0.55rem 0.75rem', borderRadius: '8px',
+              backgroundColor: colors.bg, border: `1px solid ${colors.border}`,
+              fontSize: '0.79rem', color: tone === 'critical' ? '#ef4444' : 'var(--text)', fontWeight: 600,
+              lineHeight: 1.45
+            }}>
+              <ToneIcon size={14} style={{ flexShrink: 0, marginTop: '1px', color: colors.color }} />
+              <span>{entry}</span>
+            </div>
+          ))}
+        </div>
+      ) : (
+        emptyText && (
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: '0.5rem',
+            padding: '0.55rem 0.75rem', borderRadius: '8px',
+            backgroundColor: colors.bg, border: `1px solid ${colors.border}`,
+            fontSize: '0.79rem', fontWeight: 600, color: colors.color
+          }}>
+            <ToneIcon size={14} style={{ flexShrink: 0 }} />
+            <span>{emptyText}</span>
+          </div>
+        )
+      )}
+    </div>
+  );
+};
+
+const SummaryBlock = ({ summary }) => {
+  if (!hasSourceValue(summary)) return null;
+  const text = typeof summary === 'string' ? summary.trim() : findingText(summary);
+  if (!text) return null;
+
+  return (
+    <div style={{
+      padding: '0.8rem 0.9rem', borderRadius: '10px',
+      backgroundColor: 'rgba(37,99,235,0.04)', border: '1px solid rgba(37,99,235,0.1)',
+      display: 'flex', gap: '0.6rem', alignItems: 'flex-start'
+    }}>
+      <Info size={16} style={{ color: 'var(--primary)', flexShrink: 0, marginTop: '2px' }} />
+      <div>
+        <div style={{
+          fontSize: '0.62rem', fontWeight: 800, textTransform: 'uppercase',
+          letterSpacing: '0.08em', color: 'var(--primary)', marginBottom: '0.25rem'
+        }}>Audit Summary</div>
+        <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--text)', lineHeight: 1.55, fontWeight: 500, whiteSpace: 'pre-line' }}>{text}</p>
+      </div>
+    </div>
+  );
+};
+
+// Audit score / status pair reused at the top of the match and findings sections.
+const AuditStatusStrip = ({ score, status }) => (
+  <div style={{
+    display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '1.5rem',
+    padding: '0.6rem 0.85rem', borderRadius: '10px',
+    border: '1px solid var(--border)', background: 'rgba(0,0,0,0.02)'
+  }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+      <span style={{
+        fontSize: '0.6rem', fontWeight: 800, textTransform: 'uppercase',
+        letterSpacing: '0.1em', color: 'var(--text-muted)'
+      }}>Audit Score</span>
+      <ScoreBadge value={score} />
+    </div>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', paddingLeft: '1.5rem', borderLeft: '1px solid var(--border)' }}>
+      <span style={{
+        fontSize: '0.6rem', fontWeight: 800, textTransform: 'uppercase',
+        letterSpacing: '0.1em', color: 'var(--text-muted)'
+      }}>Audit Status</span>
+      <AuditStatusBadge value={status} />
+    </div>
+  </div>
+);
 
 const transformSalesRecord = (record) => {
   const intelligence = {};
@@ -983,12 +1465,12 @@ const isRecordQuickEntry = (record) =>
     record[k] !== null && record[k] !== undefined && record[k] !== ''
   );
 
-// Detect records that have PO/SO/GP data but missing Invoice or Weightslip uploads
+// Detect records that are missing Invoice or Weightslip uploads
+// (weightslip upload is allowed whenever the invoice is present)
 const isRecordPendingDocuments = (record) => {
   const hasPO = record.po_number && record.po_number !== '';
   const hasSO = record.so_number && record.so_number !== '';
   const hasGP = record.gp_number && record.gp_number !== '';
-  if (!hasPO || !hasSO || !hasGP) return { pending: false, missingInvoice: false, missingWS: false };
   // Check if invoice fields are empty
   const hasInvoice = Object.keys(record).some(k =>
     k.startsWith('inv_') && record[k] !== null && record[k] !== undefined && record[k] !== ''
@@ -997,6 +1479,9 @@ const isRecordPendingDocuments = (record) => {
   const hasWS = Object.keys(record).some(k =>
     k.startsWith('ws_') && record[k] !== null && record[k] !== undefined && record[k] !== ''
   );
+  // If invoice is already present, the weightslip can still be uploaded,
+  // so flag it even when PO/SO/GP numbers aren't all extracted.
+  if ((!hasPO || !hasSO || !hasGP) && !hasInvoice) return { pending: false, missingInvoice: false, missingWS: false };
   const pending = !hasInvoice || !hasWS;
   return { pending, missingInvoice: !hasInvoice, missingWS: !hasWS };
 };
@@ -1187,7 +1672,7 @@ const PendingDocsUploadModal = ({ group, onClose, onUploadSuccess }) => {
       const res = await fetch(PENDING_DOCS_UPLOAD_WEBHOOK, { method: 'POST', body: formData });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       setUploadSuccess(true);
-      setTimeout(() => { onUploadSuccess?.(); onClose(); }, 1800);
+      setTimeout(() => { onUploadSuccess?.(); onClose(); }, 3500);
     } catch (err) {
       setUploadError(err.message || 'Upload failed. Please try again.');
     } finally {
@@ -1277,13 +1762,12 @@ const PendingDocsUploadModal = ({ group, onClose, onUploadSuccess }) => {
           )}
 
           {uploadSuccess && (
-            <div style={{
-              display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.75rem 1rem',
-              borderRadius: '8px', background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.2)',
-              color: '#10b981', fontSize: '0.8rem', fontWeight: 700, marginBottom: '1rem'
-            }}>
-              <CheckCircle size={14} />
-              Documents uploaded successfully!
+            <div className="all-done-stage animate-fade-in" style={{ marginBottom: '1rem' }}>
+              <div className="all-done-card" style={{ padding: '2rem 1.75rem', maxWidth: '100%' }}>
+                <div className="all-done-icon" style={{ width: '56px', height: '56px' }}><Mail size={24} /></div>
+                <p className="all-done-title" style={{ fontSize: '1.15rem' }}>Success! Documents are under process</p>
+                <p className="all-done-sub" style={{ fontSize: '0.85rem' }}>Check your email shortly for the audit results.</p>
+              </div>
             </div>
           )}
 
@@ -1319,6 +1803,10 @@ const SalesRecordModal = ({ records, onClose, invoiceNumber, onDecision, isProce
   const toggleSection = (key) => setExpandedSections(prev => ({ ...prev, [key]: !prev[key] }));
 
   const v = (key) => fmt(record[key]);
+
+  // Match/audit fields live under `intelligence`, but a record can also carry
+  // them at the top level — read both so no check silently reads as unchecked.
+  const check = (key) => (I[key] !== undefined && I[key] !== null && I[key] !== '' ? I[key] : record[key]);
 
   const hasDocData = (prefix) =>
     Object.keys(record).some(k => k.startsWith(prefix) && record[k] !== null && record[k] !== undefined && record[k] !== '');
@@ -1361,9 +1849,16 @@ const SalesRecordModal = ({ records, onClose, invoiceNumber, onDecision, isProce
   );
 
   const getCellVal = (field, doc) => {
-    if (doc === 'ws' && field.label === 'Unit') return 'KG';
-    
-    const key = field[doc];
+    if (doc === 'ws' && field.label === 'Unit') return v('po_unit') || 'KG';
+
+    // Gate Pass values are authoritative per the gate pass field mapping:
+    // a Gate Pass cell may only ever read a gp_* column, never so_/po_/inv_.
+    let key = field[doc];
+    if (doc === 'gp' && key && !key.startsWith('gp_')) {
+      console.warn(`[sales] Gate Pass row "${field.label}" points at non-gp column "${key}" — ignored.`);
+      key = null;
+    }
+
     if (key) {
       const primary = v(key);
       if (primary !== null && primary !== undefined && primary !== '') return primary;
@@ -1377,10 +1872,11 @@ const SalesRecordModal = ({ records, onClose, invoiceNumber, onDecision, isProce
           if (val !== null && val !== undefined && val !== '') return val;
         }
       }
-      if (field.poFallback) {
-        const fallback = v(field.poFallback);
-        if (fallback) return fallback;
-      }
+    }
+    const fallbackKey = field[`${doc}Fallback`];
+    if (fallbackKey) {
+      const fallback = v(fallbackKey);
+      if (fallback !== null && fallback !== undefined && fallback !== '') return fallback;
     }
     return null;
   };
@@ -1397,7 +1893,7 @@ const SalesRecordModal = ({ records, onClose, invoiceNumber, onDecision, isProce
 
       let compareVals;
       if (type === 'quantity' || label === 'Rate') {
-        const unitKeys = ['inv_unit', 'so_unit', 'po_unit', 'gp_unit', null];
+        const unitKeys = ['inv_unit', 'so_unit', 'po_unit', 'gp_unit', 'po_unit'];
         const unitMap = unitKeys.map(k => k ? v(k) : null);
         const num = (val, unit, isRate) => {
           if (val == null) return null;
@@ -1432,7 +1928,7 @@ const SalesRecordModal = ({ records, onClose, invoiceNumber, onDecision, isProce
     else if (doc === 'so') docUnit = v('so_unit') || 'MT';
     else if (doc === 'po') docUnit = v('po_unit');
     else if (doc === 'gp') docUnit = v('gp_unit');
-    else if (doc === 'ws') docUnit = 'KG';
+    else if (doc === 'ws') docUnit = v('po_unit') || 'KG';
 
     const u = (docUnit || '').toString().toLowerCase().trim();
     const isKgs = u.includes('kg');
@@ -1477,6 +1973,23 @@ const SalesRecordModal = ({ records, onClose, invoiceNumber, onDecision, isProce
     return val;
   };
 
+  // Weight Slip cells can carry more than one value (e.g. gross + net weight).
+  // Conflict detection still uses only the primary `ws` value; this is display only.
+  const formatWsCell = (field, val) => {
+    const parts = [];
+    const primary = formatDocVal(field, 'ws', val);
+    if (primary !== null && primary !== undefined) {
+      parts.push(field.wsLabel ? `${field.wsLabel} ${primary}` : primary);
+    }
+    if (field.wsExtra) {
+      const extra = formatDocVal(field, 'ws', v(field.wsExtra));
+      if (extra !== null && extra !== undefined) {
+        parts.push(field.wsExtraLabel ? `${field.wsExtraLabel} ${extra}` : extra);
+      }
+    }
+    return parts.length ? parts.join(' · ') : null;
+  };
+
   const DocBadge = ({ val, nowrap, align = 'center', color }) => {
     const display = val ?? '—';
     const isEmpty = display === '—';
@@ -1495,38 +2008,31 @@ const SalesRecordModal = ({ records, onClose, invoiceNumber, onDecision, isProce
     );
   };
 
-  const MatchBadge = ({ value }) => {
-    const b = MATCH_BADGE(value);
-    return (
-      <span style={{
-        display: 'inline-flex', alignItems: 'center', gap: '0.3rem',
-        padding: '0.2rem 0.65rem', borderRadius: '6px', fontSize: '0.7rem', fontWeight: 800,
-        backgroundColor: b.bg, color: b.text, border: `1px solid ${b.border}`,
-        textTransform: 'uppercase', letterSpacing: '0.04em'
-      }}>
-        {b.label === 'YES' && <CheckCircle size={10} />}
-        {b.label === 'PARTIAL' && <AlertTriangle size={10} />}
-        {b.label === 'NO' && <X size={10} />}
-        {b.label}
-      </span>
-    );
-  };
-
-  const DetailRow = ({ label, value, highlight }) => (
-    <div style={{
-      display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-      padding: '0.4rem 0', borderBottom: '1px solid rgba(0,0,0,0.04)',
-      fontSize: '0.8rem'
-    }}>
-      <span style={{ fontWeight: 600, color: 'var(--text-muted)' }}>{label}</span>
-      <span style={{
-        fontWeight: 700, color: highlight ? '#ef4444' : 'var(--text)',
-        textAlign: 'right', maxWidth: '60%', wordBreak: 'break-word'
-      }}>{fmt(value) ?? '—'}</span>
-    </div>
-  );
+// Every comparison the sales audit reports on, in auditor reading order:
+// ordered documents first, then the commercial terms, then the money.
+const MATCH_RESULT_CHECKS = [
+  { label: 'Customer',        key: 'customer_match' },
+  { label: 'PO',              key: 'po_match' },
+  { label: 'SO',              key: 'so_match' },
+  { label: 'Vehicle',         key: 'vehicle_match' },
+  { label: 'Weight Slip',     key: 'weight_slip_match' },
+  { label: 'Quantity',        key: 'quantity_match' },
+  { label: 'Material',        key: 'material_match' },
+  { label: 'Dimension',       key: 'dimension_match' },
+  { label: 'Grade',           key: 'grade_match' },
+  { label: 'Packing',         key: 'packing_match' },
+  { label: 'Coil',            key: 'coil_match' },
+  { label: 'Rate',            key: 'rate_match' },
+  { label: 'Payment Terms',   key: 'payment_terms_match' },
+  { label: 'Delivery Terms',  key: 'delivery_terms_match' },
+  { label: 'Weight',          key: 'weight_match' },
+  { label: 'GST',             key: 'gst_match' },
+  { label: 'Amount',          key: 'amount_match' },
+  { label: 'Date',            key: 'date_match' },
+];
 
   const score = I.audit_score !== undefined ? Number(I.audit_score) : null;
+
   const sc = SCORE_COLOR(score);
 
   return (
@@ -1640,7 +2146,7 @@ const SalesRecordModal = ({ records, onClose, invoiceNumber, onDecision, isProce
                     {hasInvoiceData && <th style={{ ...thStyle, textAlign: 'center' }}>Invoice</th>}
                     <th style={{ ...thStyle, textAlign: 'center' }}>SO</th>
                     <th style={{ ...thStyle, textAlign: 'center' }}>PO</th>
-                    {hasGPData && <th style={{ ...thStyle, textAlign: 'center' }}>Gate Pass</th>}
+                    <th style={{ ...thStyle, textAlign: 'center' }}>Gate Pass</th>
                     {hasWSData && <th style={{ ...thStyle, textAlign: 'center' }}>Weight Slip</th>}
                   </tr>
                 </thead>
@@ -1660,7 +2166,7 @@ const SalesRecordModal = ({ records, onClose, invoiceNumber, onDecision, isProce
                     // For rate & quantity, normalize units for conflict comparison
                     let compareValsForConflict;
                     if (type === 'quantity') {
-                      const unitKeys = ['inv_unit', 'so_unit', 'po_unit', 'gp_unit', null];
+                      const unitKeys = ['inv_unit', 'so_unit', 'po_unit', 'gp_unit', 'po_unit'];
                       const unitMap = unitKeys.map(k => k ? v(k) : null);
                       const toKg = (val, unit) => {
                         if (val == null) return null;
@@ -1673,7 +2179,7 @@ const SalesRecordModal = ({ records, onClose, invoiceNumber, onDecision, isProce
                       };
                       compareValsForConflict = rawVals.map((val, i) => toKg(val, unitMap[i])).filter(v => v != null);
                     } else if (label === 'Rate') {
-                      const unitKeys = ['inv_unit', 'so_unit', 'po_unit', 'gp_unit', null];
+                      const unitKeys = ['inv_unit', 'so_unit', 'po_unit', 'gp_unit', 'po_unit'];
                       const unitMap = unitKeys.map(k => k ? v(k) : null);
                       const toRateKg = (val, unit) => {
                         if (val == null) return null;
@@ -1706,7 +2212,7 @@ const SalesRecordModal = ({ records, onClose, invoiceNumber, onDecision, isProce
                     const getCompareVal = (rawVal, docIdx) => {
                       if (rawVal == null) return null;
                       if (type === 'quantity') {
-                        const unitKeys = ['inv_unit', 'so_unit', 'po_unit', 'gp_unit', null];
+                        const unitKeys = ['inv_unit', 'so_unit', 'po_unit', 'gp_unit', 'po_unit'];
                         const unit = unitKeys[docIdx] ? v(unitKeys[docIdx]) : null;
                         const u = (unit || '').toLowerCase();
                         const num = parseFloat(rawVal.toString().replace(/,/g, ''));
@@ -1715,7 +2221,7 @@ const SalesRecordModal = ({ records, onClose, invoiceNumber, onDecision, isProce
                         if (u.includes('kg')) return num;
                         return num < 500 ? num * 1000 : num;
                       } else if (label === 'Rate') {
-                        const unitKeys = ['inv_unit', 'so_unit', 'po_unit', 'gp_unit', null];
+                        const unitKeys = ['inv_unit', 'so_unit', 'po_unit', 'gp_unit', 'po_unit'];
                         const unit = unitKeys[docIdx] ? v(unitKeys[docIdx]) : null;
                         const u = (unit || '').toLowerCase();
                         const num = parseFloat(rawVal.toString().replace(/,/g, ''));
@@ -1759,8 +2265,8 @@ const SalesRecordModal = ({ records, onClose, invoiceNumber, onDecision, isProce
                         {hasInvoiceData && <td style={{ ...tdStyle, textAlign: 'center', background: getCellBg(iv, 0) }}><DocBadge val={formatDocVal(field, 'invoice', iv)} nowrap={nowrap} align="center" color={getCellColor(iv, 0)} /></td>}
                         <td style={{ ...tdStyle, textAlign: 'center', background: getCellBg(sv, 1) }}><DocBadge val={formatDocVal(field, 'so', sv)} nowrap={nowrap} align="center" color={getCellColor(sv, 1)} /></td>
                         <td style={{ ...tdStyle, textAlign: 'center', background: getCellBg(pv, 2) }}><DocBadge val={formatDocVal(field, 'po', pv)} nowrap={nowrap} align="center" color={getCellColor(pv, 2)} /></td>
-                        {hasGPData && <td style={{ ...tdStyle, textAlign: 'center', background: getCellBg(gv, 3) }}><DocBadge val={formatDocVal(field, 'gp', gv)} nowrap={nowrap} align="center" color={getCellColor(gv, 3)} /></td>}
-                        {hasWSData && <td style={{ ...tdStyle, textAlign: 'center', background: getCellBg(wv, 4) }}><DocBadge val={formatDocVal(field, 'ws', wv)} nowrap={nowrap} align="center" color={getCellColor(wv, 4)} /></td>}
+                        <td style={{ ...tdStyle, textAlign: 'center', background: getCellBg(gv, 3) }}><DocBadge val={formatDocVal(field, 'gp', gv)} nowrap={nowrap} align="center" color={getCellColor(gv, 3)} /></td>
+                        {hasWSData && <td style={{ ...tdStyle, textAlign: 'center', background: getCellBg(wv, 4) }}><DocBadge val={formatWsCell(field, wv)} nowrap={nowrap} align="center" color={getCellColor(wv, 4)} /></td>}
                       </tr>
                     );
                   })}
@@ -1769,284 +2275,260 @@ const SalesRecordModal = ({ records, onClose, invoiceNumber, onDecision, isProce
             </div>
           </CollapseSection>
 
-          {/* ─── Section 2: Estimated SO Amount ─── */}
-          <CollapseSection title="Estimated SO Amount">
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.83rem' }}>
-                <thead>
-                  <tr style={{ borderBottom: '2px solid var(--border)' }}>
-                    <th style={{ textAlign: 'left', padding: '0.5rem 0.75rem', fontWeight: 700, color: 'var(--text-muted)', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Field</th>
-                    <th style={{ textAlign: 'right', padding: '0.5rem 0.75rem', fontWeight: 700, color: 'var(--text-muted)', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Value</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {(() => {
-                    const rawRate = record['so_rate'] || record['po_rate'] || record['inv_rate'];
-                    const rawQty = record['so_quantity'] || record['po_quantity'] || record['inv_quantity'];
-                    const rawUnit = record['so_unit'] || record['po_unit'] || record['inv_unit'];
-                    const rawInvFinal = record['inv_final_amount'];
-                    const rawPoTotal = record['po_total_amount'];
-                    const stripCommas = s => s ? s.toString().replace(/,/g, '') : '';
-                    
-                    const numRate = rawRate ? Number(stripCommas(rawRate)) : null;
-                    const numQty = rawQty ? Number(stripCommas(rawQty)) : null;
-                    const unitStr = (rawUnit || '').toString().toLowerCase();
+          {/* ─── Section 2: Estimated Amount ─── */}
+          <CollapseSection title="Estimated Amount">
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.9rem' }}>
+              <div style={{
+                display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '0.4rem 1.25rem',
+                padding: '0.5rem 0.75rem', borderRadius: '8px',
+                border: '1px solid var(--border)', background: 'rgba(0,0,0,0.02)'
+              }}>
+                <span style={{
+                  fontSize: '0.62rem', fontWeight: 800, textTransform: 'uppercase',
+                  letterSpacing: '0.1em', color: 'var(--text-muted)'
+                }}>Invoice Number</span>
+                <span style={{
+                  fontFamily: 'monospace', fontSize: '0.88rem', fontWeight: 800,
+                  color: showText(record.inv_number) === '—' ? '#94a3b8' : 'var(--text)'
+                }}>{showText(record.inv_number)}</span>
+              </div>
 
-                    let rateKg = numRate;
-                    if (numRate !== null && !isNaN(numRate)) {
-                      if (unitStr.includes('mt') || unitStr.includes('ton')) rateKg = numRate / 1000;
-                      else if (unitStr.includes('kg')) rateKg = numRate;
-                      else rateKg = numRate > 500 ? numRate / 1000 : numRate;
-                    }
+              <div>
+                <SectionLabel>Amounts on Record</SectionLabel>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '0.6rem' }}>
+                  <StatCard label="Taxable Amount" value={showMoney(record.inv_taxable_value)} />
+                  <StatCard label="Final Invoice Amount" value={showMoney(record.inv_final_amount)} />
+                  <StatCard label="PO Amount" value={showMoney(record.po_total_amount)} />
+                </div>
+              </div>
 
-                    let qtyKg = numQty;
-                    if (numQty !== null && !isNaN(numQty)) {
-                      if (unitStr.includes('mt') || unitStr.includes('ton')) qtyKg = numQty * 1000;
-                      else if (unitStr.includes('kg')) qtyKg = numQty;
-                      else qtyKg = numQty < 500 ? numQty * 1000 : numQty;
-                    }
-
-                    const estimatedSOAmount = rateKg != null && qtyKg != null ? rateKg * qtyKg : null;
-                    const invTaxable = record['inv_taxable_value'] ? Number(stripCommas(record['inv_taxable_value'])) : null;
-                    const invFinal = rawInvFinal ? Number(stripCommas(rawInvFinal)) : null;
-                    const poTotal = rawPoTotal ? Number(stripCommas(rawPoTotal)) : null;
-                    const diff = estimatedSOAmount != null && invTaxable != null ? Math.abs(estimatedSOAmount - invTaxable) : null;
-                    const pct = diff != null && estimatedSOAmount ? (diff / estimatedSOAmount) * 100 : null;
-                    let pctColor = 'var(--text)';
-                    if (pct != null) {
-                      if (pct <= 2) pctColor = '#10b981';
-                      else if (pct <= 5) pctColor = '#f59e0b';
-                      else pctColor = '#ef4444';
-                    }
-
-                    const currency = v => {
-                      if (v === null || v === undefined) return '—';
-                      return `₹${Math.round(Number(v)).toLocaleString('en-IN')}`;
-                    };
-
-                    return (
-                      <>
-                        <tr style={{ borderBottom: '1px solid var(--border)' }}>
-                          <td style={{ padding: '0.6rem 0.75rem', fontWeight: 700, color: 'var(--text)' }}>
-                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
-                              SO Estimated Amount (Reference)
-                              <span title="Estimated using SO Rate × SO Quantity. This is a reference value only and is not taken from any document." style={{ cursor: 'pointer', display: 'inline-flex', verticalAlign: 'middle' }}>
-                                <Info size={13} style={{ color: 'var(--text-muted)' }} />
-                              </span>
-                            </span>
-                          </td>
-                          <td style={{ padding: '0.6rem 0.75rem', textAlign: 'right', fontWeight: 700, fontFamily: 'monospace', color: estimatedSOAmount != null ? 'var(--text)' : '#94a3b8' }}>{currency(estimatedSOAmount)}</td>
-                        </tr>
-                        <tr style={{ borderBottom: '1px solid var(--border)' }}>
-                          <td style={{ padding: '0.6rem 0.75rem', fontWeight: 600, color: 'var(--text-muted)' }}>Invoice Taxable Value</td>
-                          <td style={{ padding: '0.6rem 0.75rem', textAlign: 'right', fontWeight: 700, fontFamily: 'monospace', color: v('inv_taxable_value') ? 'var(--text)' : '#94a3b8' }}>{currency(invTaxable)}</td>
-                        </tr>
-                        <tr style={{ borderBottom: '1px solid var(--border)' }}>
-                          <td style={{ padding: '0.6rem 0.75rem', fontWeight: 600, color: 'var(--text-muted)' }}>Invoice Final Amount</td>
-                          <td style={{ padding: '0.6rem 0.75rem', textAlign: 'right', fontWeight: 700, fontFamily: 'monospace', color: v('inv_final_amount') ? 'var(--text)' : '#94a3b8' }}>{currency(invFinal)}</td>
-                        </tr>
-                        <tr style={{ borderBottom: '1px solid var(--border)' }}>
-                          <td style={{ padding: '0.6rem 0.75rem', fontWeight: 600, color: 'var(--text-muted)' }}>PO Total Amount</td>
-                          <td style={{ padding: '0.6rem 0.75rem', textAlign: 'right', fontWeight: 700, fontFamily: 'monospace', color: v('po_total_amount') ? 'var(--text)' : '#94a3b8' }}>{currency(poTotal)}</td>
-                        </tr>
-                        {diff != null && pct != null && (
-                          <tr style={{ background: 'rgba(0,0,0,0.015)' }}>
-                            <td colSpan={2} style={{ padding: '0.6rem 0.75rem' }}>
-                              <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '1.5rem', fontSize: '0.78rem' }}>
-                                <span style={{ fontWeight: 600, color: 'var(--text-muted)' }}>
-                                  Difference: <span style={{ fontFamily: 'monospace', fontWeight: 800, color: 'var(--text)' }}>{currency(diff)}</span>
-                                </span>
-                                <span style={{ fontWeight: 600, color: 'var(--text-muted)' }}>
-                                  Deviation: <span style={{ fontFamily: 'monospace', fontWeight: 800, color: pctColor }}>{pct.toFixed(2)}%</span>
-                                </span>
-                              </div>
-                            </td>
-                          </tr>
-                        )}
-                      </>
-                    );
-                  })()}
-                </tbody>
-              </table>
+              <div>
+                <SectionLabel action={<MatchBadge value={check('rate_match')} />}>Rate Comparison</SectionLabel>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '0.6rem' }}>
+                  <StatCard label="SO Rate" value={showRate(record.so_rate)} />
+                  <StatCard label="PO Rate" value={showRate(record.po_rate)} />
+                  <StatCard label="Invoice Rate" value={showRate(record.inv_rate)} />
+                </div>
+              </div>
             </div>
           </CollapseSection>
 
           {/* ─── Section 3: Financial Summary ─── */}
           <CollapseSection title="Financial Summary">
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '0.75rem' }}>
-              {[
-                { label: 'Invoice Final Amount', value: fmtCurrency(v('inv_final_amount')) },
-                { label: 'Invoice Taxable Value', value: fmtCurrency(v('inv_taxable_value')) },
-                { label: 'PO Total Amount', value: fmtCurrency(v('po_total_amount')) },
-                { label: 'Invoice CGST', value: fmtCurrency(v('inv_cgst_amount')) },
-                { label: 'Invoice SGST', value: fmtCurrency(v('inv_sgst_amount')) },
-                { label: 'Invoice IGST', value: fmtCurrency(v('inv_igst_amount')) },
-              ].map((item, idx) => (
-                <div key={idx} style={{
-                  padding: '0.85rem 1rem', borderRadius: '10px',
-                  border: '1px solid var(--border)', background: 'rgba(0,0,0,0.015)'
-                }}>
-                  <div style={{ fontSize: '0.65rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)', marginBottom: '0.35rem' }}>{item.label}</div>
-                  <div style={{ fontSize: '1rem', fontWeight: 800, fontFamily: 'monospace', color: item.value === '—' ? '#94a3b8' : 'var(--text)' }}>{item.value}</div>
-                </div>
-              ))}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '0.6rem' }}>
+              <StatCard label="Invoice Taxable Value" value={showMoney(record.inv_taxable_value)} />
+              <StatCard label="Invoice Final Amount" value={showMoney(record.inv_final_amount)} />
+              <StatCard label="Invoice CGST" value={showMoney(record.inv_cgst_amount)} />
+              <StatCard label="Invoice SGST" value={showMoney(record.inv_sgst_amount)} />
+              <StatCard label="Invoice IGST" value={showMoney(record.inv_igst_amount)} />
+              <StatCard label="PO Rate" value={showRate(record.po_rate)} />
+              <StatCard label="Invoice Rate" value={showRate(record.inv_rate)} />
+              <StatCard label="SO Rate" value={showRate(record.so_rate)} />
+              <StatCard label="PO Total Amount" value={showMoney(record.po_total_amount)} />
+              <StatCard label="SO Payment Terms" value={showText(record.so_payment_terms)} />
+              <StatCard label="Invoice Payment Terms" value={showText(record.inv_payment_terms)} />
             </div>
+
+            <MatchStrip
+              title="Financial Match Status"
+              items={[
+                { label: 'Rate Match', value: check('rate_match') },
+                { label: 'Amount Match', value: check('amount_match') },
+                { label: 'Payment Terms Match', value: check('payment_terms_match') },
+              ]}
+            />
           </CollapseSection>
 
           {/* ─── Section 4: Material Information ─── */}
           <CollapseSection title="Material Information">
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '0 1.5rem' }}>
-              {[
-                { label: 'Product (SO)', value: v('so_product') },
-                { label: 'Material Grade / Desc (PO)', value: v('po_material_grade') || v('po_material_description') || v('po_product') || v('po_material') },
-                { label: 'Thickness', value: v('so_thickness') || v('po_thickness') },
-                { label: 'Width', value: v('so_width') || v('po_width') },
-                { label: 'Length', value: v('so_length') || v('po_length') },
-                { label: 'Packing', value: v('so_packing') },
-                { label: 'Production Type', value: v('so_production_type') },
-                { label: 'Make / Coil Grade', value: v('so_make') },
-              ].map((item, idx) => (
-                <DetailRow key={idx} label={item.label} value={item.value} />
-              ))}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(255px, 1fr))', gap: '0.7rem' }}>
+              <DocPanel
+                kind="so"
+                title="Sales Order"
+                rows={[
+                  { label: 'Product', value: showText(record.so_product) },
+                  { label: 'Production Type', value: showText(record.so_production_type) },
+                  { label: 'Dimensions (T × W × L)', value: showDimensions(record.so_thickness, record.so_width, record.so_length) },
+                  { label: 'Quantity', value: showQuantity(record.so_quantity, record.so_unit) },
+                  { label: 'Packing', value: showText(record.so_packing) },
+                  { label: 'Coil Number', value: showText(record.so_coil_number) },
+                ]}
+              />
+              <DocPanel
+                kind="po"
+                title="Purchase Order"
+                rows={[
+                  { label: 'Material Description', value: showText(record.po_material_description) },
+                  { label: 'Material Grade', value: showText(record.po_material_grade) },
+                  { label: 'HSN Code', value: showText(record.po_hsn_code) },
+                  { label: 'Dimensions (T × W × L)', value: showDimensions(record.po_thickness, record.po_width, record.po_length) },
+                  { label: 'Quantity', value: showQuantity(record.po_quantity, record.po_unit) },
+                  { label: 'Unit', value: showText(record.po_unit) },
+                ]}
+              />
+              <DocPanel
+                kind="invoice"
+                title="Invoice"
+                rows={[
+                  { label: 'Description', value: showText(record.inv_notes) },
+                  { label: 'Dimensions (T × W × L)', value: showDimensions(record.inv_thickness, record.inv_width, record.inv_length) },
+                  { label: 'Quantity', value: showQuantity(record.inv_quantity, record.inv_unit) },
+                ]}
+              />
+              <DocPanel
+                kind="gp"
+                title="Gate Pass"
+                rows={[
+                  { label: 'Product', value: showText(record.gp_product) },
+                  { label: 'Material Description', value: showText(record.gp_material_description) },
+                  { label: 'Grade', value: showText(record.gp_grade) },
+                  { label: 'Dimensions (T × W × L)', value: showDimensions(record.gp_thickness, record.gp_width, record.gp_length) },
+                  { label: 'Quantity', value: showQuantity(record.gp_quantity, record.gp_unit) },
+                  { label: 'Unit', value: showText(record.gp_unit) },
+                  { label: 'Packing', value: showText(record.gp_packing) },
+                  { label: 'Coil Number', value: showText(record.gp_coil_number) },
+                ]}
+              />
+              <DocPanel
+                kind="ws"
+                title="Weight Slip"
+                rows={[
+                  { label: 'Material Description', value: showText(record.ws_material_description) },
+                  { label: 'Gross Weight', value: showText(record.ws_gross_weight) },
+                  { label: 'Tare Weight', value: showText(record.ws_tare_weight) },
+                  { label: 'Net Weight', value: showText(record.ws_net_weight) },
+                ]}
+              />
             </div>
+
+            <MatchStrip
+              title="Material Match Status"
+              items={[
+                { label: 'Material', value: check('material_match') },
+                { label: 'Dimension', value: check('dimension_match') },
+                { label: 'Grade', value: check('grade_match') },
+                { label: 'Packing', value: check('packing_match') },
+                { label: 'Coil', value: check('coil_match') },
+                { label: 'Quantity', value: check('quantity_match') },
+              ]}
+            />
           </CollapseSection>
 
           {/* ─── Section 5: Logistics ─── */}
           <CollapseSection title="Logistics">
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '0 1.5rem' }}>
-              {[
-                { label: 'Gate Pass Number', value: v('gp_number') },
-                { label: 'Gate Pass Date', value: v('gp_date') },
-                { label: 'Weight Slip Number', value: v('ws_number') },
-                { label: 'Weight Slip Date', value: v('ws_date') },
-                { label: 'Weight Slip Time', value: v('ws_time') },
-                { label: 'Vehicle', value: v('gp_vehicle_number') },
-                { label: 'Gross Weight', value: v('ws_gross_weight') },
-                { label: 'Tare Weight', value: v('ws_tare_weight') },
-                { label: 'Net Weight', value: v('ws_net_weight') },
-                { label: 'Driver', value: v('gp_driver_name') },
-              ].map((item, idx) => (
-                <DetailRow key={idx} label={item.label} value={item.value} />
-              ))}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(255px, 1fr))', gap: '0.7rem' }}>
+              <DocPanel
+                kind="invoice"
+                title="Invoice · Dispatch"
+                rows={[
+                  { label: 'Vehicle', value: showText(record.inv_vehicle_number) },
+                  { label: 'Weight Slip Number', value: showText(record.inv_weight_slip_number) },
+                  { label: 'Consignee', value: showText(record.inv_consignee_name) },
+                ]}
+              />
+              <DocPanel
+                kind="gp"
+                title="Gate Pass · Movement"
+                rows={[
+                  { label: 'Gate Pass Number', value: showText(record.gp_number) },
+                  { label: 'Gate Pass Date', value: showText(record.gp_date) },
+                  { label: 'Vehicle', value: showText(record.gp_vehicle_number) },
+                  { label: 'Customer / Party', value: showText(record.gp_party_name) },
+                  { label: 'SO Number', value: showText(record.gp_so_number) },
+                  { label: 'PO Number', value: showText(record.gp_po_number) },
+                  { label: 'Driver', value: showText(record.gp_driver_name) },
+                  { label: 'Weight', value: showQuantity(record.gp_weight, record.gp_unit) },
+                ]}
+              />
+              <DocPanel
+                kind="ws"
+                title="Weight Slip · Weighment"
+                rows={[
+                  { label: 'Weight Slip Number', value: showText(record.ws_number) },
+                  { label: 'Date', value: showText(record.ws_date) },
+                  { label: 'Time', value: showText(record.ws_time) },
+                  { label: 'Vehicle', value: showText(record.ws_vehicle_number) },
+                  { label: 'Party', value: showText(record.ws_party_name) },
+                  { label: 'Gross Weight', value: showText(record.ws_gross_weight) },
+                  { label: 'Tare Weight', value: showText(record.ws_tare_weight) },
+                  { label: 'Net Weight', value: showText(record.ws_net_weight) },
+                ]}
+              />
             </div>
+
+            <MatchStrip
+              title="Logistics Match Status"
+              items={[
+                { label: 'Vehicle', value: check('vehicle_match') },
+                { label: 'Weight', value: check('weight_match') },
+                { label: 'Weight Slip', value: check('weight_slip_match') },
+              ]}
+            />
           </CollapseSection>
 
           {/* ─── Section 6: Match Results ─── */}
           <CollapseSection title="Match Results">
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
-              {[
-                { label: 'Customer', key: 'customer_match' },
-                { label: 'SO', key: 'so_match' },
-                { label: 'PO', key: 'po_match' },
-                { label: 'Vehicle', key: 'vehicle_match' },
-                { label: 'Weight Slip', key: 'weight_slip_match' },
-                { label: 'Quantity', key: 'quantity_match' },
-                { label: 'Material', key: 'material_match' },
-                { label: 'Dimensions', key: 'dimension_match' },
-                { label: 'GST', key: 'gst_match' },
-                { label: 'Amount', key: 'amount_match' },
-                { label: 'Rate', key: 'rate_match' },
-                { label: 'Payment Terms', key: 'payment_terms_match' },
-                { label: 'Delivery Terms', key: 'delivery_terms_match' },
-                { label: 'Weight', key: 'weight_match' },
-                { label: 'Coil', key: 'coil_match' },
-              ].map((item, idx) => (
-                <div key={idx} style={{
-                  display: 'flex', alignItems: 'center', gap: '0.5rem',
-                  padding: '0.4rem 0.75rem', borderRadius: '8px',
-                  border: '1px solid var(--border)', background: 'rgba(0,0,0,0.015)'
-                }}>
-                  <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)' }}>{item.label}</span>
-                  <MatchBadge value={I[item.key]} />
-                </div>
-              ))}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+              <AuditStatusStrip score={check('audit_score')} status={check('audit_status')} />
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))', gap: '0.4rem' }}>
+                {MATCH_RESULT_CHECKS.map(item => (
+                  <CheckRow key={item.key} label={item.label} value={check(item.key)} />
+                ))}
+              </div>
             </div>
           </CollapseSection>
 
           {/* ─── Section 7: Audit Findings ─── */}
           <CollapseSection title="Audit Findings">
-            {/* Critical Mismatches */}
-            {(I.critical_mismatches?.length || 0) > 0 && (
-              <div style={{ marginBottom: '0.75rem' }}>
-                <div style={{ fontSize: '0.7rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#ef4444', marginBottom: '0.4rem' }}>Critical Mismatches</div>
-                {I.critical_mismatches.map((item, idx) => (
-                  <div key={idx} style={{
-                    display: 'flex', alignItems: 'flex-start', gap: '0.5rem',
-                    padding: '0.6rem 0.85rem', borderRadius: '8px', marginBottom: '0.35rem',
-                    backgroundColor: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.15)',
-                    fontSize: '0.8rem', color: '#ef4444', fontWeight: 600
-                  }}>
-                    <AlertTriangle size={14} style={{ flexShrink: 0, marginTop: '2px' }} />
-                    <span>{item}</span>
-                  </div>
-                ))}
-              </div>
-            )}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.8rem' }}>
+              <AuditStatusStrip score={check('audit_score')} status={check('audit_status')} />
 
-            {/* Warnings */}
-            {(I.warnings?.length || 0) > 0 && (
-              <div style={{ marginBottom: '0.75rem' }}>
-                <div style={{ fontSize: '0.7rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#f59e0b', marginBottom: '0.4rem' }}>Warnings</div>
-                {I.warnings.map((item, idx) => (
-                  <div key={idx} style={{
-                    display: 'flex', alignItems: 'flex-start', gap: '0.5rem',
-                    padding: '0.6rem 0.85rem', borderRadius: '8px', marginBottom: '0.35rem',
-                    backgroundColor: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.15)',
-                    fontSize: '0.8rem', color: 'var(--text)', fontWeight: 500
-                  }}>
-                    <AlertTriangle size={14} style={{ flexShrink: 0, marginTop: '2px', color: '#f59e0b' }} />
-                    <span>{item}</span>
-                  </div>
-                ))}
-              </div>
-            )}
+              <FindingList
+                tone="critical"
+                title="Critical Mismatches"
+                items={I.critical_mismatches}
+                emptyText="No critical mismatches recorded."
+              />
 
-            {/* Missing Documents */}
-            {(I.missing_documents?.length || 0) > 0 && (
-              <div style={{ marginBottom: '0.75rem' }}>
-                <div style={{ fontSize: '0.7rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#64748b', marginBottom: '0.4rem' }}>Missing Documents</div>
-                {I.missing_documents.map((item, idx) => (
-                  <div key={idx} style={{
-                    display: 'flex', alignItems: 'flex-start', gap: '0.5rem',
-                    padding: '0.6rem 0.85rem', borderRadius: '8px', marginBottom: '0.35rem',
-                    backgroundColor: 'rgba(100,116,139,0.06)', border: '1px solid rgba(100,116,139,0.15)',
-                    fontSize: '0.8rem', color: '#64748b', fontStyle: 'italic'
-                  }}>
-                    <Info size={14} style={{ flexShrink: 0, marginTop: '2px' }} />
-                    <span>Missing: {item}</span>
-                  </div>
-                ))}
-              </div>
-            )}
+              <FindingList
+                tone="warning"
+                title="Warnings"
+                items={I.warnings}
+                emptyText="No warnings recorded."
+              />
 
-            {/* Audit Summary */}
-            {I.audit_summary && (
-              <div style={{
-                padding: '0.85rem 1rem', borderRadius: '10px', marginTop: '0.5rem',
-                backgroundColor: 'rgba(37,99,235,0.04)', border: '1px solid rgba(37,99,235,0.1)',
-                display: 'flex', gap: '0.6rem', alignItems: 'flex-start'
-              }}>
-                <Info size={16} style={{ color: 'var(--primary)', flexShrink: 0, marginTop: '2px' }} />
-                <div>
-                  <div style={{ fontSize: '0.65rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--primary)', marginBottom: '0.25rem' }}>Audit Summary</div>
-                  <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--text)', lineHeight: 1.5, fontStyle: 'italic' }}>"{I.audit_summary}"</p>
+              <FindingList
+                tone="missing"
+                title="Missing Documents"
+                items={I.missing_documents}
+                emptyText="All expected documents are available."
+                icon={Info}
+              />
+
+              <SummaryBlock summary={I.audit_summary} />
+
+              {hasMatrixMismatch && !toList(I.critical_mismatches).length && !toList(I.warnings).length && (
+                <div style={{
+                  display: 'flex', alignItems: 'flex-start', gap: '0.5rem', padding: '0.7rem 0.85rem',
+                  borderRadius: '8px', backgroundColor: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.15)',
+                  color: '#ef4444', fontSize: '0.82rem', fontWeight: 600
+                }}>
+                  <AlertTriangle size={15} style={{ flexShrink: 0, marginTop: '1px' }} />
+                  <span>Field mismatch detected in the document comparison matrix.</span>
                 </div>
-              </div>
-            )}
+              )}
 
-            {(!I.critical_mismatches?.length && !I.warnings?.length && !I.missing_documents?.length && !I.audit_summary && !hasMatrixMismatch) && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.75rem', color: '#10b981', fontSize: '0.85rem', fontWeight: 600 }}>
-                <CheckCircle size={16} />
-                No issues found. All checks passed.
-              </div>
-            )}
-
-            {hasMatrixMismatch && !I.critical_mismatches?.length && !I.warnings?.length && (
-              <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.5rem', padding: '0.75rem', borderRadius: '8px', backgroundColor: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.15)', color: '#ef4444', fontSize: '0.85rem', fontWeight: 600 }}>
-                <AlertTriangle size={16} style={{ flexShrink: 0, marginTop: '2px' }} />
-                <span>Field mismatch detected in the document comparison matrix.</span>
-              </div>
-            )}
+              {!hasMatrixMismatch && !toList(I.critical_mismatches).length && !toList(I.warnings).length && !toList(I.missing_documents).length && !hasSourceValue(I.audit_summary) && (
+                <div style={{
+                  display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.7rem 0.85rem',
+                  borderRadius: '8px', backgroundColor: 'rgba(16,185,129,0.06)', border: '1px solid rgba(16,185,129,0.15)',
+                  color: '#10b981', fontSize: '0.82rem', fontWeight: 600
+                }}>
+                  <CheckCircle size={15} />
+                  No issues found. All checks passed.
+                </div>
+              )}
+            </div>
           </CollapseSection>
 
 
@@ -2182,7 +2664,6 @@ const AuditHistory = () => {
   const [error, setError] = useState(null)
   const [salesError, setSalesError] = useState(null)
   const [searchTerm, setSearchTerm] = useState('')
-  const [isRefreshing, setIsRefreshing] = useState(false)
   const [selectedAudit, setSelectedAudit] = useState(null)
   const [selectedSalesGroup, setSelectedSalesGroup] = useState(null)
   const [decisionProcessing, setDecisionProcessing] = useState(null)
@@ -2190,6 +2671,8 @@ const AuditHistory = () => {
   const [sortOrder, setSortOrder] = useState('latest') // 'latest' | 'oldest'
   const [dateFilter, setDateFilter] = useState('all') // 'all' | 'today' | 'thisWeek' | 'past30' | 'past3m' | 'past6m' | 'thisYear' | 'custom'
   const [customDateRange, setCustomDateRange] = useState({ start: '', end: '' })
+  const [purchasePage, setPurchasePage] = useState(1)
+  const [salesPage, setSalesPage] = useState(1)
 
   // Derived: which groups already have a decision saved
   const salesGroupDecisions = useMemo(() => {
@@ -2325,9 +2808,7 @@ const AuditHistory = () => {
     if (showLoading) setIsLoading(true)
     setError(null)
     try {
-      const response = await fetch(AUDITS_WEBHOOK_URL)
-      if (!response.ok) throw new Error('Failed to synchronize logs')
-      const data = await response.json()
+      const data = await fetchPurchaseRecords();
       const auditData = normalizeArray(data);
       
       setHistory(prev => {
@@ -2344,7 +2825,6 @@ const AuditHistory = () => {
       setHistory([])
     } finally {
       setIsLoading(false)
-      setIsRefreshing(false)
     }
   }
 
@@ -2352,9 +2832,7 @@ const AuditHistory = () => {
     if (showLoading) setIsSalesLoading(true)
     setSalesError(null)
     try {
-      const response = await fetch(SALES_WEBHOOK_URL)
-      if (!response.ok) throw new Error('Failed to fetch sales records')
-      const data = await response.json()
+      const data = await fetchSalesRecords();
       const salesData = normalizeArray(data);
       
       // Transform each record: nest intelligence/match fields under `intelligence`
@@ -2366,19 +2844,24 @@ const AuditHistory = () => {
       );
       
       setSalesHistory(uniqueSales);
-    } catch {
-      console.error('Sales History Fetch Error')
+    } catch (err) {
+      console.error('Sales History Fetch Error:', err)
       setSalesError('Could not load sales records.')
       setSalesHistory([])
     } finally {
       setIsSalesLoading(false)
-      setIsRefreshing(false)
     }
   }
 
   useEffect(() => {
     fetchHistory()
   }, [])
+
+  useSyncRefresh(() => {
+    const jobs = [fetchHistory(false)]
+    if (activeSide === 'sales' || salesHistory.length > 0) jobs.push(fetchSalesHistory(false))
+    return Promise.all(jobs)
+  })
 
   // Deep-link: auto-open sales modal from ?so= URL param
   useEffect(() => {
@@ -2481,14 +2964,25 @@ const AuditHistory = () => {
     return groups_arr;
   }, [filteredSalesHistory, sortOrder])
 
-  const handleRefresh = () => {
-    setIsRefreshing(true)
-    if (activeSide === 'sales') {
-      fetchSalesHistory(false)
-    } else {
-      fetchHistory(false)
-    }
-  }
+  useEffect(() => {
+    setPurchasePage(1)
+    setSalesPage(1)
+  }, [activeSide, searchTerm, sortOrder, dateFilter, customDateRange])
+
+  useEffect(() => {
+    setPurchasePage(page => Math.max(1, Math.min(page, Math.ceil(filteredHistory.length / LEDGERS_PER_PAGE))))
+  }, [filteredHistory.length])
+
+  useEffect(() => {
+    setSalesPage(page => Math.max(1, Math.min(page, Math.ceil(groupedSalesHistory.length / LEDGERS_PER_PAGE))))
+  }, [groupedSalesHistory.length])
+
+  const purchaseTotalPages = Math.max(1, Math.ceil(filteredHistory.length / LEDGERS_PER_PAGE))
+  const salesTotalPages = Math.max(1, Math.ceil(groupedSalesHistory.length / LEDGERS_PER_PAGE))
+  const currentPurchasePage = Math.min(Math.max(purchasePage, 1), purchaseTotalPages)
+  const currentSalesPage = Math.min(Math.max(salesPage, 1), salesTotalPages)
+  const paginatedHistory = filteredHistory.slice((currentPurchasePage - 1) * LEDGERS_PER_PAGE, currentPurchasePage * LEDGERS_PER_PAGE)
+  const paginatedSalesHistory = groupedSalesHistory.slice((currentSalesPage - 1) * LEDGERS_PER_PAGE, currentSalesPage * LEDGERS_PER_PAGE)
 
   // Derive sales table columns dynamically (must be before any early return)
   const salesColumns = useMemo(() => {
@@ -2510,19 +3004,16 @@ const AuditHistory = () => {
   return (
     <div className="history-page animate-fade-in">
       <div className="page-header mb-8">
-        <div className="flex-between mb-6">
+        <div className="flex-between ledger-heading-row mb-6">
           <div>
             <h1 className="page-title">Operational Ledger</h1>
             <p className="page-subtitle">
               {activeSide === 'purchase' ? 'Purchase audit traces & dispatch compliance' : 'Sales side records & invoice log'}
             </p>
           </div>
-          <button className="btn btn-outline flex items-center gap-2 refresh-btn-desktop" onClick={handleRefresh} disabled={isRefreshing}>
-            <RefreshCw size={16} className={isRefreshing ? 'animate-spin' : ''} /> Refresh
-          </button>
         </div>
 
-        <div className="header-actions-bar">
+        <div className="header-actions-bar ledger-toolbar">
           <div className="side-toggle-group">
             <button
               className={`side-toggle-btn ${activeSide === 'purchase' ? 'active-purchase' : ''}`}
@@ -2593,16 +3084,12 @@ const AuditHistory = () => {
               />
             </div>
             <button 
-              className="btn btn-outline btn-sm" 
+              className="btn btn-outline btn-sm ledger-sort-btn"
               onClick={() => setSortOrder(sortOrder === 'latest' ? 'oldest' : 'latest')}
               title={`Sort: ${sortOrder === 'latest' ? 'Newest first' : 'Oldest first'}`}
-              style={{ padding: '0.5rem 0.65rem', fontSize: '0.65rem', fontWeight: 700, whiteSpace: 'nowrap', gap: '4px', flexShrink: 0 }}
             >
               <span>{sortOrder === 'latest' ? '↓' : '↑'}</span>
               <span className="hide-mobile">{sortOrder === 'latest' ? 'Latest' : 'Oldest'}</span>
-            </button>
-            <button className="btn btn-outline refresh-btn-mobile" onClick={handleRefresh} disabled={isRefreshing}>
-              <RefreshCw size={16} className={isRefreshing ? 'animate-spin' : ''} />
             </button>
           </div>
         </div>
@@ -2625,7 +3112,7 @@ const AuditHistory = () => {
                 </tr>
               </thead>
               <tbody>
-                {filteredHistory.map((record) => {
+                {paginatedHistory.map((record) => {
                   const result = parseAuditResult(record.Audit_Result);
                   const score = result?.overall?.final_score || 'N/A';
                   const finalDecision = (record.Result === 'Approve' || record.Result === 'Reject') ? record.Result :
@@ -2697,14 +3184,12 @@ const AuditHistory = () => {
               </tbody>
             </table>
           </div>
-          <div className="pagination p-6 border-t flex justify-between items-center text-sm text-muted">
-            <span>Displaying {filteredHistory.length} purchase audit records</span>
-            <div className="flex gap-2">
-              <button className="btn btn-outline btn-sm" disabled>Prev</button>
-              <button className="btn btn-primary btn-sm px-4">1</button>
-              <button className="btn btn-outline btn-sm" disabled>Next</button>
-            </div>
-          </div>
+          <LedgerPagination
+            totalItems={filteredHistory.length}
+            currentPage={currentPurchasePage}
+            onPageChange={setPurchasePage}
+            itemLabel="purchase audit records"
+          />
         </div>
       )}
 
@@ -2724,7 +3209,7 @@ const AuditHistory = () => {
           ) : (
             <>
           <div className="sales-records-list animate-fade-in">
-              {groupedSalesHistory.map((group, idx) => {
+              {paginatedSalesHistory.map((group, idx) => {
                 const groupDecision = salesGroupDecisions[group.invoiceNumber];
                 const isQuickEntry = group.records.every(isRecordQuickEntry);
                 // Check if any record in the group has pending documents
@@ -2822,15 +3307,12 @@ const AuditHistory = () => {
                 );
               })}
            </div>
-          <div className="pagination p-6 border-t flex justify-between items-center text-sm text-muted">
-            <span className="hide-mobile">Displaying {groupedSalesHistory.length} sales records</span>
-            <span className="show-mobile-only">{groupedSalesHistory.length} Records</span>
-            <div className="flex gap-2">
-              <button className="btn btn-outline btn-sm" disabled>Prev</button>
-              <button className="btn btn-primary btn-sm px-4">1</button>
-              <button className="btn btn-outline btn-sm" disabled>Next</button>
-            </div>
-          </div>
+          <LedgerPagination
+            totalItems={groupedSalesHistory.length}
+            currentPage={currentSalesPage}
+            onPageChange={setSalesPage}
+            itemLabel="sales records"
+          />
             </>
           )}
         </div>

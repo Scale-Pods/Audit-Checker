@@ -2,7 +2,7 @@ import React, { useState, useCallback, useEffect } from 'react'
 import { useDropzone } from 'react-dropzone'
 import * as pdfjsLib from 'pdfjs-dist'
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
-import { UploadCloud, File as FileIcon, FileText, CheckCircle, AlertTriangle, ArrowRight, X, Send, Mail, Loader2, XCircle, Info, ChevronRight, Check, ClipboardList, Scale, ShoppingCart, FileSpreadsheet } from 'lucide-react'
+import { UploadCloud, File as FileIcon, FileText, CheckCircle, AlertTriangle, ArrowRight, X, Send, Mail, Loader2, XCircle, Info, ChevronRight, Check, ClipboardList, Scale, ShoppingCart, FileSpreadsheet, Lock } from 'lucide-react'
 import '../Purchase/PurchaseAudit.css'
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl
@@ -43,9 +43,11 @@ const DocumentUpload = ({ title, accepted, onUpload, files, isSubmitted }) => {
     }
   }, [onUpload])
 
-  const { getRootProps, getInputProps, isDragActive } = useDropzone({ 
+  const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
     accept: accepted,
+    multiple: false,
+    maxFiles: 1,
     noClick: converting,
     noDrag: converting
   })
@@ -91,8 +93,8 @@ const DocumentUpload = ({ title, accepted, onUpload, files, isSubmitted }) => {
           ) : (
             <>
               <UploadCloud size={80} className="drop-icon" style={{ opacity: 0.7, marginBottom: '1.5rem' }} />
-              <p className="drop-text" style={{ fontSize: '1.5rem', fontWeight: '700' }}>Drag & drop files here</p>
-              <span className="drop-subtext" style={{ fontSize: '1rem' }}>Images or PDF — PDFs are converted to images automatically</span>
+              <p className="drop-text" style={{ fontSize: '1.5rem', fontWeight: '700' }}>Drop one document here</p>
+              <span className="drop-subtext" style={{ fontSize: '1rem' }}>One document per section — images or PDF, converted automatically</span>
             </>
           )}
         </div>
@@ -135,6 +137,19 @@ const SalesAudit = () => {
 
   const [docType, setDocType] = useState('PO')
   const [docNumber, setDocNumber] = useState('')
+  const [isSubmitConfirmOpen, setIsSubmitConfirmOpen] = useState(false)
+  const [stageConfirm, setStageConfirm] = useState(null)
+
+  useEffect(() => {
+    if (!isSubmitConfirmOpen && !stageConfirm) return
+    const handleKeyDown = (e) => {
+      if (e.key !== 'Escape') return
+      setIsSubmitConfirmOpen(false)
+      setStageConfirm(null)
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [isSubmitConfirmOpen, stageConfirm])
 
   // Paste handler (single file per section)
   useEffect(() => {
@@ -148,9 +163,9 @@ const SalesAudit = () => {
           if (blob && blob.type.startsWith('image/')) {
             const pastedFile = new File([blob], `Pasted-Image-${Date.now()}.png`, { type: blob.type });
             if (activeStep === 0) setPurchaseOrderFiles([pastedFile]);
-            if (activeStep === 2) setWeightslipFiles([pastedFile]);
-            if (activeStep === 3) setGatepassFiles([pastedFile]);
-            if (activeStep === 4) setInvoiceFiles([pastedFile]);
+            if (activeStep === 2) setInvoiceFiles([pastedFile]);
+            if (activeStep === 3 && invoiceFiles.length > 0) setWeightslipFiles([pastedFile]);
+            if (activeStep === 4 && invoiceFiles.length > 0) setGatepassFiles([pastedFile]);
           }
         }
       }
@@ -158,7 +173,7 @@ const SalesAudit = () => {
 
     window.addEventListener('paste', handlePaste);
     return () => window.removeEventListener('paste', handlePaste);
-  }, [activeStep]);
+  }, [activeStep, invoiceFiles.length]);
 
   const handleSubmitAll = async () => {
     let uploads = []
@@ -268,13 +283,28 @@ const SalesAudit = () => {
   const steps = [
     { label: 'Purchase Order', files: purchaseOrderFiles, status: purchaseOrderFiles.length > 0 ? 'Ready' : 'Pending', icon: ShoppingCart },
     { label: 'Sales Order', files: [], status: 'Sheet Added', icon: FileSpreadsheet },
+    { label: 'Invoice', files: invoiceFiles, status: invoiceFiles.length > 0 ? 'Ready' : 'Pending', icon: FileText },
     { label: 'Weightslip', files: weightslipFiles, status: weightslipFiles.length > 0 ? 'Ready' : 'Pending', icon: Scale },
-    { label: 'Gatepass', files: gatepassFiles, status: gatepassFiles.length > 0 ? 'Ready' : 'Pending', icon: ClipboardList },
-    { label: 'Invoice', files: invoiceFiles, status: invoiceFiles.length > 0 ? 'Ready' : 'Pending', icon: FileText }
+    { label: 'Gatepass', files: gatepassFiles, status: gatepassFiles.length > 0 ? 'Ready' : 'Pending', icon: ClipboardList }
   ]
 
   const nextStep = () => {
-    if (activeStep < 4) setActiveStep(activeStep + 1)
+    if (activeStep >= 4) return
+    const target = activeStep + 1
+    // Stage 1 is driven by the SO sheet, not an upload, so it has no file requirement.
+    if (activeStep !== 1) {
+      const files = steps[activeStep].files
+      if (!files || files.length === 0) {
+        setStageConfirm({ label: steps[activeStep].label, target })
+        return
+      }
+    }
+    setActiveStep(target)
+  }
+
+  const confirmStageSkip = () => {
+    if (stageConfirm) setActiveStep(stageConfirm.target)
+    setStageConfirm(null)
   }
 
   const prevStep = () => {
@@ -724,7 +754,7 @@ const SalesAudit = () => {
   }
 
   return (
-    <div className={`audit-module ${isSidebarCollapsed ? 'sidebar-collapsed' : ''}`} style={result || webhookResponse ? { marginRight: 0 } : {}}>
+    <div className={`audit-module ${isSidebarCollapsed ? 'sidebar-collapsed' : ''}`} style={result ? { marginRight: 0 } : {}}>
       <div className="module-header">
         <div>
           <h1 className="module-title">Sales Audit</h1>
@@ -748,13 +778,13 @@ const SalesAudit = () => {
       {!result ? (
         <div className="stepper-section animate-fade-in" style={{ position: 'relative' }}>
           <div className={`audit-layout ${isSidebarCollapsed ? 'sidebar-collapsed' : ''}`}>
-            <div className="main-upload-area">
+            <div className={`main-upload-area ${allDone ? 'is-complete' : ''}`}>
               <div className="step-content-wrapper animate-slide-up">
                 {allDone && (
-                  <div className="all-done-banner animate-fade-in" style={{ marginBottom: '2rem' }}>
-                    <Mail size={24} />
-                    <div>
-                      <p className="all-done-title" style={{ fontSize: '1.1rem' }}>Success! Documents are under process</p>
+                  <div className="all-done-stage animate-fade-in">
+                    <div className="all-done-card">
+                      <div className="all-done-icon"><Mail size={28} /></div>
+                      <p className="all-done-title">Success! Documents are under process</p>
                       <p className="all-done-sub">Check your email shortly for the audit results.</p>
                     </div>
                   </div>
@@ -818,27 +848,77 @@ const SalesAudit = () => {
                     )}
                     {activeStep === 2 && (
                       <DocumentUpload 
-                        title="Weightslip Upload" 
-                        accepted={{'image/*': ['.png', '.jpg', '.jpeg'], 'application/pdf': ['.pdf']}}
-                        onUpload={setWeightslipFiles}
-                        files={weightslipFiles}
-                      />
-                    )}
-                    {activeStep === 3 && (
-                      <DocumentUpload 
-                        title="Gatepass Upload" 
-                        accepted={{'image/*': ['.png', '.jpg', '.jpeg'], 'application/pdf': ['.pdf']}}
-                        onUpload={setGatepassFiles}
-                        files={gatepassFiles}
-                      />
-                    )}
-                    {activeStep === 4 && (
-                      <DocumentUpload 
-                        title="Invoice Upload" 
+                        title="Invoice Upload"
                         accepted={{'image/*': ['.png', '.jpg', '.jpeg'], 'application/pdf': ['.pdf']}}
                         onUpload={setInvoiceFiles}
                         files={invoiceFiles}
                       />
+                    )}
+                    {activeStep === 3 && (
+                      invoiceFiles.length > 0 ? (
+                        <DocumentUpload
+                          title="Weightslip Upload"
+                          accepted={{'image/*': ['.png', '.jpg', '.jpeg'], 'application/pdf': ['.pdf']}}
+                          onUpload={setWeightslipFiles}
+                          files={weightslipFiles}
+                        />
+                      ) : (
+                        <div className="upload-box card" style={{ textAlign: 'center', padding: '3rem 2rem', alignItems: 'center' }}>
+                          <div style={{
+                            width: '56px', height: '56px', borderRadius: '50%',
+                            background: 'rgba(100,116,139,0.1)', border: '2px dashed rgba(100,116,139,0.35)',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1.25rem'
+                          }}>
+                            <Lock size={24} style={{ color: 'var(--text-muted)' }} />
+                          </div>
+                          <h3 className="upload-title" style={{ fontSize: '1.15rem', marginBottom: '0.6rem', color: 'var(--text)' }}>
+                            Weightslip Upload Locked
+                          </h3>
+                          <p style={{ fontSize: '0.92rem', color: 'var(--text-muted)', maxWidth: '420px', margin: '0 auto 1.5rem', lineHeight: '1.6' }}>
+                            The weightslip can only be added once the invoice has been uploaded.
+                          </p>
+                          <button
+                            className="btn btn-primary"
+                            onClick={() => setActiveStep(2)}
+                            style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}
+                          >
+                            <FileText size={16} /> Upload Invoice First
+                          </button>
+                        </div>
+                      )
+                    )}
+                    {activeStep === 4 && (
+                      invoiceFiles.length > 0 ? (
+                        <DocumentUpload
+                          title="Gatepass Upload"
+                          accepted={{'image/*': ['.png', '.jpg', '.jpeg'], 'application/pdf': ['.pdf']}}
+                          onUpload={setGatepassFiles}
+                          files={gatepassFiles}
+                        />
+                      ) : (
+                        <div className="upload-box card" style={{ textAlign: 'center', padding: '3rem 2rem', alignItems: 'center' }}>
+                          <div style={{
+                            width: '56px', height: '56px', borderRadius: '50%',
+                            background: 'rgba(100,116,139,0.1)', border: '2px dashed rgba(100,116,139,0.35)',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1.25rem'
+                          }}>
+                            <Lock size={24} style={{ color: 'var(--text-muted)' }} />
+                          </div>
+                          <h3 className="upload-title" style={{ fontSize: '1.15rem', marginBottom: '0.6rem', color: 'var(--text)' }}>
+                            Gatepass Upload Locked
+                          </h3>
+                          <p style={{ fontSize: '0.92rem', color: 'var(--text-muted)', maxWidth: '420px', margin: '0 auto 1.5rem', lineHeight: '1.6' }}>
+                            The gatepass can only be added once the invoice has been uploaded.
+                          </p>
+                          <button
+                            className="btn btn-primary"
+                            onClick={() => setActiveStep(2)}
+                            style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}
+                          >
+                            <FileText size={16} /> Upload Invoice First
+                          </button>
+                        </div>
+                      )
                     )}
 
                     {activeStep !== 1 && (
@@ -869,7 +949,6 @@ const SalesAudit = () => {
                           <button 
                             className="btn btn-primary" 
                             onClick={nextStep}
-                            disabled={activeStep === 0 ? purchaseOrderFiles.length === 0 : activeStep !== 1 && steps[activeStep].files.length === 0}
                             style={{ padding: '1rem 4rem', fontSize: '1.1rem', fontWeight: 800, borderRadius: '12px', display: 'flex', alignItems: 'center', gap: '0.5rem' }}
                           >
                             Next Stage <ChevronRight size={22} />
@@ -877,7 +956,7 @@ const SalesAudit = () => {
                         ) : (
                           <button 
                             className="btn btn-primary" 
-                            onClick={handleSubmitAll}
+                            onClick={() => setIsSubmitConfirmOpen(true)}
                             disabled={isSubmitting || invoiceFiles.length === 0}
                             style={{ background: 'var(--success)', borderColor: 'var(--success)', padding: '1rem 5rem', fontSize: '1.1rem', fontWeight: 800, borderRadius: '12px', display: 'flex', alignItems: 'center', gap: '0.5rem' }}
                           >
@@ -908,18 +987,20 @@ const SalesAudit = () => {
                   <div className="sidebar-nav-list">
                     {steps.map((s, idx) => {
                       const StepIcon = s.icon;
+                      const isDocumentLocked = (idx === 3 || idx === 4) && invoiceFiles.length === 0;
                       return (
                         <div 
                           key={idx} 
-                          className={`sidebar-nav-item ${activeStep === idx ? 'active' : ''} ${s.files.length > 0 || idx === 1 ? 'completed' : ''}`}
-                          onClick={() => !allDone && setActiveStep(idx)}
+                          className={`sidebar-nav-item ${activeStep === idx ? 'active' : ''} ${s.files.length > 0 || idx === 1 ? 'completed' : ''} ${isDocumentLocked ? 'locked' : ''}`}
+                          onClick={() => !allDone && !isDocumentLocked && setActiveStep(idx)}
+                          style={isDocumentLocked ? { cursor: 'not-allowed', opacity: 0.55, pointerEvents: 'auto' } : undefined}
                         >
                           <div className="sidebar-step-num">
-                            {s.files.length > 0 ? <Check size={16} /> : <StepIcon size={16} />}
+                            {isDocumentLocked ? <Lock size={16} /> : s.files.length > 0 ? <Check size={16} /> : <StepIcon size={16} />}
                           </div>
                           <div className="sidebar-step-info">
                             <span className="sidebar-step-name">{s.label}</span>
-                            <span className="sidebar-step-status">{idx === 1 ? 'Added' : s.files.length > 0 ? 'Uploaded' : 'Waiting...'}</span>
+                            <span className="sidebar-step-status">{isDocumentLocked ? 'Locked' : idx === 1 ? 'Added' : s.files.length > 0 ? 'Uploaded' : 'Waiting...'}</span>
                           </div>
                         </div>
                       );
@@ -933,6 +1014,98 @@ const SalesAudit = () => {
       ) : (
         <div className="result-stage animate-fade-in">
           {renderWebhookResponse()}
+        </div>
+      )}
+
+      {stageConfirm && (
+        <div className="confirm-modal-overlay" onClick={() => setStageConfirm(null)}>
+          <div
+            className="confirm-modal animate-scale-in"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="stage-confirm-title"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              className="confirm-modal-close"
+              onClick={() => setStageConfirm(null)}
+              aria-label="Close confirmation"
+            >
+              <X size={18} />
+            </button>
+
+            <div className="confirm-modal-icon" style={{ background: 'rgba(245,158,11,0.12)', color: '#f59e0b' }}>
+              <AlertTriangle size={26} />
+            </div>
+
+            <h3 id="stage-confirm-title" className="confirm-modal-title">
+              Skip {stageConfirm.label} upload?
+            </h3>
+
+            <p className="confirm-modal-text">
+              No {stageConfirm.label} document has been uploaded. If you move on without it, this document
+              will be excluded from the audit and the results may be incomplete.
+            </p>
+
+            <div className="confirm-modal-actions">
+              <button
+                className="btn btn-outline confirm-modal-cancel"
+                onClick={() => setStageConfirm(null)}
+              >
+                Stay &amp; Upload
+              </button>
+              <button
+                className="btn btn-primary confirm-modal-submit"
+                onClick={confirmStageSkip}
+              >
+                Move On Anyway <ArrowRight size={16} />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isSubmitConfirmOpen && (
+        <div className="confirm-modal-overlay" onClick={() => setIsSubmitConfirmOpen(false)}>
+          <div
+            className="confirm-modal animate-scale-in"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="submit-confirm-title"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              className="confirm-modal-close"
+              onClick={() => setIsSubmitConfirmOpen(false)}
+              aria-label="Close confirmation"
+            >
+              <X size={18} />
+            </button>
+
+            <div className="confirm-modal-icon">
+              <Send size={26} />
+            </div>
+
+            <h3 id="submit-confirm-title" className="confirm-modal-title">
+              Confirm Submission
+            </h3>
+
+            <p className="confirm-modal-text">
+              Uploaded documents will be processed and evaluated automatically based on the configured validation criteria.
+            </p>
+
+            <div className="confirm-modal-actions">
+              <button
+                className="btn btn-primary confirm-modal-submit"
+                onClick={() => {
+                  setIsSubmitConfirmOpen(false)
+                  handleSubmitAll()
+                }}
+              >
+                <Send size={16} /> Submit
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

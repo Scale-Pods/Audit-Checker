@@ -339,6 +339,113 @@
   box-shadow: 0 20px 45px rgba(37, 99, 235, 0.35);
 }
 
+/* Submit Confirmation Modal */
+@keyframes confirmModalFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.confirm-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  background: rgba(4, 7, 14, 0.72);
+  backdrop-filter: blur(6px);
+  animation: confirmModalFadeIn 0.18s ease;
+}
+.confirm-modal {
+  position: relative;
+  width: 100%;
+  max-width: 460px;
+  padding: 2.25rem 2rem 1.75rem;
+  text-align: center;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  box-shadow: var(--shadow-lg);
+}
+
+.confirm-modal-close {
+  position: absolute;
+  top: 0.85rem;
+  right: 0.85rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.confirm-modal-close:hover {
+  background: var(--surface-hover);
+  border-color: var(--border-hover);
+  color: var(--text);
+}
+
+.confirm-modal-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 58px;
+  height: 58px;
+  margin-bottom: 1.15rem;
+  border-radius: 50%;
+  background: rgba(37, 99, 235, 0.12);
+  border: 1px solid rgba(37, 99, 235, 0.25);
+  color: var(--primary);
+}
+
+.confirm-modal-title {
+  margin: 0 0 0.75rem;
+  font-size: 1.3rem;
+  font-weight: 800;
+  font-family: 'Outfit', sans-serif;
+  color: var(--text);
+}
+
+.confirm-modal-text {
+  margin: 0 0 1.75rem;
+  font-size: 0.95rem;
+  line-height: 1.65;
+  color: var(--text-secondary);
+}
+
+.confirm-modal-actions {
+  display: flex;
+  justify-content: center;
+  gap: 1rem;
+}
+
+.confirm-modal-submit {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.9rem 3rem;
+  border-radius: 12px;
+  font-size: 0.95rem;
+  font-weight: 800;
+}
+
+.confirm-modal-cancel {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.9rem 2.25rem;
+  border-radius: 12px;
+  font-size: 0.95rem;
+  font-weight: 800;
+}
+
 /* Banners */
 .all-done-banner {
   display: flex;
@@ -360,6 +467,76 @@
   border-left: 4px solid var(--error);
   border-radius: 16px;
   color: var(--error);
+}
+
+/* Completed State — centred success panel.
+   Sits inside .main-upload-area, which is already inset by the
+   retractable workflow sidebar via .audit-module's margin-right,
+   so it re-centres automatically as the sidebar opens/closes. */
+.main-upload-area.is-complete {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: calc(100vh - 240px);
+}
+
+.main-upload-area.is-complete .step-content-wrapper {
+  width: 100%;
+}
+
+.all-done-stage {
+  display: flex;
+  justify-content: center;
+  width: 100%;
+}
+
+.all-done-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 0.6rem;
+  width: 100%;
+  max-width: 540px;
+  padding: 3rem 2.5rem;
+  background: var(--surface);
+  border: 1px solid var(--success-border);
+  border-radius: 24px;
+  box-shadow: 0 18px 50px rgba(16, 185, 129, 0.12);
+}
+
+.all-done-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 68px;
+  height: 68px;
+  margin-bottom: 0.6rem;
+  border-radius: 50%;
+  background: var(--success-bg);
+  border: 1px solid var(--success-border);
+  color: var(--success);
+  animation: all-done-pulse 2.4s ease-in-out infinite;
+}
+
+@keyframes all-done-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(18, 201, 122, 0.35); }
+  50% { box-shadow: 0 0 0 14px rgba(18, 201, 122, 0); }
+}
+
+.all-done-title {
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: var(--text);
+}
+
+.all-done-sub {
+  margin: 0;
+  font-size: 1rem;
+  line-height: 1.6;
+  color: var(--text-secondary);
 }
 
 /* Misc */
