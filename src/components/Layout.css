@@ -213,40 +213,51 @@
 
 .theme-toggle-slot {
   display: flex;
-  justify-content: flex-start;
-  padding: 0.1rem 0 0.35rem;
+  align-items: center;
 }
 
 .theme-toggle-slot > div {
   background: transparent;
   border-color: var(--border-subtle);
+  transform: scale(0.85);
+  transform-origin: left center;
 }
 
 .power-tag {
-  font-size: 0.625rem;
-  color: var(--text-muted);
-  padding: 0 0.75rem 0.1rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0 0.75rem 0.5rem;
   opacity: 0.8;
 }
 
-.logout-btn {
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
-  width: 100%;
-  padding: 0.65rem 0.75rem;
-  background: transparent;
-  border: 1px solid transparent;
+.power-tag-label {
+  font-size: 0.625rem;
   color: var(--text-muted);
-  border-radius: 8px;
-  transition: background-color 0.15s ease, color 0.15s ease;
-  font-size: 0.85rem;
-  font-weight: 500;
 }
 
-.logout-btn:hover {
-  background: var(--error-bg);
-  color: var(--error);
+/* The Scalepods wordmark ships as a black PNG on transparency. It is used as a
+   mask rather than an <img> so the rendered colour can follow the active theme
+   (white on the dark sidebar, black on light) without a second asset. */
+.power-tag-logo {
+  --scalepods-logo: url("https://www.scalepods.co/_next/image?url=%2Fscalepods-navbar-logo.png&w=256&q=75&dpl=dpl_AvpjBxxHMFDTLPidC8MYNzyu9X5H");
+  display: block;
+  width: 82px;
+  height: 14px;
+  background-color: #ffffff;
+  -webkit-mask-image: var(--scalepods-logo);
+  mask-image: var(--scalepods-logo);
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-size: contain;
+  mask-size: contain;
+  -webkit-mask-position: center;
+  mask-position: center;
+}
+
+[data-theme="light"] .power-tag-logo {
+  background-color: #000000;
 }
 
 /* ─────────────────────────────────────────
@@ -367,12 +378,13 @@
   color: var(--text);
 }
 
-/* Sync button */
+/* Sync button — pebble shell from pebble-select.css, sized down to sit in the
+   52px topbar rather than the taller toolbar default. */
 .sync-btn {
-  height: 30px;
-  padding: 0 0.7rem;
-  font-size: 0.75rem;
-  border-radius: 8px;
+  height: 36px;
+  padding: 0 0.9rem;
+  border-radius: 18px;
+  font-size: 0.72rem;
 }
 
 .sync-btn.syncing {
@@ -380,24 +392,52 @@
   cursor: progress;
 }
 
-.sync-label { font-weight: 500; }
-
-/* User Profile Pill */
-.user-profile {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.25rem 0.6rem 0.25rem 0.3rem;
-  border-radius: 20px;
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid var(--border-subtle);
-  cursor: pointer;
-  transition: all 0.15s ease;
+.sync-btn:disabled {
+  cursor: progress;
 }
 
-.user-profile:hover {
-  background: rgba(255, 255, 255, 0.06);
-  border-color: var(--border);
+.sync-label { font-weight: 500; }
+
+/* User Profile Pill — also the sign-out trigger. The pebble shell carries the
+   frosted surface; only the inner layout and the sign-out tint live here. */
+.pebble-btn.user-profile {
+  height: auto;
+  min-height: 36px;
+  gap: 0.55rem;
+  padding: 0.25rem 0.9rem 0.25rem 0.35rem;
+  border-radius: 18px;
+  justify-content: flex-start;
+  font-weight: 400;
+  letter-spacing: normal;
+}
+
+/* Signing out is the destructive action, so the pebble tints red rather than
+   brightening. No border and no inner highlight on hover either - the red fill
+   and bloom are the whole cue, matching the edge-less shell. */
+.pebble-btn.user-profile:hover,
+.pebble-btn.user-profile:focus-visible {
+  background:
+    linear-gradient(180deg, rgba(239, 68, 68, 0.24) 0%, rgba(239, 68, 68, 0.1) 100%);
+  box-shadow: 0 4px 16px rgba(239, 68, 68, 0.24);
+  color: #fca5a5;
+  outline: none;
+}
+
+/* Same red capsule in both themes; only the label darkens for legibility. */
+[data-theme="light"] .pebble-btn.user-profile:hover,
+[data-theme="light"] .pebble-btn.user-profile:focus-visible {
+  color: #b91c1c;
+}
+
+/* Both states are laid out in the same grid cell, so the pill is always sized
+   for the wider of the two and never shifts width on hover. */
+.user-profile-swap {
+  display: grid;
+  align-items: center;
+}
+
+.user-profile-swap > * {
+  grid-area: 1 / 1;
 }
 
 .user-avatar {
@@ -416,6 +456,28 @@
 .user-info {
   display: flex;
   flex-direction: column;
+  transition: opacity 0.15s ease;
+}
+
+.sign-out-label {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  white-space: nowrap;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.user-profile:hover .user-info,
+.user-profile:focus-visible .user-info {
+  opacity: 0;
+}
+
+.user-profile:hover .sign-out-label,
+.user-profile:focus-visible .sign-out-label {
+  opacity: 1;
 }
 
 .user-name {
@@ -475,8 +537,7 @@
 }
 
 [data-theme="light"] .topbar-search input,
-[data-theme="light"] .date-picker-wrap,
-[data-theme="light"] .user-profile {
+[data-theme="light"] .date-picker-wrap {
   background: rgba(15, 20, 40, 0.04);
 }
 
@@ -486,10 +547,6 @@
 
 [data-theme="light"] .sidebar-item.active {
   background: rgba(59, 110, 232, 0.1);
-}
-
-[data-theme="light"] .logout-btn {
-  background: transparent;
 }
 
 [data-theme="light"] .mobile-menu-toggle {
@@ -530,7 +587,7 @@
     min-height: 40px;
   }
 
-  .user-profile {
+  .pebble-btn.user-profile {
     min-height: 40px;
   }
 }
@@ -571,19 +628,29 @@
     display: none;
   }
 
+  /* Icon-only, so the 18px pill radius would read as a lozenge; make it a
+     full circle to match the mobile menu and theme controls beside it. */
   .sync-btn {
     width: 40px;
     height: 40px;
     padding: 0;
+    border-radius: 50%;
     justify-content: center;
   }
 
+  /* Touch devices have no hover, so the pill becomes an explicit sign-out
+     button rather than a target that only reveals itself on pointer-over. */
   .user-info {
     display: none;
   }
 
-  .user-profile {
-    padding: 0.35rem;
+  .sign-out-label {
+    opacity: 1;
+  }
+
+  .pebble-btn.user-profile {
+    padding: 0.35rem 0.75rem 0.35rem 0.4rem;
+    border-radius: 20px;
   }
 
   .mobile-menu-toggle,

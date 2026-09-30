@@ -486,12 +486,16 @@ button {
   }
 }
 
-/* The audit wizards and the history tables are the widest surfaces.
-   Past 1800px they get their own, roomier cap so the extra pixels go
-   to the table rather than to the gutter. */
+/* The history table is the widest surface, and past 1800px extra pixels go
+   to the table rather than to the gutter.
+
+   The audit wizards are deliberately not in this list. They used to be capped
+   here alongside the tables, which stranded the workflow rail off-centre with
+   large empty margins at high OS scaling and low zoom. They now fill the
+   content area and let the rail sit at its right edge - see the note on
+   .right-sidebar in PurchaseAudit.css. */
 @media (min-width: 1800px) {
-  .history-page,
-  .audit-module {
+  .history-page {
     max-width: 1920px;
     margin-inline: auto;
   }
@@ -503,5 +507,16 @@ button {
   .content-inner {
     max-width: 1920px;
     padding-inline: 3.5rem;
+  }
+
+  /* Zooming out is what actually reaches this tier: 70% on a 1920px display
+     is a 2740px viewport, 70% on 2560px is 3650px. The wizard is the one
+     surface that should run the full width of the display, because its rail
+     is a flex column - a narrow content area just squeezes the upload column
+     and leaves the rail marooned beside a field of empty margin. Scoped with
+     :has() so every other page keeps the 1920px cap above; if a browser
+     lacks :has() the wizard simply falls back to the capped behaviour. */
+  .content-inner:has(.audit-module) {
+    max-width: none;
   }
 }

@@ -86,14 +86,11 @@
 }
 
 .history-page .side-toggle-group {
-  gap: 5px;
-  padding: 5px;
+  gap: 6px;
 }
 
 .history-page .side-toggle-btn {
-  min-height: 42px;
-  padding: 0.65rem 1.25rem;
-  font-size: 0.78rem;
+  min-width: 132px;
 }
 
 .history-page .search-bar-container {
@@ -102,74 +99,26 @@
   flex-wrap: wrap;
 }
 
-.history-page .date-filter-select {
-  min-width: 160px;
-  height: 44px;
-  font-size: 0.85rem;
+.history-page .date-filter-wrap {
+  min-width: 180px;
 }
 
-.history-page .search-bar {
+.history-page .ledger-search {
   min-width: 260px;
-  max-width: 460px;
-}
-
-.history-page .input-search {
-  height: 44px;
-  font-size: 0.875rem;
 }
 
 .history-page .ledger-sort-btn {
-  min-height: 44px;
-  padding: 0.65rem 0.9rem;
-  gap: 0.4rem;
-  font-size: 0.78rem;
-  font-weight: 700;
-  white-space: nowrap;
-  flex-shrink: 0;
+  padding: 0 1rem;
 }
 
-/* ── Purchase / Sales Side Toggle ──────────────────────────── */
+/* ── Purchase / Sales Side Toggle ──────────────────────────────
+   The visual treatment (frosted pebble shell, per-side tint) lives in
+   pebble-select.css as .pebble-btn. Only layout lives here. */
 .side-toggle-group {
   display: inline-flex;
   align-items: center;
-  background: var(--background);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 4px;
-  gap: 4px;
+  gap: 6px;
   justify-content: flex-start;
-}
-
-.side-toggle-btn {
-  padding: 0.4rem 1.1rem;
-  border-radius: 8px;
-  font-size: 0.72rem;
-  font-weight: 800;
-  text-transform: uppercase;
-  letter-spacing: 0.07em;
-  border: none;
-  background: transparent;
-  color: var(--text-muted);
-  cursor: pointer;
-  transition: all 0.22s cubic-bezier(0.16, 1, 0.3, 1);
-  white-space: nowrap;
-}
-
-.side-toggle-btn:hover {
-  background: rgba(255, 255, 255, 0.06);
-  color: var(--text);
-}
-
-.side-toggle-btn.active-purchase {
-  background: rgba(37, 99, 235, 0.18);
-  color: #60a5fa;
-  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.18);
-}
-
-.side-toggle-btn.active-sales {
-  background: rgba(139, 92, 246, 0.18);
-  color: #a78bfa;
-  box-shadow: 0 2px 8px rgba(139, 92, 246, 0.18);
 }
 
 .header-actions-bar {
@@ -189,44 +138,75 @@
   min-width: 300px;
 }
 
-.search-bar {
+/* The vanishing search field brings its own pill styling via Tailwind, so the
+   page only owns the flex footprint it takes in the toolbar row. */
+.ledger-search {
   position: relative;
   flex: 1;
-  max-width: 400px;
-}
-
-.date-filter-wrap {
-  position: relative;
-  flex-shrink: 0;
   min-width: 0;
+  max-width: 460px;
 }
 
-.date-filter-icon {
-  position: absolute;
-  left: 12px;
-  top: 50%;
-  transform: translateY(-50%);
-  pointer-events: none;
+/* The upstream pill ships a solid zinc fill, which reads as a pale slab next to
+   the frosted date pebble on a near-black toolbar. Repaint the shell with the
+   same glass recipe (see .pebble-select-trigger) so the two controls match;
+   focus, hover, and the canvas particles keep their original behaviour. Kept in
+   step with that recipe deliberately - no border and no inset highlight, so
+   nothing draws a light edge around the field. */
+.ledger-search > form {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.12) 0%, rgba(255, 255, 255, 0.04) 100%);
+  backdrop-filter: blur(14px) saturate(140%);
+  -webkit-backdrop-filter: blur(14px) saturate(140%);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.22);
+  transition: box-shadow 0.18s ease;
 }
 
-.date-filter-select {
-  appearance: auto;
-  cursor: pointer;
-  padding-right: 2rem;
-  width: auto !important;
-  min-width: 150px;
-  max-width: 190px;
+.ledger-search > form:focus-within {
+  box-shadow:
+    0 0 0 3px rgba(59, 110, 232, 0.18),
+    0 8px 20px rgba(0, 0, 0, 0.28);
 }
 
-[data-theme="dark"] .date-filter-select {
-  color-scheme: dark;
-  background-color: #1e293b;
-  color: #f8fafc;
+/* The rotating hint is a sibling overlay rather than a real placeholder, so
+   its left inset is set independently of the input's. This app declares
+   `@layer theme, base, components, utilities` and imports its page stylesheets
+   *unlayered*, and unlayered declarations outrank every layer - so this rule
+   wins over the component's own pl-* utilities without depending on their
+   specificity or the order Tailwind happens to emit them in. Both elements are
+   pinned here from one place, which is the only way to guarantee the hint and
+   the text you type can never drift apart again. */
+.ledger-search .vanish-input,
+.ledger-search .vanish-hint {
+  padding-left: 24px !important;
+  padding-right: 80px !important;
 }
 
-[data-theme="dark"] .date-filter-select option {
-  background-color: #1e293b;
-  color: #f8fafc;
+@media (min-width: 640px) {
+  .ledger-search .vanish-input,
+  .ledger-search .vanish-hint {
+    padding-left: 48px !important;
+  }
+}
+
+/* Once the user types, the filled state is a touch denser so the text has a
+   settled backdrop behind it. Keyed off data-filled rather than
+   :placeholder-shown, since the rotating hint is a sibling overlay and the
+   input itself carries no placeholder attribute. */
+.ledger-search > form:focus-within,
+.ledger-search > form[data-filled="true"] {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.16) 0%, rgba(255, 255, 255, 0.07) 100%);
+}
+
+/* One shell for both themes, matching .pebble-select-trigger exactly. There is
+   no light-theme variant: the field is the same frosted capsule either way. */
+
+/* The date filter itself is the glass pebble (see pebble-select.css); only the
+   width constraint belongs here. */
+.date-filter-wrap {
+  min-width: 168px;
+  max-width: 210px;
 }
 
 .custom-date-range {
@@ -277,19 +257,6 @@
   }
 }
 
-.search-icon-inner {
-  position: absolute;
-  left: 12px;
-  top: 50%;
-  transform: translateY(-50%);
-  pointer-events: none;
-}
-
-.input-search {
-  width: 100% !important;
-  padding-left: 38px !important;
-}
-
 @media (max-width: 768px) {
   .header-actions-bar {
     flex-direction: column;
@@ -301,15 +268,11 @@
   
   .side-toggle-group {
     width: 100%;
-    border-radius: 0;
-    border-left: none;
-    border-right: none;
     justify-content: center;
   }
   
   .side-toggle-btn {
     flex: 1;
-    text-align: center;
   }
   
   .search-bar-container {
@@ -321,7 +284,7 @@
     width: 100%;
   }
   
-  .search-bar {
+  .ledger-search {
     max-width: none;
   }
   
@@ -345,8 +308,8 @@
   }
   
   .side-toggle-btn {
-    padding: 0.6rem 0.75rem !important;
-    font-size: 0.68rem !important;
+    padding: 0 0.7rem !important;
+    font-size: 0.7rem !important;
   }
 
   .header-actions-bar {
@@ -603,40 +566,6 @@
   max-width: 260px;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-
-.search-bar {
-  position: relative;
-}
-
-.input-search {
-  padding: 0.6rem 1rem;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  outline: none;
-  font-size: 0.85rem;
-  width: 250px;
-  height: 42px; /* Fixed height for alignment */
-  background-color: var(--surface);
-  color: var(--text);
-  font-family: inherit;
-  transition: all 0.16s ease;
-}
-
-.input-search::placeholder {
-  color: var(--text-muted);
-  opacity: 1;
-}
-
-.input-search:focus {
-  border-color: var(--info);
-  box-shadow: 0 0 0 3px var(--info-bg);
-}
-
-[data-theme="dark"] .input-search {
-  border-color: rgba(255, 255, 255, 0.05);
-  background-color: rgba(255, 255, 255, 0.03);
-  color: #f8fafc;
 }
 
 /* ── Purchase Ledger Cards ────────────────────────────────────
@@ -1229,9 +1158,6 @@
   .sales-party-name,
   .sales-so-id {
     max-width: 120px;
-  }
-  .input-search {
-    width: 100%;
   }
 }
 
@@ -2444,12 +2370,8 @@
     gap: 0.75rem;
   }
 
-  .search-bar {
+  .ledger-search {
     width: 100%;
-  }
-
-  .input-search {
-    width: 100% !important;
   }
 
   .header-actions .btn {
@@ -2849,139 +2771,6 @@
   width: 95vw !important;
 }
 
-/* ── Audit Score Header ── */
-.audit-score-header {
-  display: flex;
-  align-items: center;
-  gap: 1.5rem;
-  padding: 1.25rem 1.5rem;
-  margin: 0 0 1rem 0;
-  border-radius: 16px;
-  position: sticky;
-  top: 0;
-  z-index: 10;
-}
-
-.score-header-left {
-  flex-shrink: 0;
-}
-
-.audit-score-ring {
-  width: 64px;
-  height: 64px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  position: relative;
-}
-
-.audit-score-ring::before {
-  content: '';
-  position: absolute;
-  inset: 4px;
-  border-radius: 50%;
-  background: var(--surface);
-}
-
-.audit-score-value {
-  position: relative;
-  z-index: 1;
-  font-size: 0.9rem;
-  font-weight: 900;
-  font-family: 'Outfit', sans-serif;
-  color: var(--text);
-}
-
-.score-header-meta {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-}
-
-.score-header-top {
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
-  flex-wrap: wrap;
-}
-
-.score-status-badge {
-  font-size: 0.7rem;
-  font-weight: 900;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  padding: 3px 12px;
-  border-radius: 99px;
-}
-
-.score-status-badge.score-good {
-  background: rgba(16, 185, 129, 0.12);
-  color: #10b981;
-  border: 1px solid rgba(16, 185, 129, 0.25);
-}
-
-.score-status-badge.score-partial {
-  background: rgba(245, 158, 11, 0.12);
-  color: #f59e0b;
-  border: 1px solid rgba(245, 158, 11, 0.25);
-}
-
-.score-status-badge.score-bad {
-  background: rgba(239, 68, 68, 0.12);
-  color: #ef4444;
-  border: 1px solid rgba(239, 68, 68, 0.25);
-}
-
-.risk-badge {
-  font-size: 0.6rem;
-  font-weight: 900;
-  padding: 2px 10px;
-  border-radius: 99px;
-  letter-spacing: 0.1em;
-}
-
-.risk-badge.risk-low {
-  background: rgba(16, 185, 129, 0.08);
-  color: #10b981;
-  border: 1px solid rgba(16, 185, 129, 0.15);
-}
-
-.risk-badge.risk-medium {
-  background: rgba(245, 158, 11, 0.08);
-  color: #f59e0b;
-  border: 1px solid rgba(245, 158, 11, 0.15);
-}
-
-.risk-badge.risk-high {
-  background: rgba(239, 68, 68, 0.08);
-  color: #ef4444;
-  border: 1px solid rgba(239, 68, 68, 0.15);
-  animation: riskPulse 2s ease-in-out infinite;
-}
-
-@keyframes riskPulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.6; }
-}
-
-.confidence-badge {
-  font-size: 0.6rem;
-  font-weight: 700;
-  color: var(--text-muted);
-  background: rgba(100, 116, 139, 0.08);
-  padding: 2px 10px;
-  border-radius: 99px;
-  border: 1px solid rgba(100, 116, 139, 0.12);
-}
-
-.score-header-stats {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-
 .stat-chip {
   display: inline-flex;
   align-items: center;
@@ -3241,49 +3030,237 @@
   font-size: 0.7rem;
 }
 
-/* ── Audit Insights Panel ── */
-.audit-insights-panel {
-  margin: 1rem 1.5rem 0;
-  padding: 1rem 1.25rem;
+/* ── Audit block: shared shell for Verdicts / Findings / Summary / Insights ── */
+.audit-block {
+  margin: 1.25rem 0 0;
+  padding: 1rem 1.15rem;
   border-radius: 14px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
 }
 
-.insights-header {
+.audit-block-head {
   display: flex;
   align-items: center;
-  gap: 8px;
-  font-size: 0.65rem;
-  font-weight: 900;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  padding-bottom: 0.7rem;
+  margin-bottom: 0.8rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.audit-block-title {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin: 0;
+  font-size: 0.68rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--text-muted);
+}
+
+/* ── Compliance Verdicts ── */
+.verdict-summary {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+}
+
+/* The tone rail lets a long verdict list be scanned down its left edge
+   instead of read row by row. */
+.verdict-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.45rem 0.7rem;
+  border-radius: 9px;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--verdict-color, var(--border));
+  background: var(--verdict-bg, rgba(0, 0, 0, 0.015));
+}
+
+.verdict-row.tone-positive { --verdict-color: #10b981; --verdict-bg: rgba(16, 185, 129, 0.06); }
+.verdict-row.tone-negative { --verdict-color: #ef4444; --verdict-bg: rgba(239, 68, 68, 0.06); }
+.verdict-row.tone-warning  { --verdict-color: #f59e0b; --verdict-bg: rgba(245, 158, 11, 0.06); }
+.verdict-row.tone-neutral  { --verdict-color: #94a3b8; --verdict-bg: rgba(100, 116, 139, 0.04); }
+
+.verdict-row-icon {
+  display: flex;
+  color: var(--verdict-color);
+  flex-shrink: 0;
+}
+
+.verdict-row-label {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.79rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.verdict-row-value {
+  font-size: 0.66rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--verdict-color);
+  white-space: nowrap;
+}
+
+/* ── Audit Findings ── */
+.finding-group + .finding-group {
+  margin-top: 0.9rem;
+  padding-top: 0.9rem;
+  border-top: 1px dashed var(--border);
+}
+
+.finding-group-head {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin-bottom: 0.5rem;
+}
+
+.finding-group-icon {
+  display: flex;
+  color: var(--finding-color);
+  flex-shrink: 0;
+}
+
+.finding-group-title {
+  flex: 1;
+  margin: 0;
+  font-size: 0.73rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--text);
+}
+
+.finding-count {
+  font-family: 'monospace';
+  font-size: 0.66rem;
+  font-weight: 800;
+  min-width: 1.5rem;
+  text-align: center;
+  padding: 0.1rem 0.4rem;
+  border-radius: 999px;
+  color: var(--finding-color);
+  background: color-mix(in srgb, var(--finding-color) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--finding-color) 30%, transparent);
+}
+
+.finding-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.finding-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.55rem;
+  padding: 0.5rem 0.7rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--finding-color);
+  background: color-mix(in srgb, var(--finding-color) 5%, transparent);
+  font-size: 0.79rem;
+  font-weight: 500;
+  line-height: 1.5;
+  color: var(--text);
+}
+
+.finding-item-dot {
+  width: 5px;
+  height: 5px;
+  margin-top: 0.5em;
+  border-radius: 50%;
+  background: var(--finding-color);
+  flex-shrink: 0;
+}
+
+.finding-empty {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.5rem 0.7rem;
+  border-radius: 8px;
+  border: 1px dashed var(--border);
+  font-size: 0.77rem;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+
+/* ── Audit Summary ── */
+.audit-summary-card {
+  margin: 1.25rem 0 0;
+  padding: 1rem 1.15rem;
+  border-radius: 14px;
+  border: 1px solid color-mix(in srgb, var(--primary) 22%, transparent);
+  background: color-mix(in srgb, var(--primary) 6%, transparent);
+  box-shadow: inset 3px 0 0 var(--primary);
+}
+
+.audit-summary-head {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-bottom: 0.5rem;
+  font-size: 0.68rem;
+  font-weight: 800;
   text-transform: uppercase;
   letter-spacing: 0.1em;
   color: var(--primary);
-  margin-bottom: 0.75rem;
 }
 
+.audit-summary-text {
+  margin: 0;
+  font-size: 0.82rem;
+  line-height: 1.65;
+  font-weight: 500;
+  color: var(--text);
+  white-space: pre-line;
+}
+
+/* ── Audit Insights ── */
 .insights-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: 0.45rem;
 }
 
 .insight-item {
   display: flex;
   align-items: flex-start;
-  gap: 10px;
-  font-size: 0.72rem;
-  font-weight: 600;
+  gap: 0.6rem;
+  padding: 0.5rem 0.7rem;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.02);
+  font-size: 0.79rem;
+  font-weight: 500;
+  line-height: 1.5;
   color: var(--text);
-  line-height: 1.4;
 }
 
 .insight-bullet {
   width: 6px;
   height: 6px;
+  margin-top: 0.55em;
   border-radius: 50%;
   background: var(--primary);
   flex-shrink: 0;
-  margin-top: 6px;
-  opacity: 0.6;
+  opacity: 0.7;
 }
 
 /* ── Modal Body with table ── */
@@ -3296,56 +3273,30 @@
   .ledger-modal {
     max-width: 98vw !important;
   }
-  .audit-score-header {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 1rem;
-    padding: 1rem;
-  }
-  .score-header-top {
-    flex-wrap: wrap;
-  }
 }
 
 @media (max-width: 768px) {
-  .audit-score-header {
-    padding: 0.75rem;
-    margin: 0 0 0.75rem 0;
-  }
-  .audit-score-ring {
-    width: 48px;
-    height: 48px;
-  }
-  .audit-score-value {
-    font-size: 0.75rem;
-  }
-  .score-header-top {
-    gap: 0.4rem;
-  }
-  .score-status-badge {
-    font-size: 0.6rem;
-    padding: 2px 8px;
-  }
-  .risk-badge {
-    font-size: 0.62rem;
-    padding: 1px 7px;
-  }
-  .confidence-badge {
-    font-size: 0.62rem;
-  }
-  .score-header-stats {
-    gap: 0.3rem;
-  }
   .stat-chip {
     font-size: 0.62rem;
     padding: 1px 6px;
   }
-  .audit-insights-panel {
-    margin: 0.75rem;
-    padding: 0.75rem;
+  .audit-block {
+    margin-top: 0.9rem;
+    padding: 0.8rem 0.85rem;
+  }
+  .audit-block-head {
+    padding-bottom: 0.55rem;
+    margin-bottom: 0.65rem;
   }
   .insight-item {
-    font-size: 0.68rem;
+    font-size: 0.72rem;
+  }
+  .verdict-row,
+  .finding-item {
+    font-size: 0.73rem;
+  }
+  .audit-summary-text {
+    font-size: 0.75rem;
   }
   .cell-tooltip {
     display: none !important;
@@ -3382,6 +3333,22 @@
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
   gap: 0.4rem;
+}
+
+/* Sits inline with the other header chips, so it matches their footprint
+   rather than the tall slot the old dial occupied. */
+.audit-score-missing {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.2rem 0.6rem;
+  border-radius: 6px;
+  border: 1px dashed var(--border);
+  font-size: 0.68rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
 }
 
 .audit-section-body {
@@ -3502,15 +3469,15 @@
     gap: 0.5rem;
   }
 
-  .input-search {
-    font-size: 0.8rem !important;
-    height: 40px !important;
+  .ledger-search {
+    max-width: none;
   }
 
   /* The button label classes were declared but never actually hidden, so on a
      360px screen the sort control was crushed to a 42px sliver trying to hold
-     "↓ Latest" next to a 297px search field. Drop the labels and keep the
-     icons — every one of these buttons carries an aria-label or title. */
+     the "Latest" wordmark next to a 297px search field. Drop the labels and
+     keep the icons — every one of these buttons carries an aria-label or
+     title. */
   .hide-mobile {
     display: none !important;
   }
@@ -3693,12 +3660,12 @@
    leaves the toolbar controls competing for one row. */
 @media (max-width: 380px) {
   .history-page .side-toggle-btn {
-    padding: 0.6rem 0.75rem;
-    font-size: 0.7rem;
+    min-width: 0;
+    padding: 0 0.85rem;
   }
 
-  .history-page .search-bar,
-  .history-page .date-filter-select {
+  .history-page .ledger-search,
+  .history-page .date-filter-wrap {
     min-width: 0;
     width: 100%;
   }

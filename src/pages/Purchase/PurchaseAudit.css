@@ -184,24 +184,56 @@
   border-color: var(--primary);
 }
 
-/* Right Sidebar (Workflow) */
+/* Right Sidebar (Workflow)
+
+   A real column of .audit-layout, not a viewport-fixed panel.
+
+   It used to be position: fixed, with .audit-module reserving the matching
+   space via margin-right. That splits one concern across two different
+   coordinate systems - the panel lives in the viewport, its space lives in
+   normal flow - and the two silently disagree whenever either changes. The
+   min-width:1800px tier already did exactly that: margin-inline:auto on
+   .audit-module discards the margin-right reservation, so the upload area
+   slides underneath the panel. Browser zoom hits the same branch, because
+   80% zoom on a 1440px screen reports a 1800px viewport - merely zooming the
+   wizard was enough to break the layout.
+
+   Letting flexbox reserve the space means the panel cannot be overlapped at
+   any width, zoom level or DPI, with no breakpoint arithmetic to keep in sync.
+   position: sticky keeps it docked while the page scrolls without taking it
+   out of flow, and .main-content has no overflow, so sticky resolves against
+   the viewport as intended. */
 .right-sidebar {
+  flex: 0 0 350px;
+  align-self: flex-start;
+  position: sticky;
+  /* Clears the 52px topbar (Layout.css .topbar) plus a 14px gutter. */
+  top: 66px;
   width: 350px;
-  height: calc(100vh - 64px);
+  height: calc(100dvh - 80px);
   background: var(--surface);
-  border-left: 1px solid var(--border);
+  border: 1px solid var(--border);
+  border-radius: 28px;
   transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
-  position: fixed;
-  right: 0;
-  top: 64px;
   padding: 2.5rem 1.5rem;
   display: flex;
   flex-direction: column;
-  box-shadow: -4px 0 15px rgba(0,0,0,0.05);
+  box-shadow: 0 10px 34px rgba(0, 0, 0, 0.22);
   z-index: 1001;
 }
 
+/* Dark mode needs an explicit edge. The base --border is rgba(255,255,255,.07)
+   and --surface is only ~4% lighter than the page, so against #07090F the
+   border is invisible and a black shadow cannot darken an already-black page.
+   A firmer outline is the only thing that separates the card here; it is a
+   border, not an inset glow. Light mode keeps the softer token. */
+[data-theme="dark"] .right-sidebar {
+  border-color: rgba(255, 255, 255, 0.13);
+  box-shadow: 0 10px 34px rgba(0, 0, 0, 0.55);
+}
+
 .right-sidebar.collapsed {
+  flex: 0 0 70px;
   width: 70px;
   padding: 2rem 0.5rem;
   align-items: center;
@@ -209,7 +241,9 @@
 
 .sidebar-retract-btn {
   position: absolute;
-  left: -16px;
+  /* Sits on the panel's left edge, clear of the step cards. -16px is half the
+     button, so its centre lands on the edge itself. */
+  left: -20px;
   top: 32px;
   width: 32px;
   height: 32px;
@@ -225,19 +259,20 @@
   box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
 }
 
+/* No margin-right reservation. .right-sidebar is a flex child of .audit-layout,
+   so the column gap is the reservation. A margin here was fragile precisely
+   because a later breakpoint could overwrite it - see the note on
+   .right-sidebar above. */
 .audit-module {
-  margin-right: 350px;
-  transition: margin-right 0.4s cubic-bezier(0.16, 1, 0.3, 1);
   display: flex;
   flex-direction: column;
   gap: 2rem;
   width: auto;
 }
 
-.audit-module.sidebar-collapsed {
-  margin-right: 70px;
-}
-
+/* 22px rather than the old 16px. These cards are ~72px tall, so 16px left the
+   corners reading as a box; 22px matches the radius the .pebble-btn capsules
+   already use, so the sidebar sits in the same design language as the topbar. */
 .sidebar-nav-item {
   display: flex;
   align-items: center;
@@ -245,7 +280,7 @@
   padding: 1.25rem 1.5rem;
   background: var(--card-bg);
   border: 1px solid var(--border);
-  border-radius: 16px;
+  border-radius: 22px;
   cursor: pointer;
   transition: all 0.3s;
   margin-bottom: 1rem;
@@ -470,9 +505,9 @@
 }
 
 /* Completed State — centred success panel.
-   Sits inside .main-upload-area, which is already inset by the
-   retractable workflow sidebar via .audit-module's margin-right,
-   so it re-centres automatically as the sidebar opens/closes. */
+   Sits inside .main-upload-area, which is already sized by
+   .audit-layout's flex row alongside .right-sidebar, so it re-centres
+   automatically as the sidebar opens/closes. */
 .main-upload-area.is-complete {
   display: flex;
   align-items: center;
@@ -672,6 +707,10 @@
 
   /* Right Sidebar (Workflow) Adjustments for Tablet/Mobile */
   .right-sidebar {
+    /* .audit-layout is column-reverse at this width, so flex-basis sizes the
+       height. Without this reset the desktop flex:0 0 350px would pin the
+       panel to a 350px-tall box instead of letting it grow with its rows. */
+    flex: 0 0 auto !important;
     width: 100% !important;
     height: auto !important;
     position: relative !important;
@@ -844,16 +883,17 @@
   }
 }
 
-/* Large screens: the wizard is a single centred column with a docked
-   workflow rail, so past ~1800px the dropzone just keeps growing. Hold
-   the step content at a comfortable width and centre the whole module
-   instead of letting it hug the left edge of a 4K panel. */
-@media (min-width: 1800px) {
-  .audit-module {
-    max-width: 1180px;
-    margin-inline: auto;
-  }
+/* Large screens.
+   This used to cap .audit-module at 1180px and centre it, which was correct
+   when the workflow rail was position: fixed and lived outside the module.
+   The rail is a flex column now, so capping the module capped the rail with
+   it: on a wide screen at 125% scaling the content area is ~1790px, and the
+   1180px cap stranded ~300px of empty margin down each side. Let the module
+   fill and let the rail sit at the content area's right edge.
 
+   index.css still caps .audit-module at 1920px on very wide displays, so the
+   dropzone is bounded rather than running the full width of a 4K panel. */
+@media (min-width: 1800px) {
   .dropzone {
     min-height: 320px;
   }

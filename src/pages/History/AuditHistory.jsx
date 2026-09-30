@@ -1,11 +1,15 @@
 import React, { useState, useEffect, useMemo } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { FileText, Filter, CheckCircle, AlertTriangle, Eye, Download, Loader2, Search, Truck, Hash, X, Info, IndianRupee, Activity, ChevronLeft, ChevronRight, Check, Shield, TrendingUp, BarChart3, UploadCloud, FileUp, Mail, FileSpreadsheet, ShoppingCart, ClipboardList, Scale } from 'lucide-react'
+import { FileText, CheckCircle, AlertTriangle, Eye, Download, Loader2, Truck, Hash, X, Info, IndianRupee, Activity, ChevronLeft, ChevronRight, Check, Shield, TrendingUp, BarChart3, UploadCloud, FileUp, Mail, FileSpreadsheet, ShoppingCart, ClipboardList, Scale, Filter, ArrowDownWideNarrow, ArrowUpNarrowWide } from 'lucide-react'
 import { fetchSalesRecords, hasDocData as hasDocPrefixData, isRecordQuickEntry } from '../../api/sales.js'
 import { fetchPurchaseRecords } from '../../api/audits.js'
 import { useSyncRefresh } from '../../context/SyncContext'
 import { SquareWaveLoader } from '@/components/ui/square-wave-loader'
+import { PebbleSelect } from '@/components/ui/pebble-select'
+import { PlaceholdersAndVanishInput } from '@/components/ui/placeholders-and-vanish-input'
 import './AuditHistory.css'
+import '@/components/ui/pebble-select.css'
+
 
 const AUDITS_WEBHOOK_URL = import.meta.env.VITE_AUDITS_HISTORY_URL || 'https://n8n.srv1010832.hstgr.cloud/webhook/40a6351a-d510-492f-918b-7ec9bae2bd2a'
 const SALES_WEBHOOK_URL = 'https://n8n.srv1010832.hstgr.cloud/webhook/10916618-e795-416f-9d0a-6646da9aba06'
@@ -561,9 +565,6 @@ const UnifiedAuditModal = ({ audit, onClose, onDecision, isProcessing }) => {
   });
 
   const totalFields = Object.keys(comparisons).length;
-  const matchCount = Object.values(comparisons).filter(c => c.status === 'MATCH').length;
-  const partialCount = Object.values(comparisons).filter(c => c.status === 'PARTIAL_MATCH').length;
-  const mismatchCount = Object.values(comparisons).filter(c => c.status === 'MISMATCH' || c.status === 'CRITICAL').length;
   const webhookScore = parseInt(result?.overall?.final_score);
 
   // ── Flat verdict columns written by the purchase workflow ──
@@ -580,7 +581,9 @@ const UnifiedAuditModal = ({ audit, onClose, onDecision, isProcessing }) => {
   }, { match: 0, issue: 0, partial: 0 });
 
   // The workflow's own score is authoritative when present; older rows only
-  // carry it inside the embedded JSON report.
+  // carry it inside the embedded JSON report. It is never derived locally —
+  // a row the pipeline has not scored renders as "not recorded" rather than
+  // inventing a percentage from the field-by-field comparison.
   const ledgerScore = hasSourceValue(audit.match_score)
     ? parseScoreValue(audit.match_score)
     : parseScoreValue(webhookScore);
@@ -589,10 +592,6 @@ const UnifiedAuditModal = ({ audit, onClose, onDecision, isProcessing }) => {
   const missingDocFindings = toFindingList(audit.missing_documents);
   const auditNarrative = hasSourceValue(audit.Audit_Result) && !result ? String(audit.Audit_Result).trim() : '';
   const decision = normalizePurchaseDecision(audit.Result);
-  const auditScore = !isNaN(webhookScore) ? webhookScore : (totalFields > 0 ? Math.round(((matchCount + partialCount * 0.5) / totalFields) * 100) : 0);
-  const overallStatus = result?.overall?.status || (auditScore >= 85 ? 'GOOD MATCH' : auditScore >= 60 ? 'PARTIAL MATCH' : 'HIGH MISMATCH');
-  const riskLevel = result?.overall?.status === 'CRITICAL' ? 'HIGH' : mismatchCount > 1 || Object.values(comparisons).some(c => c.status === 'CRITICAL') ? 'HIGH' : mismatchCount > 0 ? 'MEDIUM' : 'LOW';
-  const confidence = auditScore >= 85 ? 'HIGH' : auditScore >= 60 ? 'MEDIUM' : 'LOW';
 
   const insights = generateInsights(comparisons, fieldMap);
 
@@ -676,7 +675,7 @@ const UnifiedAuditModal = ({ audit, onClose, onDecision, isProcessing }) => {
             </h2>
             <p className="modal-subtitle">Ref: {audit.Invoice_Number_Invoice || audit.id}</p>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem', marginTop: '0.5rem' }}>
-              {ledgerScore !== null && (
+              {ledgerScore !== null ? (
                 <span style={{
                   display: 'inline-flex', alignItems: 'baseline', gap: '0.2rem',
                   padding: '0.2rem 0.6rem', borderRadius: '6px',
@@ -685,6 +684,15 @@ const UnifiedAuditModal = ({ audit, onClose, onDecision, isProcessing }) => {
                   color: SCORE_COLOR(ledgerScore).text,
                   border: `1px solid ${SCORE_COLOR(ledgerScore).border}`
                 }}>{ledgerScore}%</span>
+              ) : (
+                /* No dial and no gauge anywhere in this modal any more: the
+                   score reads as a flat chip beside the invoice reference, the
+                   same way every other figure in the header does. Unscored rows
+                   say so explicitly so a blank slot is never read as 0%. */
+                <span className="audit-score-missing">
+                  <Info size={12} />
+                  <span>Not scored</span>
+                </span>
               )}
               {hasSourceValue(audit.match_status) && <AuditStatusBadge value={audit.match_status} />}
               <span style={{
@@ -821,33 +829,6 @@ const UnifiedAuditModal = ({ audit, onClose, onDecision, isProcessing }) => {
             )
           ) : (
             <>
-              {/* ── Audit Score Header ── */}
-              <div className="audit-score-header glass-morphism">
-                <div className="score-header-left">
-                  <div className="audit-score-ring" style={{
-                    background: `conic-gradient(${auditScore >= 85 ? '#10b981' : auditScore >= 60 ? '#f59e0b' : '#ef4444'} ${auditScore}%, rgba(255,255,255,0.06) ${auditScore}%)`
-                  }}>
-                    <span className="audit-score-value">{auditScore}%</span>
-                  </div>
-                </div>
-                <div className="score-header-meta">
-                  <div className="score-header-top">
-                    <span className={`score-status-badge ${overallStatus === 'GOOD MATCH' || overallStatus === 'GOOD_MATCH' ? 'score-good' : overallStatus === 'PARTIAL MATCH' || overallStatus === 'PARTIAL_MATCH' || overallStatus === 'NEEDS_REVIEW' ? 'score-partial' : 'score-bad'}`}>
-                      {overallStatus.replace(/_/g, ' ')}
-                    </span>
-                    <span className={`risk-badge ${riskLevel === 'LOW' ? 'risk-low' : riskLevel === 'MEDIUM' ? 'risk-medium' : 'risk-high'}`}>
-                      {riskLevel} RISK
-                    </span>
-                    <span className="confidence-badge">AI Confidence: {confidence}</span>
-                  </div>
-                  <div className="score-header-stats">
-                    <span className="stat-chip match-chip"><Check size={11} /> {matchCount} Match</span>
-                    <span className="stat-chip partial-chip"><AlertTriangle size={11} /> {partialCount} Partial</span>
-                    <span className="stat-chip mismatch-chip"><X size={11} /> {mismatchCount} Issue{mismatchCount !== 1 ? 's' : ''}</span>
-                  </div>
-                </div>
-              </div>
-
               <div className="universal-table-wrapper animate-fade-in">
                 <table className="comparison-table">
                   <thead>
@@ -887,12 +868,13 @@ const UnifiedAuditModal = ({ audit, onClose, onDecision, isProcessing }) => {
 
               {/* ── Compliance Verdicts (flat columns from the audit workflow) ── */}
               {hasVerdicts && (
-                <div style={{
-                  marginTop: '1.25rem', padding: '0.9rem 1rem', borderRadius: '10px',
-                  border: '1px solid var(--border)', background: 'rgba(0,0,0,0.015)'
-                }} className="animate-fade-in">
-                  <SectionLabel action={(
-                    <span style={{ display: 'flex', gap: '0.35rem' }}>
+                <section className="audit-block animate-fade-in">
+                  <header className="audit-block-head">
+                    <h4 className="audit-block-title">
+                      <Shield size={13} />
+                      Compliance Verdicts
+                    </h4>
+                    <div className="verdict-summary">
                       {verdictSummary.match > 0 && (
                         <span className="stat-chip match-chip"><Check size={11} /> {verdictSummary.match} Match</span>
                       )}
@@ -902,21 +884,23 @@ const UnifiedAuditModal = ({ audit, onClose, onDecision, isProcessing }) => {
                       {verdictSummary.issue > 0 && (
                         <span className="stat-chip mismatch-chip"><X size={11} /> {verdictSummary.issue} Issue{verdictSummary.issue !== 1 ? 's' : ''}</span>
                       )}
-                    </span>
-                  )}>Compliance Verdicts</SectionLabel>
+                    </div>
+                  </header>
                   <div className="audit-check-grid">
                     {verdicts.map(c => <CheckRow key={c.key} label={c.label} value={audit[c.key]} />)}
                   </div>
-                </div>
+                </section>
               )}
 
               {/* ── Findings recorded by the audit workflow ── */}
-              {(criticalFindings.length > 0 || warningFindings.length > 0 || missingDocFindings.length > 0 || auditNarrative) && (
-                <div style={{
-                  marginTop: '1.25rem', padding: '0.9rem 1rem', borderRadius: '10px',
-                  border: '1px solid var(--border)', background: 'rgba(0,0,0,0.015)'
-                }} className="animate-fade-in">
-                  <SectionLabel>Audit Findings</SectionLabel>
+              {(criticalFindings.length > 0 || warningFindings.length > 0 || missingDocFindings.length > 0) && (
+                <section className="audit-block animate-fade-in">
+                  <header className="audit-block-head">
+                    <h4 className="audit-block-title">
+                      <FileText size={13} />
+                      Audit Findings
+                    </h4>
+                  </header>
                   <FindingList
                     tone="critical"
                     title="Critical Mismatches"
@@ -936,26 +920,29 @@ const UnifiedAuditModal = ({ audit, onClose, onDecision, isProcessing }) => {
                     emptyText="All expected documents are available."
                     icon={Info}
                   />
-                  {auditNarrative && <SummaryBlock summary={auditNarrative} />}
-                </div>
+                </section>
               )}
+
+              <SummaryBlock summary={auditNarrative} />
 
               {/* ── Audit Insights Panel ── */}
               {insights.length > 0 && (
-                <div className="audit-insights-panel glass-morphism animate-fade-in">
-                  <div className="insights-header">
-                    <BarChart3 size={14} />
-                    <span>Audit Insights</span>
-                  </div>
-                  <div className="insights-list">
+                <section className="audit-block animate-fade-in">
+                  <header className="audit-block-head">
+                    <h4 className="audit-block-title">
+                      <BarChart3 size={13} />
+                      Audit Insights
+                    </h4>
+                  </header>
+                  <ul className="insights-list">
                     {insights.map((insight, i) => (
-                      <div key={i} className="insight-item">
+                      <li key={i} className="insight-item">
                         <span className="insight-bullet" />
                         <span>{insight}</span>
-                      </div>
+                      </li>
                     ))}
-                  </div>
-                </div>
+                  </ul>
+                </section>
               )}
             </>
           )}
@@ -1541,70 +1528,62 @@ const MatchStrip = ({ title, items }) => (
   </div>
 );
 
+const CHECK_ROW_ICONS = { positive: CheckCircle, negative: X, warning: AlertTriangle, neutral: Info };
+
+// One verdict as a tone-coded row: an icon, the check name, and the recorded
+// outcome. The colour lives on a left rail so a long list can be scanned
+// down the edge instead of read row by row.
 const CheckRow = ({ label, value }) => {
   const b = MATCH_STATUS_BADGE(value);
+  const ToneIcon = CHECK_ROW_ICONS[b.tone];
   return (
-    <div style={{
-      display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem',
-      padding: '0.35rem 0.65rem', borderRadius: '8px', border: '1px solid var(--border)',
-      background: b.tone === 'neutral' ? 'rgba(0,0,0,0.015)' : b.bg
-    }}>
-      <span style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text)' }}>{label}</span>
-      <MatchBadge value={value} />
+    <div className={`verdict-row tone-${b.tone}`}>
+      <span className="verdict-row-icon"><ToneIcon size={13} /></span>
+      <span className="verdict-row-label">{label}</span>
+      <span className="verdict-row-value">{b.label}</span>
     </div>
   );
 };
 
 const FINDING_TONES = {
-  critical: { color: '#ef4444', bg: 'rgba(239,68,68,0.06)', border: 'rgba(239,68,68,0.15)' },
-  warning:  { color: '#f59e0b', bg: 'rgba(245,158,11,0.06)', border: 'rgba(245,158,11,0.15)' },
-  missing:  { color: '#94a3b8', bg: 'rgba(100,116,139,0.06)', border: 'rgba(100,116,139,0.15)' },
+  critical: '#ef4444',
+  warning:  '#f59e0b',
+  missing:  '#94a3b8',
 };
 
+// Findings stay grouped by severity so the header count is the only thing an
+// auditor has to read to size the problem before opening the list.
 const FindingList = ({ tone, title, items, emptyText, icon }) => {
-  const colors = FINDING_TONES[tone] || FINDING_TONES.missing;
+  const color = FINDING_TONES[tone] || FINDING_TONES.missing;
   const ToneIcon = icon || AlertTriangle;
   const entries = toList(items);
 
   return (
-    <div style={{ marginBottom: '0.75rem' }}>
-      <SectionLabel action={(
-        <span style={{
-          fontSize: '0.6rem', fontWeight: 800, fontFamily: 'monospace',
-          padding: '0.1rem 0.4rem', borderRadius: '4px',
-          background: colors.bg, color: colors.color, border: `1px solid ${colors.border}`
-        }}>{entries.length}</span>
-      )}>{title}</SectionLabel>
+    <section className={`finding-group tone-${tone}`} style={{ '--finding-color': color }}>
+      <header className="finding-group-head">
+        <span className="finding-group-icon"><ToneIcon size={13} /></span>
+        <h4 className="finding-group-title">{title}</h4>
+        <span className="finding-count">{entries.length}</span>
+      </header>
 
       {entries.length ? (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+        <ul className="finding-list">
           {entries.map((entry, index) => (
-            <div key={index} style={{
-              display: 'flex', alignItems: 'flex-start', gap: '0.5rem',
-              padding: '0.55rem 0.75rem', borderRadius: '8px',
-              backgroundColor: colors.bg, border: `1px solid ${colors.border}`,
-              fontSize: '0.79rem', color: tone === 'critical' ? '#ef4444' : 'var(--text)', fontWeight: 600,
-              lineHeight: 1.45
-            }}>
-              <ToneIcon size={14} style={{ flexShrink: 0, marginTop: '1px', color: colors.color }} />
+            <li key={index} className="finding-item">
+              <span className="finding-item-dot" />
               <span>{entry}</span>
-            </div>
+            </li>
           ))}
-        </div>
+        </ul>
       ) : (
         emptyText && (
-          <div style={{
-            display: 'flex', alignItems: 'center', gap: '0.5rem',
-            padding: '0.55rem 0.75rem', borderRadius: '8px',
-            backgroundColor: colors.bg, border: `1px solid ${colors.border}`,
-            fontSize: '0.79rem', fontWeight: 600, color: colors.color
-          }}>
-            <ToneIcon size={14} style={{ flexShrink: 0 }} />
+          <div className="finding-empty">
+            <ToneIcon size={13} />
             <span>{emptyText}</span>
           </div>
         )
       )}
-    </div>
+    </section>
   );
 };
 
@@ -1614,20 +1593,13 @@ const SummaryBlock = ({ summary }) => {
   if (!text) return null;
 
   return (
-    <div style={{
-      padding: '0.8rem 0.9rem', borderRadius: '10px',
-      backgroundColor: 'rgba(37,99,235,0.04)', border: '1px solid rgba(37,99,235,0.1)',
-      display: 'flex', gap: '0.6rem', alignItems: 'flex-start'
-    }}>
-      <Info size={16} style={{ color: 'var(--primary)', flexShrink: 0, marginTop: '2px' }} />
-      <div>
-        <div style={{
-          fontSize: '0.68rem', fontWeight: 800, textTransform: 'uppercase',
-          letterSpacing: '0.08em', color: 'var(--primary)', marginBottom: '0.25rem'
-        }}>Audit Summary</div>
-        <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--text)', lineHeight: 1.55, fontWeight: 500, whiteSpace: 'pre-line' }}>{text}</p>
-      </div>
-    </div>
+    <section className="audit-summary-card">
+      <header className="audit-summary-head">
+        <Info size={13} />
+        <span>Audit Summary</span>
+      </header>
+      <p className="audit-summary-text">{text}</p>
+    </section>
   );
 };
 
@@ -3450,6 +3422,31 @@ const AuditHistory = () => {
     setSalesPage(page => Math.max(1, Math.min(page, Math.ceil(groupedSalesHistory.length / LEDGERS_PER_PAGE))))
   }, [groupedSalesHistory.length])
 
+  // Rotating hints for the vanishing search field, drawn from the parties
+  // actually present in the loaded ledger so the prompt names real suppliers
+  // (purchase) or customers (sales) rather than generic filler text.
+  const searchPlaceholders = useMemo(() => {
+    const names = activeSide === 'purchase'
+      ? history.map(r => r.Supplier_Name_Invoice)
+      : salesHistory.map(r => r.so_customer_name);
+
+    const seen = new Set();
+    const unique = [];
+    names.forEach(name => {
+      if (!hasSourceValue(name)) return;
+      const text = String(name).trim();
+      if (!text || seen.has(text)) return;
+      seen.add(text);
+      unique.push(text);
+    });
+
+    return unique.length > 0
+      ? unique.slice(0, 8)
+      : [activeSide === 'purchase'
+          ? 'Search invoices, suppliers or vehicle numbers...'
+          : 'Search sales invoices or customers...'];
+  }, [activeSide, history, salesHistory])
+
   const purchaseTotalPages = Math.max(1, Math.ceil(filteredHistory.length / LEDGERS_PER_PAGE))
   const salesTotalPages = Math.max(1, Math.ceil(groupedSalesHistory.length / LEDGERS_PER_PAGE))
   const currentPurchasePage = Math.min(Math.max(purchasePage, 1), purchaseTotalPages)
@@ -3489,33 +3486,32 @@ const AuditHistory = () => {
         <div className="header-actions-bar ledger-toolbar">
           <div className="side-toggle-group">
             <button
-              className={`side-toggle-btn ${activeSide === 'purchase' ? 'active-purchase' : ''}`}
+              className={`pebble-btn side-toggle-btn ${activeSide === 'purchase' ? 'is-active is-purchase' : ''}`}
               onClick={() => handleSideToggle('purchase')}
+              aria-pressed={activeSide === 'purchase'}
             >
-              🛒 Purchase
+              <ShoppingCart size={15} className="pebble-btn-icon" />
+              <span>Purchase</span>
             </button>
             <button
-              className={`side-toggle-btn ${activeSide === 'sales' ? 'active-sales' : ''}`}
+              className={`pebble-btn side-toggle-btn ${activeSide === 'sales' ? 'is-active is-sales' : ''}`}
               onClick={() => handleSideToggle('sales')}
+              aria-pressed={activeSide === 'sales'}
             >
-              💰 Sales
+              <IndianRupee size={15} className="pebble-btn-icon" />
+              <span>Sales</span>
             </button>
           </div>
           
           <div className="search-bar-container">
-            <div className="date-filter-wrap">
-              <Filter size={14} className="text-muted date-filter-icon" />
-              <select 
-                className="input-search date-filter-select" 
-                value={dateFilter}
-                onChange={(e) => setDateFilter(e.target.value)}
-                title="Filter by date"
-              >
-                {DATE_FILTERS.map(opt => (
-                  <option key={opt.value} value={opt.value}>{opt.label}</option>
-                ))}
-              </select>
-            </div>
+            <PebbleSelect
+              className="date-filter-wrap"
+              value={dateFilter}
+              options={DATE_FILTERS}
+              onChange={setDateFilter}
+              icon={Filter}
+              ariaLabel="Filter by date"
+            />
             {dateFilter === 'custom' && (
               <div className="custom-date-range">
                 <input
@@ -3546,22 +3542,27 @@ const AuditHistory = () => {
                 )}
               </div>
             )}
-            <div className="search-bar">
-              <Search size={16} className="text-muted search-icon-inner" />
-              <input 
-                type="text" 
-                placeholder={activeSide === 'purchase' ? 'Search records...' : 'Search sales...'}
-                className="input-search" 
-                value={searchTerm}
+            {/* Vanishing search field. Filtering is live while typing, so Enter
+                is free to be the "vanish" gesture — it clears both the field
+                and the filter together, which is the only way to keep the two
+                in sync given the input owns its own value internally. */}
+            <div className="ledger-search">
+              <PlaceholdersAndVanishInput
+                key={activeSide}
+                placeholders={searchPlaceholders}
                 onChange={(e) => setSearchTerm(e.target.value)}
+                onSubmit={() => setSearchTerm('')}
               />
             </div>
             <button 
-              className="btn btn-outline btn-sm ledger-sort-btn"
+              className="pebble-btn ledger-sort-btn"
               onClick={() => setSortOrder(sortOrder === 'latest' ? 'oldest' : 'latest')}
               title={`Sort: ${sortOrder === 'latest' ? 'Newest first' : 'Oldest first'}`}
+              aria-label={`Sort: ${sortOrder === 'latest' ? 'Newest first' : 'Oldest first'}`}
             >
-              <span>{sortOrder === 'latest' ? '↓' : '↑'}</span>
+              {sortOrder === 'latest'
+                ? <ArrowDownWideNarrow size={15} className="pebble-btn-icon" />
+                : <ArrowUpNarrowWide size={15} className="pebble-btn-icon" />}
               <span className="hide-mobile">{sortOrder === 'latest' ? 'Latest' : 'Oldest'}</span>
             </button>
           </div>

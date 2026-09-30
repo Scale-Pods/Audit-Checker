@@ -7,17 +7,19 @@ import {
   FileText, 
   History, 
   LogOut,
-  Search,
   User,
   Menu,
   X,
   RefreshCw,
-  Calendar,
   Layers
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { useSync } from '../context/SyncContext'
 import { ThemeToggle } from './ui/theme-toggle'
+/* Pebble first, Layout second: both are unlayered, so the later import wins on
+   equal specificity. That lets the topbar keep its own compact sizing for these
+   controls while still inheriting the pebble shell. */
+import './ui/pebble-select.css'
 import './Layout.css'
 
 const SidebarItem = ({ to, icon, label, disabled = false, badgeText = null, onClick, className = '' }) => {
@@ -54,8 +56,6 @@ const Layout = () => {
   const { currentUser, logout } = useAuth()
   const { isSyncing, syncNow } = useSync()
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
-  const [isSearchVisible, setIsSearchVisible] = useState(false)
-  const [dateRange, setDateRange] = useState('30d')
 
   useEffect(() => {
     const stored = localStorage.getItem('theme') || 'dark'
@@ -122,16 +122,10 @@ const Layout = () => {
 
         <div className="sidebar-footer">
           <div className="sidebar-footer-divider" />
-          <div className="theme-toggle-slot">
-            <ThemeToggle />
-          </div>
           <div className="power-tag">
-            <span>Powered by Scalepods</span>
+            <span className="power-tag-label">Powered by:</span>
+            <span className="power-tag-logo" role="img" aria-label="Scalepods" />
           </div>
-          <button onClick={handleLogout} className="logout-btn">
-            <LogOut size={18} />
-            <span>Log out</span>
-          </button>
         </div>
       </aside>
 
@@ -142,65 +136,47 @@ const Layout = () => {
             <button className="mobile-menu-toggle" onClick={toggleMobileMenu}>
               {isMobileMenuOpen ? <X size={18} /> : <Menu size={18} />}
             </button>
-            <div className={`topbar-search ${isSearchVisible ? 'mobile-visible' : ''}`}>
-              <Search size={15} className="search-icon" />
-              <input 
-                type="text" 
-                placeholder="Search invoices, suppliers, audit ID..." 
-                id="global-search-input"
-              />
-              <button className="search-close" onClick={() => setIsSearchVisible(false)}>
-                <X size={15} />
-              </button>
+            <div className="theme-toggle-slot">
+              <ThemeToggle />
             </div>
-            <button 
-              className="mobile-menu-toggle topbar-search-toggle" 
-              onClick={() => setIsSearchVisible(v => !v)}
-              title="Search"
-              aria-label="Toggle search"
-            >
-              <Search size={18} />
-            </button>
           </div>
 
           <div className="topbar-actions">
-            {/* Date Range Picker */}
-            <div className="date-picker-wrap">
-              <Calendar size={13} className="date-icon" />
-              <select 
-                value={dateRange} 
-                onChange={(e) => setDateRange(e.target.value)}
-                className="date-select"
-              >
-                <option value="30d">Last 30 Days</option>
-                <option value="90d">Q3 2026</option>
-                <option value="ytd">Year to Date</option>
-              </select>
-            </div>
-
             {/* Sync Data Button */}
             <button 
-              className={`btn btn-outline sync-btn ${isSyncing ? 'syncing' : ''}`}
+              className={`pebble-btn sync-btn ${isSyncing ? 'syncing' : ''}`}
               onClick={syncNow}
               disabled={isSyncing}
               title="Synchronize real-time audit ledger"
             >
-              <RefreshCw size={13} className={isSyncing ? 'spin' : ''} />
+              <RefreshCw size={13} className={`pebble-btn-icon ${isSyncing ? 'spin' : ''}`} />
               <span className="sync-label">{isSyncing ? 'Syncing' : 'Sync Data'}</span>
             </button>
 
-            {/* User Profile */}
-            <div className="user-profile">
-              <div className="user-avatar">
+            {/* User Profile — hover or focus swaps the identity for a sign-out
+                affordance, so signing out lives where the account is shown. */}
+            <button
+              className="pebble-btn user-profile"
+              onClick={handleLogout}
+              title="Sign out"
+              aria-label="Sign out"
+            >
+              <span className="user-avatar">
                 <User size={15} />
-              </div>
-              <div className="user-info">
-                <span className="user-name">
-                  {currentUser?.email?.split('@')[0] || 'Auditor'}
+              </span>
+              <span className="user-profile-swap">
+                <span className="user-info">
+                  <span className="user-name">
+                    {currentUser?.email?.split('@')[0] || 'Auditor'}
+                  </span>
+                  <span className="user-role">Finance Auditor</span>
                 </span>
-                <span className="user-role">Finance Auditor</span>
-              </div>
-            </div>
+                <span className="sign-out-label">
+                  <LogOut size={13} />
+                  <span>Sign Out</span>
+                </span>
+              </span>
+            </button>
           </div>
         </header>
 

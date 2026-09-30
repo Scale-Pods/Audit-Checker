@@ -1,0 +1,252 @@
+/* ═══════════════════════════════════════════════════════════
+   PEBBLE SELECT — frosted-glass dropdown
+   ═══════════════════════════════════════════════════════════ */
+
+.pebble-select {
+  position: relative;
+  flex-shrink: 0;
+  min-width: 0;
+}
+
+/* No inset highlight: the white inner top/bottom lines were the edge glow. The
+   shell is carried by the frosted gradient plus the blur and a single soft
+   drop shadow, which is what the search pill uses. */
+.pebble-select-trigger {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  width: 100%;
+  height: 44px;
+  padding: 0 0.85rem;
+  border-radius: 22px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.12) 0%, rgba(255, 255, 255, 0.04) 100%);
+  backdrop-filter: blur(14px) saturate(140%);
+  -webkit-backdrop-filter: blur(14px) saturate(140%);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.22);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: box-shadow 0.18s ease, transform 0.18s ease;
+}
+
+.pebble-select-trigger:hover {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.18) 0%, rgba(255, 255, 255, 0.06) 100%);
+}
+
+.pebble-select-trigger.is-open {
+  box-shadow:
+    0 0 0 3px rgba(59, 110, 232, 0.18),
+    0 8px 20px rgba(0, 0, 0, 0.28);
+}
+
+.pebble-select-trigger:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(59, 110, 232, 0.28);
+}
+
+.pebble-select-icon {
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.pebble-select-value {
+  flex: 1;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pebble-select-chevron {
+  color: var(--text-muted);
+  flex-shrink: 0;
+  transition: transform 0.2s ease;
+}
+
+.pebble-select-chevron.is-open {
+  transform: rotate(180deg);
+}
+
+.pebble-select-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 60;
+  min-width: 100%;
+  margin: 0;
+  padding: 0.3rem;
+  list-style: none;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(17, 21, 32, 0.72);
+  backdrop-filter: blur(20px) saturate(150%);
+  -webkit-backdrop-filter: blur(20px) saturate(150%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.2),
+    0 12px 32px rgba(0, 0, 0, 0.42);
+  max-height: 320px;
+  overflow-y: auto;
+  animation: pebble-select-in 0.16s ease;
+}
+
+@keyframes pebble-select-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.pebble-select-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  width: 100%;
+  padding: 0.5rem 0.7rem;
+  border: none;
+  border-radius: 11px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-family: inherit;
+  font-size: 0.82rem;
+  font-weight: 500;
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color 0.14s ease, color 0.14s ease;
+}
+
+.pebble-select-option:hover {
+  background: rgba(255, 255, 255, 0.09);
+  color: var(--text);
+}
+
+.pebble-select-option.is-selected {
+  background: rgba(59, 110, 232, 0.2);
+  color: var(--text);
+  font-weight: 700;
+  box-shadow: inset 0 0 0 1px rgba(59, 110, 232, 0.32);
+}
+
+.pebble-select-option:focus-visible {
+  outline: 2px solid rgba(59, 110, 232, 0.6);
+  outline-offset: -2px;
+}
+
+/* ── Light theme ───────────────────────────────────────────────────────────
+   The capsule is deliberately NOT re-specified here. There used to be a
+   parallel "frosted white plastic" recipe for light mode, which meant the
+   controls were a different physical object depending on the theme. Now one
+   shell definition covers both: the same white sheen, the same blur, the same
+   soft drop shadow. Only foreground colours are overridden below, because a
+   pale blue or salmon label has to darken to stay readable on a light page.
+   The panel and its rows keep their own treatment - a dropdown is a surface,
+   not a capsule, and it needs to sit above the page rather than match it. */
+[data-theme="light"] .pebble-select-menu {
+  border-color: rgba(15, 23, 42, 0.1);
+  background: rgba(255, 255, 255, 0.78);
+  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.14);
+}
+
+[data-theme="light"] .pebble-select-option:hover {
+  background: rgba(15, 23, 42, 0.06);
+}
+
+[data-theme="light"] .pebble-select-option.is-selected {
+  background: rgba(59, 110, 232, 0.12);
+  box-shadow: inset 0 0 0 1px rgba(59, 110, 232, 0.28);
+}
+
+@media (max-width: 768px) {
+  .pebble-select-trigger {
+    height: 42px;
+    font-size: 0.8rem;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   PEBBLE BUTTON — the same frosted shell, for plain toggles
+   ═══════════════════════════════════════════════════════════ */
+
+.pebble-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  height: 44px;
+  padding: 0 1.15rem;
+  border-radius: 22px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.12) 0%, rgba(255, 255, 255, 0.04) 100%);
+  backdrop-filter: blur(14px) saturate(140%);
+  -webkit-backdrop-filter: blur(14px) saturate(140%);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.22);
+  color: var(--text-secondary);
+  font-family: inherit;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 0.18s ease, box-shadow 0.18s ease, color 0.18s ease;
+}
+
+.pebble-btn:hover {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.19) 0%, rgba(255, 255, 255, 0.07) 100%);
+  color: var(--text);
+}
+
+.pebble-btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(59, 110, 232, 0.28);
+}
+
+.pebble-btn:active {
+  transform: translateY(1px);
+}
+
+.pebble-btn-icon {
+  flex-shrink: 0;
+}
+
+/* Selected ledger side: the shell stays, only the tint changes. No hard edge and
+   no inner highlight are drawn - the filled tint plus its coloured bloom is the
+   whole cue, which keeps it on the same footing as the search pill. */
+.pebble-btn.is-purchase {
+  background: linear-gradient(180deg, rgba(59, 130, 246, 0.34) 0%, rgba(59, 130, 246, 0.16) 100%);
+  color: #bfdbfe;
+  box-shadow: 0 4px 16px rgba(37, 99, 235, 0.3);
+}
+
+.pebble-btn.is-sales {
+  background: linear-gradient(180deg, rgba(139, 92, 246, 0.34) 0%, rgba(139, 92, 246, 0.16) 100%);
+  color: #ddd6fe;
+  box-shadow: 0 4px 16px rgba(139, 92, 246, 0.3);
+}
+
+/* ── Light theme ──
+   Shell, hover and tint are inherited unchanged from the base rules so the
+   capsule is the same object in both themes. Only the label darkens. */
+[data-theme="light"] .pebble-btn.is-purchase {
+  color: #1d4ed8;
+}
+
+[data-theme="light"] .pebble-btn.is-sales {
+  color: #6d28d9;
+}
+
+@media (max-width: 768px) {
+  .pebble-btn {
+    height: 42px;
+    font-size: 0.75rem;
+  }
+}
