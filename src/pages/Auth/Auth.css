@@ -199,3 +199,29 @@
     padding: 0.4rem 0;
   }
 }
+
+/* Narrow handsets (iPhone SE, 320-380px): the 640px tier still leaves the
+   card padding and the brand lockup competing for a single column. */
+@media (max-width: 380px) {
+  .auth-container {
+    padding: 0.5rem;
+  }
+
+  .auth-card {
+    padding: 1.25rem 0.9rem;
+  }
+
+  .auth-header {
+    margin-bottom: 1.1rem;
+  }
+}
+
+/* Landscape phones: a 100dvh card plus the brand header overflows a 360px-tall
+   viewport and buries the submit button. Let the page scroll instead. */
+@media (max-height: 520px) and (orientation: landscape) {
+  .auth-container {
+    align-items: flex-start;
+    min-height: 100dvh;
+    padding-block: 1rem;
+  }
+}

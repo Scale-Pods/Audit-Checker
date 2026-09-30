@@ -12,18 +12,20 @@
 .gap-6 { gap: 1.5rem; }
 
 /* The lg: prefix has to actually mean "large only", otherwise four columns
-   are crammed into a 769-1024px tablet before the 1-column rule kicks in. */
+   are crammed into a 769-1024px tablet before the 1-column rule kicks in.
+   minmax(0, 1fr) rather than 1fr: a bare 1fr floors at min-content, so one
+   long chart label or supplier name pushes the track wider than its share. */
 @media (min-width: 1025px) {
-  .lg\:grid-cols-4 { grid-template-columns: repeat(4, 1fr); }
+  .lg\:grid-cols-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 }
 
 @media (max-width: 1024px) {
-  .md\:grid-cols-2 { grid-template-columns: repeat(2, 1fr); }
+  .md\:grid-cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 @media (max-width: 768px) {
-  .grid-cols-1 { grid-template-columns: 1fr; }
-  .md\:grid-cols-2 { grid-template-columns: 1fr; }
+  .grid-cols-1 { grid-template-columns: minmax(0, 1fr); }
+  .md\:grid-cols-2 { grid-template-columns: minmax(0, 1fr); }
 }
 
 /* Spacing Utilities */
@@ -111,7 +113,7 @@
 
 .charts-grid-half {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 1.5rem;
 }
 
@@ -302,6 +304,19 @@
 
   .analytics-metric h3 {
     font-size: 1.5rem !important;
+  }
+}
+
+/* Large screens: the chart pair is the widest surface on this page and the
+   KPI row above it already tracks the shell cap, so the extra width goes to
+   the charts rather than to the gutters. */
+@media (min-width: 1800px) {
+  .charts-grid-half {
+    gap: 2rem;
+  }
+
+  .analytics-metric h3 {
+    font-size: 2.25rem;
   }
 }
 

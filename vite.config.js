@@ -3,6 +3,7 @@ import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import { fileURLToPath, URL } from 'node:url'
 import { handleSalesRequest } from './api/lib/sales-service.js'
+import { handleSalesQuickCheckRequest } from './api/lib/sales-qc-service.js'
 import { handleAuditsRequest } from './api/lib/audits-service.js'
 
 // https://vite.dev/config/
@@ -20,34 +21,30 @@ export default defineConfig(({ mode }) => {
       {
         name: 'dev-api-router',
         configureServer(server) {
+          // '/api/sales' is a prefix of '/api/sales-qc', so the longer path has
+          // to be tested first or quick-check rows would be served from the
+          // main sales table.
+          const routes = [
+            { path: '/api/sales-qc', handler: handleSalesQuickCheckRequest },
+            { path: '/api/sales', handler: handleSalesRequest },
+            { path: '/api/audits', handler: handleAuditsRequest },
+          ]
+
           server.middlewares.use(async (req, res, next) => {
-            if (req.url?.startsWith('/api/sales')) {
-              try {
-                const { status, json } = await handleSalesRequest(req)
-                res.statusCode = status
-                res.setHeader('Content-Type', 'application/json')
-                return res.end(JSON.stringify(json))
-              } catch (err) {
-                console.error('dev /api/sales error:', err.message)
-                res.statusCode = 500
-                res.setHeader('Content-Type', 'application/json')
-                return res.end(JSON.stringify({ error: 'Internal server error' }))
-              }
+            const route = routes.find(r => req.url?.startsWith(r.path))
+            if (!route) return next()
+
+            try {
+              const { status, json } = await route.handler(req)
+              res.statusCode = status
+              res.setHeader('Content-Type', 'application/json')
+              return res.end(JSON.stringify(json))
+            } catch (err) {
+              console.error(`dev ${route.path} error:`, err.message)
+              res.statusCode = 500
+              res.setHeader('Content-Type', 'application/json')
+              return res.end(JSON.stringify({ error: 'Internal server error' }))
             }
-            if (req.url?.startsWith('/api/audits')) {
-              try {
-                const { status, json } = await handleAuditsRequest(req)
-                res.statusCode = status
-                res.setHeader('Content-Type', 'application/json')
-                return res.end(JSON.stringify(json))
-              } catch (err) {
-                console.error('dev /api/audits error:', err.message)
-                res.statusCode = 500
-                res.setHeader('Content-Type', 'application/json')
-                return res.end(JSON.stringify({ error: 'Internal server error' }))
-              }
-            }
-            next()
           })
         },
       },

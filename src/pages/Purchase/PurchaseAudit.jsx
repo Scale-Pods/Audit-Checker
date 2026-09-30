@@ -332,7 +332,7 @@ const PurchaseAudit = () => {
                         </div>
                         <div className="sidebar-step-info">
                           <span className="sidebar-step-name">{s.label}</span>
-                          <span className="sidebar-step-status">{s.files.length > 0 ? 'Uploaded' : 'Waiting...'}</span>
+                          <span className="sidebar-step-status">{s.files.length > 0 ? 'Uploaded' : 'Pending'}</span>
                         </div>
                       </div>
                     ))}

@@ -32,6 +32,7 @@ import {
 import { fetchSalesRecords } from '../../api/sales.js'
 import { fetchPurchaseRecords } from '../../api/audits.js'
 import { useSyncRefresh } from '../../context/SyncContext'
+import { SquareWaveLoader } from '@/components/ui/square-wave-loader'
 import './Dashboard.css'
 
 const COLOR_VERIFIED = '#18A66A'
@@ -527,7 +528,9 @@ const normalizeRecord = (item, side, index) => {
         : 'Audit is pending completion.')
 
   return {
-    key: `${side}-${asText(item?.id) || index}`,
+    // The sales and quick-check ledgers have independent id sequences, so the
+    // key is table-qualified to stay unique once both are merged.
+    key: `${side}-${asText(item?.__uid || item?.id) || index}`,
     identity,
     party,
     partyLabel: isPurchase ? 'Supplier' : 'Customer / Party',
@@ -801,7 +804,9 @@ const Dashboard = () => {
     ? 'Latest sales order, invoice, and logistics compliance records' 
     : 'Latest purchase invoice, e-way bill, and GRN compliance records'
   const searchPlaceholder = isSales ? 'Search order, customer, reference...' : 'Search invoice, supplier, reference...'
-  const sourceLabel = isSales ? 'public."Audit Checker Sales"' : 'public."Audit Checker"'
+  const sourceLabel = isSales
+    ? 'public."Audit Checker Sales" + public."Audit Checker Sales_QC"'
+    : 'public."Audit Checker"'
 
   return (
     <div className="dashboard-wrapper">
@@ -1163,7 +1168,7 @@ const Dashboard = () => {
               {isLoading ? (
                 <tr>
                   <td colSpan={7} className="state-cell">
-                    <Loader2 size={16} className="spin" />
+                    <SquareWaveLoader count={5} size={7} gap={4} className="text-primary" />
                     <span>Querying {isSales ? 'sales' : 'purchase'} ledger...</span>
                   </td>
                 </tr>

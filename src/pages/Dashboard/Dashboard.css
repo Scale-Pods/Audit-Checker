@@ -1278,3 +1278,27 @@
     min-width: 600px;
   }
 }
+
+/* ── Large screens ─────────────────────────────────────────────
+   The KPI row and the audit table are grid/fluid based, so they
+   simply stretch. The row detail modal is capped at 520px, which is
+   right for a phone but wastes a 2560px panel — widen it there and
+   let the table breathe. */
+@media (min-width: 1800px) {
+  .modal-content-box {
+    max-width: 720px;
+  }
+
+  .dense-audit-table {
+    font-size: 0.85rem;
+  }
+
+  .dense-audit-table td {
+    padding: 0.85rem 1.1rem;
+  }
+
+  .kpi-row-grid,
+  .sales-metric-grid {
+    gap: 1.1rem;
+  }
+}

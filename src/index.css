@@ -467,3 +467,41 @@ button {
     padding: 0.9rem;
   }
 }
+
+/* ═══════════════════════════════════════════════════════════
+   LARGE SCREEN PASS — ultrawide and 4K
+
+   Every rule above is a max-width query, so on a 2560px or 3440px
+   monitor the reading column and the data tables stretch to the full
+   panel width. Long single-line tables become hard to track
+   horizontally and a dropzone ends up wider than the viewport it is
+   being dropped onto. Capping the shell keeps line length sane and
+   centres the content in the leftover space.
+   ═══════════════════════════════════════════════════════════ */
+@media (min-width: 1800px) {
+  .content-inner {
+    max-width: 1720px;
+    margin-inline: auto;
+    padding-inline: 2.5rem;
+  }
+}
+
+/* The audit wizards and the history tables are the widest surfaces.
+   Past 1800px they get their own, roomier cap so the extra pixels go
+   to the table rather than to the gutter. */
+@media (min-width: 1800px) {
+  .history-page,
+  .audit-module {
+    max-width: 1920px;
+    margin-inline: auto;
+  }
+}
+
+/* Very wide desktops (4K/5K) do not need more columns, they need the
+   same cap with more breathing room around it. */
+@media (min-width: 2400px) {
+  .content-inner {
+    max-width: 1920px;
+    padding-inline: 3.5rem;
+  }
+}

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react'
 import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, Legend } from 'recharts'
-import { RefreshCw, Loader2, AlertTriangle, TrendingUp, ShieldCheck, Zap, Activity, IndianRupee } from 'lucide-react'
+import { RefreshCw, AlertTriangle, TrendingUp, ShieldCheck, Zap, Activity, IndianRupee } from 'lucide-react'
+import { SquareWaveLoader } from '@/components/ui/square-wave-loader'
 import { fetchPurchaseRecords } from '../../api/audits.js'
 import { useSyncRefresh } from '../../context/SyncContext'
 import './Analytics.css'
@@ -131,7 +132,7 @@ const Analytics = () => {
   if (isLoading) {
     return (
       <div className="flex-center" style={{ height: '70vh', flexDirection: 'column', gap: '1.5rem', background: 'var(--background)' }}>
-        <Loader2 className="animate-spin text-primary" size={48} />
+        <SquareWaveLoader count={5} size={14} squareClassName="bg-primary" />
         <p className="text-muted font-black tracking-widest uppercase text-xs">Intelligence Synchronization...</p>
       </div>
     )

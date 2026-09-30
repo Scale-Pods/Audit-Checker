@@ -639,6 +639,439 @@
   color: #f8fafc;
 }
 
+/* ── Purchase Ledger Cards ────────────────────────────────────
+   The seven-column table hid its meaning behind jargon headers
+   ("Audit Identity", "Operational Metrics", "Intelligence Trace")
+   that never matched the single value underneath. Each record is
+   now one self-describing card: score dial, identity + amount,
+   then labelled facts. */
+.purchase-ledger-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.purchase-record-card {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 1.25rem;
+  padding: 1rem 1.5rem;
+  border-bottom: 1px solid var(--border);
+  border-left: 3px solid transparent;
+  background: transparent;
+  cursor: pointer;
+  transition: background 0.2s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.2s;
+}
+
+.purchase-record-card:last-child {
+  border-bottom: none;
+}
+
+.purchase-record-card:hover,
+.purchase-record-card:focus-visible {
+  background: rgba(37, 99, 235, 0.05);
+  outline: none;
+}
+
+.purchase-record-card.tone-high   { border-left-color: rgba(16, 185, 129, 0.6); }
+.purchase-record-card.tone-medium { border-left-color: rgba(245, 158, 11, 0.6); }
+.purchase-record-card.tone-low    { border-left-color: rgba(239, 68, 68, 0.6); }
+.purchase-record-card.tone-none   { border-left-color: rgba(148, 163, 184, 0.45); }
+
+/* Score dial */
+.purchase-score-dial {
+  position: relative;
+  width: 62px;
+  height: 62px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  background: var(--border);
+  font-family: 'Outfit', sans-serif;
+}
+
+.purchase-score-dial::before {
+  content: '';
+  position: absolute;
+  inset: 5px;
+  border-radius: 50%;
+  background: var(--surface);
+}
+
+.purchase-score-dial.tone-high { color: #10b981; }
+.purchase-score-dial.tone-medium { color: #f59e0b; }
+.purchase-score-dial.tone-low  { color: #ef4444; }
+.purchase-score-dial.tone-none { color: var(--text-muted); }
+
+.purchase-score-value {
+  position: relative;
+  z-index: 1;
+  font-size: 0.9rem;
+  font-weight: 900;
+  line-height: 1;
+  color: currentColor;
+}
+
+.purchase-score-label {
+  position: relative;
+  z-index: 1;
+  margin-top: 2px;
+  font-size: 0.5rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+/* Body */
+.purchase-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  min-width: 0;
+}
+
+.purchase-card-head {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.purchase-identity {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.purchase-invoice-no {
+  margin: 0;
+  font-size: 0.98rem;
+  font-weight: 800;
+  line-height: 1.2;
+  color: var(--text);
+  font-family: 'Outfit', sans-serif;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 320px;
+}
+
+.purchase-ref {
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  opacity: 0.6;
+  white-space: nowrap;
+}
+
+.purchase-amount {
+  font-size: 0.9rem;
+  font-weight: 900;
+  color: var(--primary);
+  white-space: nowrap;
+  line-height: 1.2;
+}
+
+.purchase-supplier {
+  margin: 0;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 480px;
+}
+
+/* Labelled facts replace the ambiguous header cells. A two-column grid —
+   fixed label column + monospace value column — keeps every label and every
+   value at the same size and on the same baseline, so "Batch / E-Way Bill /
+   Audited" no longer renders as three ragged inline pairs. */
+.purchase-facts {
+  display: grid;
+  grid-template-columns: 120px max-content;
+  align-items: baseline;
+  gap: 0.4rem 1.25rem;
+  margin: 0.15rem 0 0;
+  width: max-content;
+  max-width: 100%;
+}
+
+.purchase-fact {
+  display: contents;
+}
+
+.purchase-fact dt {
+  justify-self: start;
+  font-size: 0.58rem;
+  font-weight: 800;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.purchase-fact dd {
+  margin: 0;
+  justify-self: start;
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Price column replaces the old Review button slot; it rides the grid's
+   far-right track and top-aligns with the invoice line. */
+.purchase-card-price {
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-end;
+  flex-shrink: 0;
+  padding-top: 0.1rem;
+}
+
+@media (max-width: 768px) {
+  .purchase-record-card {
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 0.9rem;
+    padding: 1rem 1.25rem;
+  }
+
+  .purchase-card-price {
+    grid-column: 1 / -1;
+    justify-content: flex-end;
+    padding-top: 0;
+  }
+
+  .purchase-invoice-no,
+  .purchase-supplier {
+    max-width: 100%;
+  }
+}
+
+@media (max-width: 480px) {
+  .purchase-record-card {
+    grid-template-columns: minmax(0, 1fr);
+    padding: 0.9rem 0.8rem;
+  }
+
+  .purchase-score-dial {
+    width: 52px;
+    height: 52px;
+  }
+
+  .purchase-score-value {
+    font-size: 0.8rem;
+  }
+
+  .purchase-facts {
+    gap: 0.3rem 1rem;
+  }
+
+  .purchase-card-price {
+    justify-content: flex-end;
+  }
+}
+
+/* ── Sales Filter Bar (Quick Entry toggle + score tiers) ─── */
+.sales-filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  padding: 0.85rem 1.5rem;
+  border-bottom: 1px solid var(--border);
+  background: rgba(139, 92, 246, 0.03);
+}
+
+.filter-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-height: 34px;
+  padding: 0.35rem 0.9rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-muted);
+  font-size: 0.7rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  cursor: pointer;
+  transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+  white-space: nowrap;
+}
+
+.filter-pill:hover {
+  border-color: rgba(139, 92, 246, 0.4);
+  color: var(--text);
+}
+
+/* ON/OFF switch for the Quick Entry filter */
+.quick-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  cursor: pointer;
+  user-select: none;
+}
+
+.quick-switch-label {
+  font-size: 0.7rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.quick-switch-label.on {
+  color: #a78bfa;
+}
+
+.quick-switch-track {
+  position: relative;
+  width: 38px;
+  height: 20px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: rgba(100, 116, 139, 0.25);
+  cursor: pointer;
+  transition: background 0.18s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.18s;
+  padding: 0;
+  flex-shrink: 0;
+}
+
+.quick-switch-track.on {
+  background: rgba(139, 92, 246, 0.55);
+  border-color: rgba(139, 92, 246, 0.7);
+}
+
+.quick-switch-knob {
+  position: absolute;
+  top: 50%;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+  transform: translateY(-50%);
+  transition: left 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.quick-switch-track.on .quick-switch-knob {
+  left: calc(100% - 16px);
+}
+
+.score-filter-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+}
+
+.score-pill-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.score-pill.tone-high .score-pill-dot { background: #10b981; }
+.score-pill.tone-medium .score-pill-dot { background: #f59e0b; }
+.score-pill.tone-low .score-pill-dot { background: #ef4444; }
+
+.score-pill.tone-high.active {
+  background: rgba(16, 185, 129, 0.14);
+  border-color: rgba(16, 185, 129, 0.45);
+  color: #10b981;
+}
+
+.score-pill.tone-medium.active {
+  background: rgba(245, 158, 11, 0.14);
+  border-color: rgba(245, 158, 11, 0.45);
+  color: #f59e0b;
+}
+
+.score-pill.tone-low.active {
+  background: rgba(239, 68, 68, 0.14);
+  border-color: rgba(239, 68, 68, 0.45);
+  color: #ef4444;
+}
+
+/* Score marker rendered on every ledger card */
+.sales-score-indicator {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 42px;
+  padding: 0.3rem 0.55rem;
+  border-radius: 8px;
+  font-size: 0.72rem;
+  font-weight: 900;
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.sales-score-indicator.tone-high {
+  background: rgba(16, 185, 129, 0.12);
+  color: #10b981;
+  border: 1px solid rgba(16, 185, 129, 0.25);
+}
+
+.sales-score-indicator.tone-medium {
+  background: rgba(245, 158, 11, 0.12);
+  color: #f59e0b;
+  border: 1px solid rgba(245, 158, 11, 0.25);
+}
+
+.sales-score-indicator.tone-low {
+  background: rgba(239, 68, 68, 0.12);
+  color: #ef4444;
+  border: 1px solid rgba(239, 68, 68, 0.25);
+}
+
+.sales-score-indicator.tone-none {
+  background: rgba(100, 116, 139, 0.08);
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+}
+
+@media (max-width: 768px) {
+  .sales-filter-bar {
+    padding: 0.75rem 1.25rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .sales-filter-bar {
+    padding: 0.7rem 0.8rem;
+    gap: 0.4rem;
+  }
+
+  .filter-pill {
+    flex: 1 1 auto;
+    justify-content: center;
+    padding: 0.3rem 0.6rem;
+    font-size: 0.65rem;
+  }
+}
+
 /* ── Sales Record List (New) ─────────────────────────────── */
 .sales-records-list {
   display: flex;
@@ -660,6 +1093,14 @@
 .sales-record-card:hover {
   background: rgba(37, 99, 235, 0.04);
 }
+
+/* Left-edge severity line: green high, amber medium, red low, gray no-score.
+   The pending-docs inline border (amber) intentionally wins for records still
+   awaiting uploads. */
+.sales-record-card.tone-high   { border-left: 3px solid rgba(16, 185, 129, 0.6); }
+.sales-record-card.tone-medium { border-left: 3px solid rgba(245, 158, 11, 0.6); }
+.sales-record-card.tone-low    { border-left: 3px solid rgba(239, 68, 68, 0.6); }
+.sales-record-card.tone-none   { border-left: 3px solid rgba(148, 163, 184, 0.45); }
 
 .sales-record-info {
   display: flex;
@@ -3220,5 +3661,61 @@
     gap: 0.5rem !important;
     padding: 0.85rem !important;
     font-size: 0.7rem !important;
+  }
+}
+
+/* ── Large screens ───────────────────────────────────────────
+   The comparison modal is capped at 1200px for laptop comfort,
+   but its matrix carries a field column plus up to five document
+   columns. On a 2560px panel that cap forces the PO / Gate Pass /
+   Weight Slip cells into ellipsis for no reason, so widen it with
+   the viewport and let the body use the extra height too. */
+@media (min-width: 1800px) {
+  .sales-modal {
+    max-width: 1680px !important;
+  }
+
+  .sales-modal-scroll {
+    max-height: 74vh;
+  }
+
+  /* More room for the party name and the order number side by side. */
+  .sales-party-name {
+    max-width: 480px;
+  }
+
+  .sales-so-id {
+    max-width: 360px;
+  }
+}
+
+/* Small handsets (iPhone SE and narrower) — the 480px tier still
+   leaves the toolbar controls competing for one row. */
+@media (max-width: 380px) {
+  .history-page .side-toggle-btn {
+    padding: 0.6rem 0.75rem;
+    font-size: 0.7rem;
+  }
+
+  .history-page .search-bar,
+  .history-page .date-filter-select {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .history-page .page-title {
+    font-size: 1.4rem;
+  }
+
+  .sales-modal {
+    width: 100vw !important;
+    max-height: 100vh;
+    border-radius: 0;
+  }
+
+  .sales-modal-head,
+  .sales-modal-scroll,
+  .sales-modal-foot {
+    padding-inline: 1rem;
   }
 }

@@ -621,3 +621,48 @@
     padding: 0.85rem 0.75rem 1.75rem;
   }
 }
+
+/* ── Narrow handsets (iPhone SE and narrower) ── */
+@media (max-width: 380px) {
+  .topbar {
+    padding: 0 0.5rem;
+    gap: 0.35rem;
+  }
+
+  .topbar-actions {
+    gap: 0.3rem;
+  }
+
+  .content-inner {
+    padding: 0.6rem 0.5rem 1.5rem;
+  }
+}
+
+/* ── Large screens ───────────────────────────────────────────
+   The shell caps its own content at 1800px (see index.css), so on
+   an ultrawide the sidebar would sit against a wide empty gutter.
+   Let it grow slightly and scale the fixed-height topbar spacing
+   to match the roomier content. */
+@media (min-width: 1800px) {
+  :root {
+    --sidebar-width: 272px;
+  }
+
+  .topbar {
+    padding: 0 2.5rem;
+  }
+
+  .topbar-search {
+    width: 380px;
+  }
+}
+
+/* ── Short viewports ────────────────────────────────────────
+   A 52px topbar plus a tall page header pushes the first card off
+   a landscape laptop or a short window. Trim the vertical rhythm
+   rather than the horizontal layout. */
+@media (max-height: 700px) and (min-width: 641px) {
+  .topbar {
+    height: 48px;
+  }
+}
