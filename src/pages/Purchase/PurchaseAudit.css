@@ -1,14 +1,21 @@
-.audit-module {
-  display: flex;
-  flex-direction: column;
-  gap: 2rem;
-  width: 100%;
-}
+/* Base rules. SalesAudit.jsx imports this same stylesheet, and both wizards
+   were deliberately given the same markup shape, so the two share almost all
+   of their styling:
 
+     - base class names (.audit-layout, .right-sidebar, ...) apply to both and
+       stay unscoped, because one copy of a rule beats two that drift apart;
+     - .audit-wizard, which both wizard roots carry, marks the things that are
+       shared but must not leak onto the rest of the app - the single-line
+       header, the hint-and-nav footer row;
+     - .purchase-audit / .sales-audit are per-page hooks. Nothing is scoped to
+       them at the moment; they exist so a page-specific override has an
+       obvious home instead of needing a specificity arms race.
+   .module-header, .module-title and .header-actions are shared with nothing
+   else, so they stay plain. */
 .module-header {
   display: flex;
   justify-content: space-between;
-  align-items: flex-start;
+  align-items: center;
   margin-bottom: 1rem;
 }
 
@@ -21,44 +28,94 @@
 .module-title {
   font-size: 1.875rem;
   letter-spacing: -0.025em;
-  margin-bottom: 0.25rem;
+  margin: 0;
 }
 
-.module-subtitle {
-  color: var(--text-muted);
+/* .module-subtitle, .quality-note and the slide-in keyframes they used were
+   removed along with the sales wizard's subtitle and quality note, so both
+   wizards now carry their upload tips in the rotating hint under the dropzone
+   where they sit next to the thing they are about. Nothing renders either
+   class any more. */
+
+/* Main Layout - see the shared .audit-layout in the fill chain above. */
+
+/* ── Single-line wizard header ─────────────────────────────────────────
+   Both wizards put a bare h1 in the header and carry the upload tips in the
+   rotating hint below the dropzone instead of as a subtitle and a quality
+   note. The heading is one line, and it used to sit inside three stacked gaps
+   - .module-header's margin, then .audit-module's gap, then .audit-layout's
+   own margin - which totalled 4rem of empty column below it, with the shell's
+   top padding adding a band above.
+
+   .audit-wizard is the marker both wizard roots carry for exactly this shared
+   shape. Anything that is genuinely one page's business keeps that page's own
+   class name. */
+.audit-wizard {
+  gap: 1.5rem;
 }
 
-.quality-note {
+.audit-wizard .module-header {
+  margin-bottom: 0;
+}
+
+.audit-wizard .audit-layout {
+  margin-top: 0;
+}
+
+/* The shell pads .content-inner on all four sides and every page depends on
+   it. Only the wizards' top padding is taken away, and it is matched to
+   .audit-wizard so every other page keeps its own. Inline and bottom padding
+   are untouched. */
+.content-inner:has(.audit-wizard) {
+  padding-top: 0;
+}
+
+/* ── Fill the viewport ──────────────────────────────────────────────────
+   At 100% zoom on a tall screen the upload card used to stop two thirds of
+   the way down and leave the rest of the window empty: .dropzone was pinned to
+   min-height: 40vh, .audit-layout was align-items: flex-start, and nothing in
+   the chain between them had a height to grow into.
+
+   So the height is claimed once, here, and passed down as a flex line rather
+   than recomputed at each level - six separate min-heights would drift apart
+   the moment the header wrapped to two lines.
+
+   min-height, never height: a step with fifteen files attached is taller than
+   any viewport, and it has to grow the page and scroll rather than clip the
+   list.
+
+   These are on the shared base classes rather than under .purchase-audit, so
+   the sales wizard - which has the identical DOM - gets the same behaviour
+   instead of a second copy that would drift out of step with this one. */
+.audit-module {
   display: flex;
-  align-items: center;
-  gap: 0.6rem;
-  font-size: 0.85rem;
-  color: var(--text-muted);
-  margin-top: 0.75rem;
-  background: rgba(255, 255, 255, 0.03);
-  padding: 0.6rem 1.25rem;
-  border-radius: 10px;
-  border: 1px solid var(--border);
-  width: fit-content;
-  backdrop-filter: blur(10px);
-  animation: slide-in 0.4s ease-out;
+  flex-direction: column;
+  gap: 2rem;
+  width: 100%;
+  /* 5.25rem = the shell's 52px sticky topbar plus .content-inner's 2rem
+     bottom padding. The header above takes its own height out of this, so
+     this is a budget, not a total. box-sizing is border-box globally, so the
+     module's own padding at the narrow tiers is already inside this figure. */
+  min-height: calc(100dvh - 5.25rem);
 }
 
-@keyframes slide-in {
-  from { opacity: 0; transform: translateY(5px); }
-  to { opacity: 1; transform: translateY(0); }
+.stepper-section {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
 }
 
-.quality-note svg {
-  color: var(--primary);
-  flex-shrink: 0;
-}
-
-/* Main Layout */
 .audit-layout {
   display: flex;
-  gap: 2.5rem;
-  align-items: flex-start;
+  /* Fluid: this was a flat 40px, so below the stacking breakpoint every zoom
+     level charged it as a fixed tax on the upload column. */
+  gap: clamp(1.25rem, 2vw, 2.5rem);
+  /* stretch, not the old flex-start: the upload column has to be as tall as
+     the row for anything above it to have anything to fill. */
+  align-items: stretch;
+  flex: 1;
+  min-height: 0;
   margin-top: 1rem;
   width: 100%;
   transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
@@ -67,14 +124,52 @@
 .main-upload-area {
   flex: 1;
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
 }
 
-/* Document Upload Styling */
+/* Only holds the stage while an audit is in progress; .is-complete (the
+   post-submit state) opts into the centring rule further down instead. */
+.step-content-wrapper {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+/* Reserves room for the dropzone so the footer below does not ride up when a
+   step has no files yet. The real height comes from the fill chain; this is
+   only the floor for a short window. */
+.upload-stage {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: clamp(14rem, 30vh, 24rem);
+}
+
+/* The sales wizard's first step needs a PO Number field above its upload card,
+   so it wraps the card in a div rather than putting the card straight into the
+   stage like the other steps do. That wrapper has to pass the height on, or
+   the card inside it would size to its content instead of the stage. */
+.upload-stage-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+/* Document Upload Styling
+
+   .upload-box is a flex item in the fill chain, so flex: 1 rather than the
+   height: 100% it used to carry - the parent now hands it the height and the
+   two together double-counted. */
 .upload-box {
   display: flex;
   flex-direction: column;
   gap: 1.5rem;
-  height: 100%;
+  flex: 1;
+  min-height: 0;
 }
 
 .dropzone {
@@ -89,7 +184,10 @@
   cursor: pointer;
   background: rgba(255, 255, 255, 0.01);
   transition: all 0.3s;
+  /* A floor for a short window, not the height: the fill chain decides how
+     much of the viewport is actually spare, so the card grows into it. */
   min-height: 40vh;
+  flex: 1;
   width: 100%;
 }
 
@@ -114,11 +212,17 @@
   opacity: 0.6;
 }
 
-/* File List & Previews */
+/* File List & Previews
+
+   Many files must scroll inside the card rather than push the footer off the
+   screen - the card is the scroll container, not the page. */
 .file-list-container {
   display: flex;
   flex-direction: column;
   gap: 1rem;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
 }
 
 .file-preview {
@@ -166,6 +270,8 @@
   color: var(--error);
 }
 
+/* The "+ Add more files" target has to stay whole-height even when the list
+   above it is long enough to scroll. */
 .dropzone-mini {
   border: 2px dashed var(--border);
   border-radius: 16px;
@@ -177,6 +283,7 @@
   color: var(--primary);
   cursor: pointer;
   transition: all 0.2s;
+  flex-shrink: 0;
 }
 
 .dropzone-mini:hover {
@@ -202,20 +309,34 @@
    any width, zoom level or DPI, with no breakpoint arithmetic to keep in sync.
    position: sticky keeps it docked while the page scrolls without taking it
    out of flow, and .main-content has no overflow, so sticky resolves against
-   the viewport as intended. */
+   the viewport as intended.
+
+   The rail tracks its content, not the viewport: with .audit-layout now
+   stretch-aligned, a viewport-fixed height would leave the blank tail the old
+   flex-start alignment used to hide. Sizing to content is all it takes - it is
+   already align-self: flex-start, so the row's height is driven by the upload
+   area and the panel simply stops where its own content stops.
+
+   The width and padding are fluid, and that is the reason the two-column
+   layout survives being zoomed. This used to be a flat 350px, so every pixel
+   the window lost came straight out of the upload column - 175% zoom on a
+   1920 screen is a 1097px viewport, which left roughly 400px for the dropzone.
+   clamp() spends the width on whichever side can use it, and vw is measured in
+   CSS pixels, which is exactly the unit zoom rescales - so the rail gives
+   ground at the same rate the window does. */
 .right-sidebar {
-  flex: 0 0 350px;
+  flex: 0 0 clamp(17rem, 22vw, 21.875rem);
   align-self: flex-start;
   position: sticky;
   /* Clears the 52px topbar (Layout.css .topbar) plus a 14px gutter. */
   top: 66px;
-  width: 350px;
-  height: calc(100dvh - 80px);
+  width: clamp(17rem, 22vw, 21.875rem);
+  height: auto;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 28px;
   transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
-  padding: 2.5rem 1.5rem;
+  padding: clamp(1.25rem, 1.8vw, 2.5rem) clamp(0.75rem, 1.2vw, 1.5rem);
   display: flex;
   flex-direction: column;
   box-shadow: 0 10px 34px rgba(0, 0, 0, 0.22);
@@ -232,6 +353,9 @@
   box-shadow: 0 10px 34px rgba(0, 0, 0, 0.55);
 }
 
+/* The collapsed rail is a fixed 70px strip, so it must not inherit the fluid
+   width or padding above or the rows lose their breathing room. It comes after
+   .right-sidebar at equal specificity purely so it wins on order. */
 .right-sidebar.collapsed {
   flex: 0 0 70px;
   width: 70px;
@@ -259,25 +383,15 @@
   box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
 }
 
-/* No margin-right reservation. .right-sidebar is a flex child of .audit-layout,
-   so the column gap is the reservation. A margin here was fragile precisely
-   because a later breakpoint could overwrite it - see the note on
-   .right-sidebar above. */
-.audit-module {
-  display: flex;
-  flex-direction: column;
-  gap: 2rem;
-  width: auto;
-}
-
 /* 22px rather than the old 16px. These cards are ~72px tall, so 16px left the
    corners reading as a box; 22px matches the radius the .pebble-btn capsules
-   already use, so the sidebar sits in the same design language as the topbar. */
+   already use, so the sidebar sits in the same design language as the topbar.
+   Padding and gap are fluid for the same reason the rail itself is. */
 .sidebar-nav-item {
   display: flex;
   align-items: center;
-  gap: 1rem;
-  padding: 1.25rem 1.5rem;
+  gap: clamp(0.625rem, 0.9vw, 1rem);
+  padding: clamp(0.875rem, 1.1vw, 1.25rem) clamp(0.75rem, 1vw, 1.5rem);
   background: var(--card-bg);
   border: 1px solid var(--border);
   border-radius: 22px;
@@ -315,10 +429,16 @@
 .sidebar-step-info {
   display: flex;
   flex-direction: column;
+  /* The rail is fluid now, so the label needs to be allowed to give ground.
+     Without this a flex child defaults to min-width:auto and the longest
+     document name pushes the rail wider than its own clamp. */
+  min-width: 0;
 }
 
+/* Fluid so the longest document name does not set the width the rail then
+   hands back to the upload column. */
 .sidebar-step-name {
-  font-size: 1rem;
+  font-size: clamp(0.85rem, 0.9vw, 1rem);
   font-weight: 600;
 }
 
@@ -333,6 +453,55 @@
   background: var(--success);
   border-color: var(--success);
   color: white;
+}
+
+/* The row gap is what separates the cards; the trailing margin on the last one
+   only ever added space, and it now pushed the submit button down. */
+.sidebar-nav-item:last-child {
+  margin-bottom: 0;
+}
+
+.sidebar-submit-wrap {
+  margin-top: 1.5rem;
+}
+
+.sidebar-submit {
+  width: 100%;
+  padding: 1rem 1.25rem;
+  border-radius: 16px;
+  border: 1px solid var(--success);
+  background: var(--success);
+  color: #fff;
+  font-size: 1rem;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+  cursor: pointer;
+  box-shadow: 0 10px 24px rgba(18, 201, 122, 0.25);
+  transition: all 0.2s ease;
+}
+
+.sidebar-submit:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 14px 30px rgba(18, 201, 122, 0.35);
+}
+
+.sidebar-submit:disabled {
+  background: var(--surface-hover);
+  border-color: var(--border);
+  color: var(--text-muted);
+  box-shadow: none;
+  cursor: not-allowed;
+}
+
+.sidebar-submit-hint {
+  margin: 0.75rem 0 0;
+  font-size: 0.78rem;
+  line-height: 1.5;
+  text-align: center;
+  color: var(--text-muted);
 }
 
 /* Collapsed States */
@@ -350,11 +519,35 @@
 }
 
 /* Footer & Buttons */
+
+/* Three buttons can share the row now that submit sits on every step. The top
+   margin is fluid so a short window spends less of itself on the gap - at
+   100% zoom on a 600px-tall screen a flat 4rem is most of what is left over
+   after the header and the stage floor. */
 .step-footer {
   display: flex;
   justify-content: flex-end;
+  align-items: center;
+  flex-wrap: wrap;
   gap: 2rem;
-  margin-top: 4rem;
+  margin-top: clamp(2rem, 5vh, 4rem);
+  flex-shrink: 0;
+}
+
+/* Both wizards: the row is the rotating hint on the left and the navigation
+   buttons hard right, so the gap between them is the free space. */
+.audit-wizard .step-footer {
+  justify-content: space-between;
+  margin-top: clamp(1.5rem, 3vh, 2.5rem);
+}
+
+/* The buttons have to hold together as a group, or space-between would push
+   Back to the left edge and leave Next Stage stranded on the right. */
+.step-nav {
+  display: flex;
+  align-items: center;
+  gap: 2rem;
+  flex-shrink: 0;
 }
 
 .btn-done {
@@ -481,23 +674,71 @@
   font-weight: 800;
 }
 
-/* Banners */
-.all-done-banner {
+/* Per-document checklist in the submit confirmation. Each document is optional,
+   so a skipped one is shown rather than hidden - the point of the list is that
+   the subset being submitted is visible before it is sent. */
+.doc-manifest {
+  list-style: none;
+  margin: 0 0 1.5rem;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  text-align: left;
+}
+
+.doc-manifest li {
   display: flex;
   align-items: center;
-  gap: 1.5rem;
-  padding: 1.5rem 2rem;
-  background: rgba(16, 185, 129, 0.1);
-  border-left: 4px solid var(--success);
-  border-radius: 16px;
-  color: var(--success);
+  gap: 0.6rem;
+  padding: 0.6rem 0.9rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  font-size: 0.9rem;
 }
+
+.doc-manifest li.has-files {
+  color: var(--text);
+}
+
+.doc-manifest li.has-files svg {
+  color: var(--success);
+  flex-shrink: 0;
+}
+
+.doc-manifest li.is-missing {
+  color: var(--text-muted);
+  border-style: dashed;
+}
+
+.doc-manifest li.is-missing svg {
+  color: #f59e0b;
+  flex-shrink: 0;
+}
+
+.doc-manifest-label {
+  flex: 1;
+  min-width: 0;
+}
+
+.doc-manifest-state {
+  font-size: 0.8rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+/* .all-done-banner was the purchase wizard's old full-width green strip for
+   the submitted state. It now uses the same centred .all-done-card as the
+   sales wizard, so the rule has no markup left to match and is gone. */
 
 .submit-error-banner {
   display: flex;
   align-items: center;
   gap: 1rem;
   padding: 1rem 1.5rem;
+  /* It is a flex sibling of the stage in the fill chain now, so it has to keep
+     its own height - a squashed error alert is worse than a shorter card. */
+  flex-shrink: 0;
   background: rgba(239, 68, 68, 0.1);
   border-left: 4px solid var(--error);
   border-radius: 16px;
@@ -505,14 +746,15 @@
 }
 
 /* Completed State — centred success panel.
-   Sits inside .main-upload-area, which is already sized by
-   .audit-layout's flex row alongside .right-sidebar, so it re-centres
-   automatically as the sidebar opens/closes. */
+   Sits inside .main-upload-area, which the fill chain already sizes to the
+   full row height, so centring is all that is left to do. It used to also
+   carry min-height: calc(100vh - 240px), which was the old way of getting
+   this height back - redundant now, and vh rather than dvh, so on a phone with
+   a collapsing address bar it would have overflowed the real viewport. */
 .main-upload-area.is-complete {
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: calc(100vh - 240px);
 }
 
 .main-upload-area.is-complete .step-content-wrapper {
@@ -523,6 +765,21 @@
   display: flex;
   justify-content: center;
   width: 100%;
+}
+
+/* Scoped to the completed wizard state rather than given on .all-done-stage,
+   because AuditHistory reuses that class for an inline success toast in normal
+   flow - flex: 1 there would stretch the toast to fill whatever it sits in.
+
+   flex: 1 plus align-items: center is what makes the card genuinely centred:
+   the stage takes the height the fill chain hands it, and centres the card in
+   it on the cross axis. Without flex: 1 the stage is content-sized and the
+   card sits at the top of a full-height column - horizontally centred but
+   stranded at the top, which is what the purchase wizard was doing before it
+   adopted the sales card. */
+.main-upload-area.is-complete .all-done-stage {
+  flex: 1;
+  align-items: center;
 }
 
 .all-done-card {
@@ -575,13 +832,49 @@
 }
 
 /* Misc */
+
+/* Tips rotate in place on the left of the footer row, so the row is given a
+   min-height: without it the buttons beside it would jump on every swap as the
+   tallest hint came and went. Left-aligned rather than centred because it now
+   shares the row with the navigation buttons. */
 .paste-hint {
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 0.5rem;
+  justify-content: flex-start;
+  min-height: 2rem;
+  min-width: 0;
   font-size: 0.9rem;
   color: var(--text-muted);
+  /* The stage above it takes all the slack, so this and the footer must not
+     absorb any - a compressed row of buttons is worse than a shorter card. */
+  flex-shrink: 0;
+}
+
+.paste-hint-viewport {
+  display: block;
+  position: relative;
+}
+
+.paste-hint-item {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  text-align: center;
+  /* Restarted by remounting the node each swap (see the key on the element),
+     which is why the entry state is defined here rather than transitioned. */
+  animation: paste-hint-in 0.3s linear;
+}
+
+@keyframes paste-hint-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.paste-hint-item svg {
+  color: var(--primary);
+  flex-shrink: 0;
 }
 
 .kbd {
@@ -794,6 +1087,15 @@
     margin-top: 2rem;
   }
 
+  /* Below this width the buttons are full-bleed, so they cannot share a row -
+     two at 100% each plus the gap overflow the column. Stacked, they read as
+     one control below the hint. */
+  .audit-wizard .step-nav {
+    flex-direction: column;
+    width: 100%;
+    gap: 1rem;
+  }
+
   .btn-done {
     width: 100% !important;
     padding: 1rem !important;
@@ -851,6 +1153,64 @@
   }
 }
 
+/* ── Stack the rail before it starts to squeeze ─────────────────────────
+   The shared 1024px tier above is where the app collapses its own left nav,
+   which is also where the wizard gets its full width back. Zooming does not
+   work that way - 150% on a 1440px screen reports a 960px viewport, so the
+   nav is already gone by the time the two-column layout gives up, and the
+   rail was still competing for the width in between.
+
+   So both wizards stack earlier than the shell does, at 1200px. Below that the
+   rail goes under the upload area full width instead of taking a fixed slice
+   out of it.
+
+   The one thing that must not survive into this tier is the shared tier's
+   max-width: 500px. That cap applied to the whole stacked column, rail
+   included, which is why zooming in appeared to shrink the page: past 1024px
+   the layout snapped from full width to a 500px ribbon in the middle of the
+   screen. It is 46rem here - roomy on a tablet, still a readable measure on a
+   wide monitor. */
+@media (max-width: 1200px) {
+  .audit-layout {
+    flex-direction: column-reverse;
+    align-items: stretch;
+    width: 100%;
+    max-width: 46rem;
+    margin: 0 auto;
+  }
+
+  /* Static rather than sticky: in a column the rail sits under the upload
+     area, so it has nothing left to stick to and a sticky offset would only
+     leave a gap when the page is short. */
+  .right-sidebar {
+    flex: 0 0 auto;
+    width: 100%;
+    position: static;
+    top: auto;
+    padding: 1.25rem;
+    border-radius: 16px;
+    box-shadow: none;
+    z-index: 10;
+  }
+
+  /* Deliberately not hiding the collapsed rail here, unlike the 1024px tier
+     above. In this band the retract button is still on screen, so hiding the
+     strip would collapse it to nothing with no way to bring it back. The 1024
+     tier hides both together and hands navigation to the shell's own menu. */
+  .sidebar-nav-item {
+    margin-bottom: 0;
+  }
+
+  /* The cards stop carrying their own trailing margin in this tier, so the
+     list gap is the only thing separating them. */
+  .sidebar-nav-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    padding-bottom: 0;
+  }
+}
+
 @media (max-width: 768px) {
   .module-header {
     flex-direction: column;
@@ -873,13 +1233,6 @@
     width: 100%;
     padding: 0.6rem !important;
     font-size: 10px;
-  }
-
-  .quality-note {
-    font-size: 0.7rem;
-    padding: 0.4rem 0.75rem;
-    margin-left: auto;
-    margin-right: auto;
   }
 }
 
@@ -927,6 +1280,36 @@
   .sidebar-nav-item {
     padding: 0.75rem !important;
     gap: 0.75rem !important;
+  }
+
+  /* The fluid type above bottoms out well above what a 360px screen can
+     carry, so it is pinned back to a fixed value here rather than left to
+     clamp. */
+  .sidebar-step-name {
+    font-size: 0.9rem;
+  }
+
+  .confirm-modal {
+    padding: 1.75rem 1.25rem 1.25rem;
+  }
+
+  .confirm-modal-title {
+    font-size: 1.15rem;
+  }
+
+  .confirm-modal-actions {
+    flex-direction: column-reverse;
+  }
+
+  .confirm-modal-submit,
+  .confirm-modal-cancel {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .doc-manifest li {
+    padding: 0.55rem 0.75rem;
+    font-size: 0.85rem;
   }
 
   .module-title {

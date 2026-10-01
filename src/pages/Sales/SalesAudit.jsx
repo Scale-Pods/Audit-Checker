@@ -7,6 +7,64 @@ import '../Purchase/PurchaseAudit.css'
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl
 
+/* Tips that cycle through the row under the dropzone. Module-level so the array
+   identity never changes - the rotation effect keys off it, and a list rebuilt
+   during render would restart the timer on every pass and freeze the hint.
+   The quality tip is what used to sit under the page heading. */
+const UPLOAD_HINTS = [
+  {
+    key: 'paste',
+    text: 'Press Ctrl + V to paste screenshots directly.',
+    render: () => (
+      <>
+        <span className="kbd">Ctrl</span>
+        <span>+</span>
+        <span className="kbd">V</span>
+        <span>to paste screenshots directly</span>
+      </>
+    )
+  },
+  {
+    key: 'quality',
+    text: 'Accuracy is dependent on the quality of image uploaded.',
+    render: () => (
+      <>
+        <Info size={16} />
+        <span>Accuracy is dependent on the quality of image uploaded</span>
+      </>
+    )
+  }
+]
+
+const RotatingHint = ({ hints = UPLOAD_HINTS, intervalMs = 3000 }) => {
+  const [activeIndex, setActiveIndex] = useState(0)
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setActiveIndex(prev => (prev + 1) % hints.length)
+    }, intervalMs)
+    return () => clearInterval(timer)
+  }, [hints.length, intervalMs])
+
+  // Clamped rather than wrapped: an emptied list must not index undefined.
+  const hint = hints[Math.min(activeIndex, hints.length - 1)]
+
+  return (
+    <div className="paste-hint">
+      {/* Not a live region - one would re-announce every swap. Screen readers
+          get the full set once, from the static copy below. */}
+      <span className="sr-only">
+        {hints.map(h => h.text).join('. ')}
+      </span>
+      <span aria-hidden="true" className="paste-hint-viewport">
+        {/* Keyed on the hint so each swap remounts the node, which is what
+            restarts the entry animation. */}
+        <span key={hint.key} className="paste-hint-item">{hint.render()}</span>
+      </span>
+    </div>
+  )
+}
+
 const convertPdfToImage = async (file) => {
   const arrayBuffer = await file.arrayBuffer()
   const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise
@@ -76,7 +134,7 @@ const DocumentUpload = ({ title, accepted, onUpload, files, isSubmitted }) => {
   const hasFiles = files && files.length > 0
 
   return (
-    <div className={`upload-box card ${isSubmitted ? 'card-submitted' : ''}`} style={{ transition: 'all 0.4s', height: '100%' }}>
+    <div className={`upload-box card ${isSubmitted ? 'card-submitted' : ''}`} style={{ transition: 'all 0.4s' }}>
       <h3 className="upload-title text-primary flex items-center gap-2" style={{ fontSize: '1.25rem', marginBottom: '1.5rem' }}>
         <UploadCloud size={24} /> {title}
       </h3>
@@ -287,6 +345,13 @@ const SalesAudit = () => {
     { label: 'Weightslip', files: weightslipFiles, status: weightslipFiles.length > 0 ? 'Ready' : 'Pending', icon: Scale },
     { label: 'Gatepass', files: gatepassFiles, status: gatepassFiles.length > 0 ? 'Ready' : 'Pending', icon: ClipboardList }
   ]
+
+  /* Counted from the states rather than from steps: the Sales Order row carries
+     files: [] because its sheet is attached for you, so tallying the array would
+     report it as missing forever. Hence the +1 for the sheet already there. */
+  const uploadedDocCount =
+    purchaseOrderFiles.length + invoiceFiles.length + weightslipFiles.length + gatepassFiles.length + 1
+  const missingDocCount = steps.length - uploadedDocCount
 
   const nextStep = () => {
     if (activeStep >= 4) return
@@ -754,22 +819,15 @@ const SalesAudit = () => {
   }
 
   return (
-    <div className={`audit-module ${isSidebarCollapsed ? 'sidebar-collapsed' : ''}`} style={result ? { marginRight: 0 } : {}}>
+    <div className={`audit-module audit-wizard sales-audit ${isSidebarCollapsed ? 'sidebar-collapsed' : ''}`} style={result ? { marginRight: 0 } : {}}>
       <div className="module-header">
-        <div>
-          <h1 className="module-title">Sales Audit</h1>
-          <p className="module-subtitle">Multi-document verification workflow</p>
-          <div className="quality-note hover-lift shadow-sm">
-            <Info size={16} />
-            Accuracy is dependent on the quality of image uploaded
-          </div>
-        </div>
+        <h1 className="module-title">Sales Audit</h1>
         <div className="header-actions">
           {(result || allDone) && (
             <button className="btn btn-outline" onClick={() => {
               setResult(null); setInvoiceFiles([]); setGatepassFiles([]); setWeightslipFiles([]); setPurchaseOrderFiles([]); setAllDone(false); setActiveStep(0); setWebhookResponse(null); setQuickCheckResult(null); setDocType('PO'); setDocNumber('');
             }}>
-              New Entry
+              Reset Audit
             </button>
           )}
         </div>
@@ -799,9 +857,9 @@ const SalesAudit = () => {
                 )}
 
                 {!allDone && (
-                  <div style={{ minHeight: '500px' }}>
+                  <div className="upload-stage">
                     {activeStep === 0 && (
-                      <div>
+                      <div className="upload-stage-body">
                         <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1.25rem' }}>
                           <input
                             type="text"
@@ -827,7 +885,7 @@ const SalesAudit = () => {
                       </div>
                     )}
                     {activeStep === 1 && (
-                      <div className="upload-box card" style={{ textAlign: 'center', padding: '3rem 2rem', alignItems: 'center' }}>
+                      <div className="upload-box card" style={{ textAlign: 'center', padding: '3rem 2rem', alignItems: 'center', justifyContent: 'center' }}>
                         <FileSpreadsheet size={64} style={{ opacity: 0.5, marginBottom: '1.5rem', color: 'var(--primary)' }} />
                         <h3 className="upload-title text-primary" style={{ fontSize: '1.25rem', marginBottom: '0.75rem' }}>
                           Sales Order
@@ -863,7 +921,7 @@ const SalesAudit = () => {
                           files={weightslipFiles}
                         />
                       ) : (
-                        <div className="upload-box card" style={{ textAlign: 'center', padding: '3rem 2rem', alignItems: 'center' }}>
+                        <div className="upload-box card" style={{ textAlign: 'center', padding: '3rem 2rem', alignItems: 'center', justifyContent: 'center' }}>
                           <div style={{
                             width: '56px', height: '56px', borderRadius: '50%',
                             background: 'rgba(100,116,139,0.1)', border: '2px dashed rgba(100,116,139,0.35)',
@@ -896,7 +954,7 @@ const SalesAudit = () => {
                           files={gatepassFiles}
                         />
                       ) : (
-                        <div className="upload-box card" style={{ textAlign: 'center', padding: '3rem 2rem', alignItems: 'center' }}>
+                        <div className="upload-box card" style={{ textAlign: 'center', padding: '3rem 2rem', alignItems: 'center', justifyContent: 'center' }}>
                           <div style={{
                             width: '56px', height: '56px', borderRadius: '50%',
                             background: 'rgba(100,116,139,0.1)', border: '2px dashed rgba(100,116,139,0.35)',
@@ -921,19 +979,19 @@ const SalesAudit = () => {
                       )
                     )}
 
-                    {activeStep !== 1 && (
-                      <div className="paste-hint" style={{ marginTop: '2rem' }}>
-                        <span className="kbd" style={{ padding: '4px 8px' }}>Ctrl</span> + <span className="kbd" style={{ padding: '4px 8px' }}>V</span> to paste screenshots directly
-                      </div>
-                    )}
-
+                    {/* One row: the rotating hint on the left, navigation on
+                        the right. Submit lives in the sidebar, next to the
+                        document list it reports on, so it no longer only
+                        appears on the last step. */}
                     <div className="step-footer">
-                      {activeStep > 0 && (
-                        <button className="btn btn-outline" onClick={prevStep} style={{ borderRadius: '12px', padding: '1rem 2.5rem', fontSize: '1rem' }}>
-                          Back
-                        </button>
-                      )}
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                      <RotatingHint />
+
+                      <div className="step-nav">
+                        {activeStep > 0 && (
+                          <button className="btn btn-outline" onClick={prevStep} style={{ borderRadius: '12px', padding: '1rem 2.5rem', fontSize: '1rem' }}>
+                            Back
+                          </button>
+                        )}
                         {activeStep === 1 && purchaseOrderFiles.length > 0 && !quickCheckResult && (
                           <button
                             className="btn btn-primary"
@@ -945,22 +1003,13 @@ const SalesAudit = () => {
                             <span style={{ fontSize: '0.5rem', fontWeight: 600, opacity: 0.8 }}>Will be matched with just SO Sheet</span>
                           </button>
                         )}
-                        {activeStep < 4 ? (
-                          <button 
-                            className="btn btn-primary" 
+                        {activeStep < 4 && (
+                          <button
+                            className="btn btn-primary"
                             onClick={nextStep}
                             style={{ padding: '1rem 4rem', fontSize: '1.1rem', fontWeight: 800, borderRadius: '12px', display: 'flex', alignItems: 'center', gap: '0.5rem' }}
                           >
                             Next Stage <ChevronRight size={22} />
-                          </button>
-                        ) : (
-                          <button 
-                            className="btn btn-primary" 
-                            onClick={() => setIsSubmitConfirmOpen(true)}
-                            disabled={isSubmitting || invoiceFiles.length === 0}
-                            style={{ background: 'var(--success)', borderColor: 'var(--success)', padding: '1rem 5rem', fontSize: '1.1rem', fontWeight: 800, borderRadius: '12px', display: 'flex', alignItems: 'center', gap: '0.5rem' }}
-                          >
-                            {isSubmitting ? <><Loader2 size={24} className="spin-icon" /> Sending...</> : <><Send size={24} /> Final Submit</>}
                           </button>
                         )}
                       </div>
@@ -982,7 +1031,7 @@ const SalesAudit = () => {
               {!isSidebarCollapsed && (
                 <div className="sidebar-content animate-fade-in">
                   <div style={{ marginBottom: '1.5rem', fontWeight: '800', fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.15em', color: 'var(--text-muted)' }}>
-                    Workflow Stages
+                    Documents
                   </div>
                   <div className="sidebar-nav-list">
                     {steps.map((s, idx) => {
@@ -1000,12 +1049,44 @@ const SalesAudit = () => {
                           </div>
                           <div className="sidebar-step-info">
                             <span className="sidebar-step-name">{s.label}</span>
-                            <span className="sidebar-step-status">{isDocumentLocked ? 'Locked' : idx === 1 ? 'Added' : s.files.length > 0 ? 'Uploaded' : 'Pending'}</span>
+                            <span className="sidebar-step-status">
+                              {isDocumentLocked ? 'Locked' : idx === 1 ? 'Added' : s.files.length > 0 ? `${s.files.length} uploaded` : 'Not uploaded'}
+                            </span>
                           </div>
                         </div>
                       );
                     })}
                   </div>
+
+                  {/* Submit sits under the list it summarises, so what is about
+                      to go over and what is being skipped are in one glance.
+                      Hidden once the audit is with the workflow.
+
+                      The invoice is still required here - moving the button
+                      only changes where it is reached from, not what the sales
+                      audit needs - so the hint says so until one is attached. */}
+                  {!allDone && (
+                    <div className="sidebar-submit-wrap">
+                      <button
+                        className="sidebar-submit"
+                        onClick={() => setIsSubmitConfirmOpen(true)}
+                        disabled={isSubmitting || invoiceFiles.length === 0}
+                      >
+                        {isSubmitting
+                          ? <><Loader2 size={18} className="spin-icon" /> Sending...</>
+                          : <><Send size={18} /> Final Submit</>}
+                      </button>
+
+                      {invoiceFiles.length === 0 && (
+                        <p className="sidebar-submit-hint">Upload the invoice to enable the audit.</p>
+                      )}
+                      {invoiceFiles.length > 0 && missingDocCount > 0 && (
+                        <p className="sidebar-submit-hint">
+                          {missingDocCount} of {steps.length} not uploaded - the audit will cover only what you send.
+                        </p>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
