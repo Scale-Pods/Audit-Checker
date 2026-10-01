@@ -1969,7 +1969,7 @@ const PendingDocsUploadModal = ({ group, onClose, onUploadSuccess }) => {
 // ── Sales Record Detail Modal (redesigned audit dashboard) ──
 const SalesRecordModal = ({ records, onClose, invoiceNumber, onDecision, isProcessing, hasDecision, decisionStatus }) => {
   const [currentIndex, setCurrentIndex] = useState(0);
-  const [expandedSections, setExpandedSections] = useState({ 'Document Comparison Matrix': true });
+  const [expandedSections, setExpandedSections] = useState({});
 
   if (!records || records.length === 0) return null;
 
@@ -1978,7 +1978,15 @@ const SalesRecordModal = ({ records, onClose, invoiceNumber, onDecision, isProce
   const record = records[currentIndex];
   const I = record?.intelligence || {};
 
-  const toggleSection = (key) => setExpandedSections(prev => ({ ...prev, [key]: !prev[key] }));
+  // A section the user has never touched falls back to its own default, so the
+  // comparison table starts open for quick entries too — its title differs from
+  // a full audit's, and keying the open state off one literal string left every
+  // quick entry collapsed until it was clicked open by hand.
+  const isSectionOpen = (key, defaultOpen = false) =>
+    expandedSections[key] === undefined ? defaultOpen : expandedSections[key];
+
+  const toggleSection = (key, defaultOpen = false) =>
+    setExpandedSections(prev => ({ ...prev, [key]: !isSectionOpen(key, defaultOpen) }));
 
   const v = (key) => fmt(record[key]);
 
@@ -2007,7 +2015,7 @@ const SalesRecordModal = ({ records, onClose, invoiceNumber, onDecision, isProce
 
   const SectionHeader = ({ title, defaultOpen = true }) => (
     <div
-      onClick={() => toggleSection(title)}
+      onClick={() => toggleSection(title, defaultOpen)}
       style={{
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         padding: '0.85rem 1.25rem', cursor: 'pointer', userSelect: 'none',
@@ -2015,7 +2023,7 @@ const SalesRecordModal = ({ records, onClose, invoiceNumber, onDecision, isProce
       }}
     >
       <h3 style={{ margin: 0, fontSize: '0.8rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--text)' }}>{title}</h3>
-      <ChevronRight size={16} style={{ transform: expandedSections[title] ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform 0.2s', color: 'var(--text-muted)' }} />
+      <ChevronRight size={16} style={{ transform: isSectionOpen(title, defaultOpen) ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform 0.2s', color: 'var(--text-muted)' }} />
     </div>
   );
 
@@ -2030,10 +2038,10 @@ const SalesRecordModal = ({ records, onClose, invoiceNumber, onDecision, isProce
     return <span style={{ padding: '0.2rem 0.6rem', borderRadius: '6px', fontSize: '0.85rem', fontWeight: 800, backgroundColor: colors.bg, color: colors.text }}>{score}</span>;
   };
 
-  const CollapseSection = ({ title, children }) => (
+  const CollapseSection = ({ title, children, defaultOpen = false }) => (
     <div style={{ border: '1px solid var(--border)', borderRadius: '10px', overflow: 'hidden', marginBottom: '1rem', background: 'var(--surface)' }}>
-      <SectionHeader title={title} />
-      {expandedSections[title] && <div className="audit-section-body">{children}</div>}
+      <SectionHeader title={title} defaultOpen={defaultOpen} />
+      {isSectionOpen(title, defaultOpen) && <div className="audit-section-body">{children}</div>}
     </div>
   );
 
@@ -2358,7 +2366,7 @@ const QUICK_ENTRY_CHECKS = [
         <div className="sales-modal-scroll">
           
           {/* ─── Section 1: Document Comparison Matrix ─── */}
-          <CollapseSection title={isQuickEntry ? 'SO vs PO Comparison' : 'Document Comparison Matrix'}>
+          <CollapseSection title={isQuickEntry ? 'SO vs PO Comparison' : 'Document Comparison Matrix'} defaultOpen>
             <div style={{ overflowX: 'auto' }}>
               <table style={{
                 width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem',
