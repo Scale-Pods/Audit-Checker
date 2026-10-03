@@ -18,6 +18,17 @@ const readLedger = async (path, fallback) => {
 const SALES_SOURCE = 'sales';
 const QUICK_CHECK_SOURCE = 'sales_qc';
 
+// Each ledger is a separate table with its own set of columns, so they are
+// never read together — the toggle picks one table and only that table.
+const LEDGERS = {
+  [SALES_SOURCE]: { path: '/api/sales', error: 'Failed to load sales data' },
+  [QUICK_CHECK_SOURCE]: { path: '/api/sales-qc', error: 'Failed to load sales quick check data' },
+};
+
+// Resolves which single ledger the sales side should be reading.
+export const salesLedgerSource = (quickEntryMode) =>
+  quickEntryMode ? QUICK_CHECK_SOURCE : SALES_SOURCE;
+
 const tagRecords = (records, source) =>
   records.map(record => ({ ...record, __source: source, __uid: `${source}-${record.id}` }));
 
@@ -38,29 +49,22 @@ export const isRecordQuickEntry = (record) => record?.__source === QUICK_CHECK_S
 
 // Quick checks written before the split are still sitting in the main sales
 // table. They carry no invoice / gate pass / weightslip data, so they are
-// neither a full audit nor a quick entry — they are left out of the ledger
-// rather than rendered as an empty comparison.
+// neither a full audit nor a quick entry — they are left out of the normal
+// sales ledger rather than rendered as an empty comparison. Rows read from
+// the quick-check table need no such check: that table only ever holds SO and
+// PO data.
 const isRecordLegacyQuickEntry = (record) =>
   record?.__source !== QUICK_CHECK_SOURCE &&
   !hasDocData(record, 'inv_') &&
   !hasDocData(record, 'gp_') &&
   !hasDocData(record, 'ws_');
 
-export const fetchSalesRecords = async () => {
-  const sales = await readLedger('/api/sales', 'Failed to load sales data');
+export const fetchSalesRecords = async (source = SALES_SOURCE) => {
+  const resolvedSource = source in LEDGERS ? source : SALES_SOURCE;
+  const ledger = LEDGERS[resolvedSource];
+  const records = await readLedger(ledger.path, ledger.error);
 
-  // Quick entries are additive: if that table cannot be read, the main sales
-  // ledger must still load rather than blanking the whole page.
-  const quickChecks = await readLedger('/api/sales-qc', 'Failed to load sales quick check data')
-    .catch(err => {
-      console.warn('Sales quick check ledger unavailable:', err.message);
-      return [];
-    });
-
-  return [
-    ...tagRecords(sales, SALES_SOURCE),
-    ...tagRecords(quickChecks, QUICK_CHECK_SOURCE),
-  ]
+  return tagRecords(records, resolvedSource)
     .filter(record => !isRecordLegacyQuickEntry(record))
     .sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
 };

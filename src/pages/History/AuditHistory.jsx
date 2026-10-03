@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { FileText, CheckCircle, AlertTriangle, Eye, Download, Loader2, Truck, Hash, X, Info, IndianRupee, Activity, ChevronLeft, ChevronRight, Check, Shield, TrendingUp, BarChart3, UploadCloud, FileUp, Mail, FileSpreadsheet, ShoppingCart, ClipboardList, Scale, Filter, ArrowDownWideNarrow, ArrowUpNarrowWide } from 'lucide-react'
-import { fetchSalesRecords, hasDocData as hasDocPrefixData, isRecordQuickEntry } from '../../api/sales.js'
+import { fetchSalesRecords, hasDocData as hasDocPrefixData, isRecordQuickEntry, salesLedgerSource } from '../../api/sales.js'
 import { fetchPurchaseRecords } from '../../api/audits.js'
 import { useSyncRefresh } from '../../context/SyncContext'
 import { SquareWaveLoader } from '@/components/ui/square-wave-loader'
@@ -2011,7 +2011,10 @@ const SalesRecordModal = ({ records, onClose, invoiceNumber, onDecision, isProce
   // A ledger where no PO was uploaded would otherwise render an entirely
   // blank PO column, so every PO block is hidden instead.
   const hasPOData = hasDocData('po_');
-  const isQuickEntry = !hasInvoiceData && !hasGPData && !hasWSData;
+  // Which ledger this record came from is the authoritative signal — the two
+  // sales tables are read one at a time, so a normal sales row is never
+  // mistaken for a quick check just because its invoice is still empty.
+  const isQuickEntry = isRecordQuickEntry(record);
 
   const SectionHeader = ({ title, defaultOpen = true }) => (
     <div
@@ -3265,11 +3268,14 @@ const AuditHistory = () => {
     }
   }
 
+// The sales side reads exactly one of the two sales tables — the toggle
+  // picks which, and the other table is never requested.
   const fetchSalesHistory = async (showLoading = true) => {
     if (showLoading) setIsSalesLoading(true)
     setSalesError(null)
+    const source = salesLedgerSource(salesQuickOnly)
     try {
-      const data = await fetchSalesRecords();
+      const data = await fetchSalesRecords(source);
       const salesData = normalizeArray(data);
       
       // Transform each record: nest intelligence/match fields under `intelligence`
@@ -3285,16 +3291,25 @@ const AuditHistory = () => {
       setSalesHistory(uniqueSales);
     } catch (err) {
       console.error('Sales History Fetch Error:', err)
-      setSalesError(`Could not load sales records. ${err.message}`)
-      setSalesHistory([])
-    } finally {
-      setIsSalesLoading(false)
+      setSalesError(`Could not load ${source === 'sales_qc' ? 'quick check' : 'sales'} records. ${err.message}`)
+      setSalesHistory([]);
+} finally {
+      setIsSalesLoading(false);
     }
   }
 
   useEffect(() => {
     fetchHistory()
   }, [])
+
+  // The two sales ledgers are separate tables, so flipping the toggle is a
+  // ledger change, not a client-side filter — the previously loaded rows are
+  // dropped and the other table is read.
+  useEffect(() => {
+    setSelectedSalesGroup(null);
+    setSalesPage(1);
+    fetchSalesHistory(false);
+  }, [salesQuickOnly]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useSyncRefresh(() => {
     const jobs = [fetchHistory(false)]
@@ -3399,10 +3414,9 @@ const AuditHistory = () => {
       }
     });
     const groups_arr = Object.values(groups);
-    // Ledger-scoped filters: ON shows only quick-entry groups, OFF hides them.
+    // The ledger on screen is already a single table, so only the score tier
+    // still needs filtering here.
     const filtered = groups_arr.filter(group => {
-      const allQuick = group.records.every(isRecordQuickEntry);
-      if (salesQuickOnly ? !allQuick : allQuick) return false;
       if (salesScoreFilter !== 'all') {
         const tier = getSalesGroupScoreInfo(group).tier;
         if (tier !== salesScoreFilter) return false;
@@ -3415,7 +3429,7 @@ const AuditHistory = () => {
       return sortOrder === 'latest' ? db - da : da - db;
     });
     return filtered;
-  }, [filteredSalesHistory, sortOrder, salesQuickOnly, salesScoreFilter])
+  }, [filteredSalesHistory, sortOrder, salesScoreFilter])
 
   useEffect(() => {
     setPurchasePage(1)
@@ -3707,18 +3721,18 @@ const AuditHistory = () => {
           ) : filteredSalesHistory.length === 0 ? (
             <div className="empty-state">
               <AlertTriangle size={40} className="empty-icon" />
-              <p>{salesError || 'No sales records found.'}</p>
+              <p>{salesError || (salesQuickOnly ? 'No quick check records found.' : 'No sales records found.')}</p>
             </div>
           ) : (
             <>
           <div className="sales-filter-bar">
-            <label className="quick-switch" title="On: show only quick-entry audits. Off: hide quick-entry audits.">
+            <label className="quick-switch" title="On: read the Quick Check ledger. Off: read the normal Sales ledger.">
               <span className={`quick-switch-label ${salesQuickOnly ? 'on' : ''}`}>Quick Entry</span>
               <button
                 type="button"
                 role="switch"
                 aria-checked={salesQuickOnly}
-                aria-label="Toggle quick entry filter"
+                aria-label="Show the quick check ledger"
                 className={`quick-switch-track ${salesQuickOnly ? 'on' : ''}`}
                 onClick={() => setSalesQuickOnly(value => !value)}
               >
@@ -3756,7 +3770,7 @@ const AuditHistory = () => {
           <div className="sales-records-list animate-fade-in">
               {paginatedSalesHistory.map((group, idx) => {
                 const groupDecision = salesGroupDecisions[group.invoiceNumber];
-                const isQuickEntry = group.records.every(isRecordQuickEntry);
+                const isQuickEntry = isRecordQuickEntry(group.records[0]);
                 // Check if any record in the group has pending documents
                 const pendingDocStatus = group.records.reduce((acc, r) => {
                   const s = isRecordPendingDocuments(r);

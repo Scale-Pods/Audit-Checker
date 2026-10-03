@@ -29,7 +29,7 @@ import {
   Boxes,
   ReceiptIndianRupee
 } from 'lucide-react'
-import { fetchSalesRecords } from '../../api/sales.js'
+import { fetchSalesRecords, salesLedgerSource } from '../../api/sales.js'
 import { fetchPurchaseRecords } from '../../api/audits.js'
 import { useSyncRefresh } from '../../context/SyncContext'
 import { SquareWaveLoader } from '@/components/ui/square-wave-loader'
@@ -725,7 +725,9 @@ const Dashboard = () => {
     setLoadError('')
 
     try {
-      const data = side === 'purchase' ? await fetchPurchaseRecords() : await fetchSalesRecords()
+      // The dashboard only reports the normal sales ledger — quick checks live
+      // in their own table and are read from the History ledger toggle.
+      const data = side === 'purchase' ? await fetchPurchaseRecords() : await fetchSalesRecords(salesLedgerSource(false))
       if (requestId !== requestIdRef.current) return
 
       if (side === 'purchase') setAudits(Array.isArray(data) ? data : [])
@@ -805,7 +807,7 @@ const Dashboard = () => {
     : 'Latest purchase invoice, e-way bill, and GRN compliance records'
   const searchPlaceholder = isSales ? 'Search order, customer, reference...' : 'Search invoice, supplier, reference...'
   const sourceLabel = isSales
-    ? 'public."Audit Checker Sales" + public."Audit Checker Sales_QC"'
+    ? 'public."Audit Checker Sales"'
     : 'public."Audit Checker"'
 
   return (
