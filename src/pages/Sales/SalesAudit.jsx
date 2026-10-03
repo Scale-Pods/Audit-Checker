@@ -80,7 +80,7 @@ const convertPdfToImage = async (file) => {
   return new File([blob], file.name.replace(/\.pdf$/i, '.png'), { type: 'image/png' })
 }
 
-const DocumentUpload = ({ title, accepted, onUpload, files, isSubmitted }) => {
+const DocumentUpload = ({ title, accepted, onUpload, files, isSubmitted, required }) => {
   const [converting, setConverting] = useState(false)
 
   const onDrop = useCallback(acceptedFiles => {
@@ -137,6 +137,9 @@ const DocumentUpload = ({ title, accepted, onUpload, files, isSubmitted }) => {
     <div className={`upload-box card ${isSubmitted ? 'card-submitted' : ''}`} style={{ transition: 'all 0.4s' }}>
       <h3 className="upload-title text-primary flex items-center gap-2" style={{ fontSize: '1.25rem', marginBottom: '1.5rem' }}>
         <UploadCloud size={24} /> {title}
+        {required && (
+          <span className="required-tag" title="This document is mandatory">Required</span>
+        )}
       </h3>
       
       {!hasFiles ? (
@@ -197,6 +200,7 @@ const SalesAudit = () => {
   const [docNumber, setDocNumber] = useState('')
   const [isSubmitConfirmOpen, setIsSubmitConfirmOpen] = useState(false)
   const [stageConfirm, setStageConfirm] = useState(null)
+  const [stageNotice, setStageNotice] = useState(null)
 
   useEffect(() => {
     if (!isSubmitConfirmOpen && !stageConfirm) return
@@ -220,7 +224,10 @@ const SalesAudit = () => {
           const blob = item.getAsFile();
           if (blob && blob.type.startsWith('image/')) {
             const pastedFile = new File([blob], `Pasted-Image-${Date.now()}.png`, { type: blob.type });
-            if (activeStep === 0) setPurchaseOrderFiles([pastedFile]);
+            if (activeStep === 0) {
+              setPurchaseOrderFiles([pastedFile]);
+              setStageNotice(null);
+            }
             if (activeStep === 2) setInvoiceFiles([pastedFile]);
             if (activeStep === 3 && invoiceFiles.length > 0) setWeightslipFiles([pastedFile]);
             if (activeStep === 4 && invoiceFiles.length > 0) setGatepassFiles([pastedFile]);
@@ -233,7 +240,19 @@ const SalesAudit = () => {
     return () => window.removeEventListener('paste', handlePaste);
   }, [activeStep, invoiceFiles.length]);
 
+  const handlePurchaseOrderUpload = (files) => {
+    setPurchaseOrderFiles(files);
+    if (files.length > 0) setStageNotice(null);
+  };
+
   const handleSubmitAll = async () => {
+    // The Purchase Order is the anchor document on the sales side — the SO sheet
+    // is compared against it — so a sales audit cannot be sent without one.
+    if (purchaseOrderFiles.length === 0) {
+      setSubmitError('A Purchase Order is required before the audit can be submitted.')
+      return
+    }
+
     let uploads = []
     purchaseOrderFiles.forEach(f => uploads.push({ file: f, name: 'PurchaseOrder' }))
     weightslipFiles.forEach(f => uploads.push({ file: f, name: 'Weightslip' }))
@@ -353,6 +372,11 @@ const SalesAudit = () => {
     purchaseOrderFiles.length + invoiceFiles.length + weightslipFiles.length + gatepassFiles.length + 1
   const missingDocCount = steps.length - uploadedDocCount
 
+  // The Purchase Order is the anchor document on the sales side — the SO sheet is
+  // compared against it — so it is the one upload that cannot be skipped: every
+  // later stage and the final submit stay unavailable until one is attached.
+  const hasPurchaseOrder = purchaseOrderFiles.length > 0
+
   const nextStep = () => {
     if (activeStep >= 4) return
     const target = activeStep + 1
@@ -360,10 +384,15 @@ const SalesAudit = () => {
     if (activeStep !== 1) {
       const files = steps[activeStep].files
       if (!files || files.length === 0) {
+        if (!hasPurchaseOrder) {
+          setStageNotice('Purchase Order is required. Upload it to continue to the next stage.')
+          return
+        }
         setStageConfirm({ label: steps[activeStep].label, target })
         return
       }
     }
+    setStageNotice(null)
     setActiveStep(target)
   }
 
@@ -373,7 +402,10 @@ const SalesAudit = () => {
   }
 
   const prevStep = () => {
-    if (activeStep > 0) setActiveStep(activeStep - 1)
+    if (activeStep > 0) {
+      setStageNotice(null)
+      setActiveStep(activeStep - 1)
+    }
   }
 
   const renderWebhookResponse = () => {
@@ -825,7 +857,7 @@ const SalesAudit = () => {
         <div className="header-actions">
           {(result || allDone) && (
             <button className="btn btn-outline" onClick={() => {
-              setResult(null); setInvoiceFiles([]); setGatepassFiles([]); setWeightslipFiles([]); setPurchaseOrderFiles([]); setAllDone(false); setActiveStep(0); setWebhookResponse(null); setQuickCheckResult(null); setDocType('PO'); setDocNumber('');
+              setResult(null); setInvoiceFiles([]); setGatepassFiles([]); setWeightslipFiles([]); setPurchaseOrderFiles([]); setAllDone(false); setActiveStep(0); setWebhookResponse(null); setQuickCheckResult(null); setStageNotice(null); setDocType('PO'); setDocNumber('');
             }}>
               Reset Audit
             </button>
@@ -878,10 +910,18 @@ const SalesAudit = () => {
                         </div>
                         <DocumentUpload
                           title="PO Upload"
+                          required
                           accepted={{'image/*': ['.png', '.jpg', '.jpeg'], 'application/pdf': ['.pdf']}}
-                          onUpload={setPurchaseOrderFiles}
+                          onUpload={handlePurchaseOrderUpload}
                           files={purchaseOrderFiles}
                         />
+                        {stageNotice && (
+                          <div className="stage-notice animate-fade-in">
+                            <AlertTriangle size={18} />
+                            <span>{stageNotice}</span>
+                            <button onClick={() => setStageNotice(null)} aria-label="Dismiss notice"><X size={14} /></button>
+                          </div>
+                        )}
                       </div>
                     )}
                     {activeStep === 1 && (
@@ -1036,21 +1076,29 @@ const SalesAudit = () => {
                   <div className="sidebar-nav-list">
                     {steps.map((s, idx) => {
                       const StepIcon = s.icon;
-                      const isDocumentLocked = (idx === 3 || idx === 4) && invoiceFiles.length === 0;
+                      // Every stage after the Purchase Order depends on it, and the
+                      // movement documents additionally need the invoice.
+                      const isStageLocked =
+                        (idx > 0 && !hasPurchaseOrder) ||
+                        ((idx === 3 || idx === 4) && invoiceFiles.length === 0);
+                      const lockedReason = (idx > 0 && !hasPurchaseOrder)
+                        ? 'Purchase Order required'
+                        : 'Invoice required';
                       return (
                         <div 
                           key={idx} 
-                          className={`sidebar-nav-item ${activeStep === idx ? 'active' : ''} ${s.files.length > 0 || idx === 1 ? 'completed' : ''} ${isDocumentLocked ? 'locked' : ''}`}
-                          onClick={() => !allDone && !isDocumentLocked && setActiveStep(idx)}
-                          style={isDocumentLocked ? { cursor: 'not-allowed', opacity: 0.55, pointerEvents: 'auto' } : undefined}
+                          className={`sidebar-nav-item ${activeStep === idx ? 'active' : ''} ${s.files.length > 0 || idx === 1 ? 'completed' : ''} ${isStageLocked ? 'locked' : ''}`}
+                          onClick={() => !allDone && !isStageLocked && setActiveStep(idx)}
+                          title={isStageLocked ? `Locked — ${lockedReason}` : undefined}
+                          style={isStageLocked ? { cursor: 'not-allowed', opacity: 0.55, pointerEvents: 'auto' } : undefined}
                         >
                           <div className="sidebar-step-num">
-                            {isDocumentLocked ? <Lock size={16} /> : s.files.length > 0 ? <Check size={16} /> : <StepIcon size={16} />}
+                            {isStageLocked ? <Lock size={16} /> : s.files.length > 0 ? <Check size={16} /> : <StepIcon size={16} />}
                           </div>
                           <div className="sidebar-step-info">
                             <span className="sidebar-step-name">{s.label}</span>
                             <span className="sidebar-step-status">
-                              {isDocumentLocked ? 'Locked' : idx === 1 ? 'Added' : s.files.length > 0 ? `${s.files.length} uploaded` : 'Not uploaded'}
+                              {isStageLocked ? 'Locked' : idx === 1 ? 'Added' : s.files.length > 0 ? `${s.files.length} uploaded` : idx === 0 ? 'Required' : 'Not uploaded'}
                             </span>
                           </div>
                         </div>
@@ -1062,25 +1110,29 @@ const SalesAudit = () => {
                       to go over and what is being skipped are in one glance.
                       Hidden once the audit is with the workflow.
 
-                      The invoice is still required here - moving the button
-                      only changes where it is reached from, not what the sales
-                      audit needs - so the hint says so until one is attached. */}
+                      The Purchase Order and the invoice are both required here -
+                      moving the button only changes where it is reached from,
+                      not what the sales audit needs - so the hint names whichever
+                      one is still missing. */}
                   {!allDone && (
                     <div className="sidebar-submit-wrap">
                       <button
                         className="sidebar-submit"
                         onClick={() => setIsSubmitConfirmOpen(true)}
-                        disabled={isSubmitting || invoiceFiles.length === 0}
+                        disabled={isSubmitting || !hasPurchaseOrder || invoiceFiles.length === 0}
                       >
                         {isSubmitting
                           ? <><Loader2 size={18} className="spin-icon" /> Sending...</>
                           : <><Send size={18} /> Final Submit</>}
                       </button>
 
-                      {invoiceFiles.length === 0 && (
+                      {!hasPurchaseOrder && (
+                        <p className="sidebar-submit-hint">Upload the Purchase Order — a sales audit cannot run without it.</p>
+                      )}
+                      {hasPurchaseOrder && invoiceFiles.length === 0 && (
                         <p className="sidebar-submit-hint">Upload the invoice to enable the audit.</p>
                       )}
-                      {invoiceFiles.length > 0 && missingDocCount > 0 && (
+                      {hasPurchaseOrder && invoiceFiles.length > 0 && missingDocCount > 0 && (
                         <p className="sidebar-submit-hint">
                           {missingDocCount} of {steps.length} not uploaded - the audit will cover only what you send.
                         </p>

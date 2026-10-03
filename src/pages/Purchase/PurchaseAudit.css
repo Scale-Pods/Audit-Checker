@@ -745,6 +745,57 @@
   color: var(--error);
 }
 
+/* Blocked-stage notice. Same shape as the error banner but amber: nothing has
+   failed, the wizard is just refusing to advance past a missing mandatory
+   document, so it must not read like a submission error. */
+.stage-notice {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  margin-top: 1.25rem;
+  padding: 0.9rem 1.25rem;
+  background: rgba(245, 158, 11, 0.1);
+  border-left: 4px solid #f59e0b;
+  border-radius: 12px;
+  color: #f59e0b;
+  font-size: 0.92rem;
+  font-weight: 600;
+}
+
+.stage-notice span {
+  flex: 1;
+}
+
+.stage-notice button {
+  display: inline-flex;
+  align-items: center;
+  background: none;
+  border: none;
+  color: inherit;
+  opacity: 0.7;
+  cursor: pointer;
+  padding: 0.2rem;
+}
+
+.stage-notice button:hover {
+  opacity: 1;
+}
+
+/* Marks a document the wizard will not let you go forward without. */
+.required-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.15rem 0.6rem;
+  border-radius: 999px;
+  background: rgba(245, 158, 11, 0.15);
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  color: #f59e0b;
+  font-size: 0.6rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
 /* Completed State — centred success panel.
    Sits inside .main-upload-area, which the fill chain already sizes to the
    full row height, so centring is all that is left to do. It used to also
