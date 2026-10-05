@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react'
 import { useDropzone } from 'react-dropzone'
-import { UploadCloud, File as FileIcon, CheckCircle, AlertTriangle, ArrowRight, X, Send, Mail, Loader2, XCircle, Info, ChevronRight, Check } from 'lucide-react'
+import { UploadCloud, File as FileIcon, CheckCircle, AlertTriangle, ArrowRight, X, Send, Mail, Loader2, XCircle, Info, ChevronRight, Check, Lock, FileText } from 'lucide-react'
 import './PurchaseAudit.css'
 
 const WEBHOOK_URL = import.meta.env.VITE_PURCHASE_WEBHOOK_URL || 'https://n8n.srv1010832.hstgr.cloud/webhook/9108c298-08ac-45c3-abb8-050459156001'
@@ -65,7 +65,7 @@ const RotatingHint = ({ hints = UPLOAD_HINTS, intervalMs = 3000 }) => {
   )
 }
 
-const DocumentUpload = ({ title, accepted, onUpload, files, isSubmitted, multiple }) => {
+const DocumentUpload = ({ title, accepted, onUpload, files, isSubmitted, multiple, required }) => {
   const onDrop = useCallback(acceptedFiles => {
     if (multiple) {
       onUpload(prev => [...prev, ...acceptedFiles])
@@ -104,6 +104,9 @@ const DocumentUpload = ({ title, accepted, onUpload, files, isSubmitted, multipl
     <div className={`upload-box card ${isSubmitted ? 'card-submitted' : ''} ${multiple ? 'bulk-upload-box' : ''}`} style={{ transition: 'all 0.4s' }}>
       <h3 className="upload-title text-primary flex items-center gap-2" style={{ fontSize: '1.25rem', marginBottom: '1.5rem' }}>
         <UploadCloud size={24} /> {title}
+        {required && (
+          <span className="required-tag" title="This document is mandatory">Required</span>
+        )}
       </h3>
       
       {!hasFiles ? (
@@ -161,22 +164,56 @@ const PurchaseAudit = () => {
   const [allDone, setAllDone]           = useState(false)
   const [submitError, setSubmitError]   = useState(null)
   const [isSubmitConfirmOpen, setIsSubmitConfirmOpen] = useState(false)
+  const [stageNotice, setStageNotice] = useState(null)
 
   const [invoiceFiles, setInvoiceFiles] = useState([])
   const [ewayFiles, setEwayFiles]       = useState([])
   const [lrFiles, setLrFiles]           = useState([])
   const [grnFiles, setGrnFiles]         = useState([])
 
-  /* The four documents, each independent and each optional. This array is the
-     single source of truth for step order, the sidebar, the dropzone and the
-     FormData field names - they used to be repeated across four render
-     branches and the submit handler, which is exactly how the old
-     "GRN is mandatory" rule crept in. */
+  /* The Supplier Invoice is the anchor document on the purchase side — the other
+     three are matched against it — so it is the one upload that cannot be skipped:
+     every later stage, every other document and the final submit stay unavailable
+     until one is attached. */
+  const hasInvoice = invoiceFiles.length > 0
+
+  /* Nothing but the Supplier Invoice may be attached until one is in place, so the
+     remaining documents carry a gated setter instead of writing state straight
+     from their dropzone. Each refuses the file, drops the user back on the invoice
+     and says why, rather than accepting a document that could never be sent. */
+  const requireInvoice = (setter, label) => (files) => {
+    if (!hasInvoice) {
+      setActiveStep(0)
+      setStageNotice(`Upload the Supplier Invoice first — the ${label} cannot be added without it.`)
+      return
+    }
+    setter(files)
+  }
+
+  const handleInvoiceUpload = (files) => {
+    setInvoiceFiles(files)
+    if (files.length > 0) {
+      setStageNotice(null)
+      return
+    }
+    // The other three are attached behind the invoice, so removing it has to take
+    // the dependents with it rather than leave them stranded against a wizard that
+    // can no longer be submitted.
+    setEwayFiles([])
+    setLrFiles([])
+    setGrnFiles([])
+  }
+
+  /* The four documents, each reached by its own step. This array is the single
+     source of truth for step order, the sidebar, the dropzone and the FormData
+     field names - they used to be repeated across four render branches and the
+     submit handler. The first is mandatory and gates the rest; the other three are
+     optional but cannot be collected until it is in place. */
   const docs = [
-    { field: 'Invoice', label: 'Supplier Invoice', title: 'Invoice Upload',    files: invoiceFiles, setFiles: setInvoiceFiles },
-    { field: 'Eway',    label: 'E-Way Bill',       title: 'E-Way Bill Upload', files: ewayFiles,    setFiles: setEwayFiles },
-    { field: 'LR',      label: 'LR Copy',          title: 'LR Copy Upload',    files: lrFiles,      setFiles: setLrFiles },
-    { field: 'GRN',     label: 'GRN',              title: 'GRN Upload',        files: grnFiles,     setFiles: setGrnFiles },
+    { field: 'Invoice', label: 'Supplier Invoice', title: 'Invoice Upload',    files: invoiceFiles, setFiles: handleInvoiceUpload, required: true },
+    { field: 'Eway',    label: 'E-Way Bill',       title: 'E-Way Bill Upload', files: ewayFiles,    setFiles: requireInvoice(setEwayFiles, 'e-way bill') },
+    { field: 'LR',      label: 'LR Copy',          title: 'LR Copy Upload',    files: lrFiles,      setFiles: requireInvoice(setLrFiles, 'LR copy') },
+    { field: 'GRN',     label: 'GRN',              title: 'GRN Upload',        files: grnFiles,     setFiles: requireInvoice(setGrnFiles, 'GRN') },
   ]
 
   const uploadedDocs = docs.filter(d => d.files.length > 0)
@@ -217,8 +254,15 @@ const PurchaseAudit = () => {
   const handleSubmitAll = async () => {
     const uploads = docs.flatMap(d => d.files.map(file => ({ file, name: d.field })))
 
-    // Nothing to send. The button is already disabled in this state; this guard
-    // exists so the failure is visible rather than a silent no-op.
+    // The Supplier Invoice is the reference the rest are matched against, so a
+    // purchase audit cannot be sent without one. The button is already disabled in
+    // this state; the guard exists so the failure is visible rather than a silent
+    // no-op.
+    if (!hasInvoice) {
+      setSubmitError('A Supplier Invoice is required before the audit can be submitted.')
+      return
+    }
+
     if (uploads.length === 0) {
       setSubmitError('Upload at least one document before submitting.')
       return
@@ -269,11 +313,22 @@ const PurchaseAudit = () => {
   }
 
   const nextStep = () => {
-    if (activeStep < LAST_STEP) setActiveStep(activeStep + 1)
+    if (activeStep >= LAST_STEP) return
+    // Nothing leaves the invoice step without one - the other three cannot be
+    // collected and the audit cannot be sent until it is attached.
+    if (activeStep === 0 && !hasInvoice) {
+      setStageNotice('Supplier Invoice is required. Upload it to continue to the next stage.')
+      return
+    }
+    setStageNotice(null)
+    setActiveStep(activeStep + 1)
   }
 
   const prevStep = () => {
-    if (activeStep > 0) setActiveStep(activeStep - 1)
+    if (activeStep > 0) {
+      setStageNotice(null)
+      setActiveStep(activeStep - 1)
+    }
   }
 
   const resetAudit = () => {
@@ -283,7 +338,36 @@ const PurchaseAudit = () => {
     setActiveStep(0)
     setSubmitError(null)
     setIsSubmitConfirmOpen(false)
+    setStageNotice(null)
   }
+
+  /* Rendered in place of a dropzone whose document cannot be accepted yet. States
+     the gate and offers the step that opens it, rather than leaving a dead
+     dropzone that silently refuses the file. */
+  const renderLockedStage = (doc) => (
+    <div className="upload-box card" style={{ textAlign: 'center', padding: '3rem 2rem', alignItems: 'center', justifyContent: 'center' }}>
+      <div style={{
+        width: '56px', height: '56px', borderRadius: '50%',
+        background: 'rgba(100,116,139,0.1)', border: '2px dashed rgba(100,116,139,0.35)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1.25rem'
+      }}>
+        <Lock size={24} style={{ color: 'var(--text-muted)' }} />
+      </div>
+      <h3 className="upload-title" style={{ fontSize: '1.15rem', marginBottom: '0.6rem', color: 'var(--text)' }}>
+        {doc.label} Upload Locked
+      </h3>
+      <p style={{ fontSize: '0.92rem', color: 'var(--text-muted)', maxWidth: '420px', margin: '0 auto 1.5rem', lineHeight: '1.6' }}>
+        The {doc.label.toLowerCase()} can only be added once the Supplier Invoice has been uploaded.
+      </p>
+      <button
+        className="btn btn-primary"
+        onClick={() => setActiveStep(0)}
+        style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}
+      >
+        <FileText size={16} /> Upload Invoice First
+      </button>
+    </div>
+  )
 
   return (
     <div className={`audit-module audit-wizard purchase-audit ${isSidebarCollapsed ? 'sidebar-collapsed' : ''}`}>
@@ -323,20 +407,34 @@ const PurchaseAudit = () => {
 
                 {!allDone && (
                   <div className="upload-stage">
-                    <DocumentUpload
-                      key={docs[activeStep].field}
-                      title={docs[activeStep].title}
-                      accepted={{'image/*': ['.png', '.jpg', '.jpeg']}}
-                      onUpload={docs[activeStep].setFiles}
-                      files={docs[activeStep].files}
-                      multiple={true}
-                    />
+                    {activeStep > 0 && !hasInvoice ? (
+                      renderLockedStage(docs[activeStep])
+                    ) : (
+                      <DocumentUpload
+                        key={docs[activeStep].field}
+                        title={docs[activeStep].title}
+                        required={docs[activeStep].required}
+                        accepted={{'image/*': ['.png', '.jpg', '.jpeg']}}
+                        onUpload={docs[activeStep].setFiles}
+                        files={docs[activeStep].files}
+                        multiple={true}
+                      />
+                    )}
+
+                    {stageNotice && (
+                      <div className="stage-notice animate-fade-in">
+                        <AlertTriangle size={18} />
+                        <span>{stageNotice}</span>
+                        <button onClick={() => setStageNotice(null)} aria-label="Dismiss notice"><X size={14} /></button>
+                      </div>
+                    )}
 
                     {/* One row: the rotating hint on the left, navigation on
                         the right. Nothing here is gated on an empty document -
-                        every doc is optional, so any step is reachable from any
-                        other. Submit lives in the sidebar, next to the document
-                        list it reports on. */}
+                        every doc past the invoice is optional, so once the invoice
+                        is attached any step is reachable from any other. Submit
+                        lives in the sidebar, next to the document list it reports
+                        on. */}
                     <div className="step-footer">
                       <RotatingHint />
 
@@ -377,25 +475,36 @@ const PurchaseAudit = () => {
                     Documents
                   </div>
                   <div className="sidebar-nav-list">
-                    {docs.map((d, idx) => (
-                      <div
-                        key={d.field}
-                        className={`sidebar-nav-item ${activeStep === idx ? 'active' : ''} ${d.files.length > 0 ? 'completed' : ''}`}
-                        onClick={() => !allDone && setActiveStep(idx)}
-                      >
-                        <div className="sidebar-step-num">
-                          {d.files.length > 0 ? <Check size={16} /> : idx + 1}
+                    {docs.map((d, idx) => {
+                      // Everything after the Supplier Invoice depends on it.
+                      const isStageLocked = idx > 0 && !hasInvoice
+                      return (
+                        <div
+                          key={d.field}
+                          className={`sidebar-nav-item ${activeStep === idx ? 'active' : ''} ${d.files.length > 0 ? 'completed' : ''} ${isStageLocked ? 'locked' : ''}`}
+                          onClick={() => !allDone && !isStageLocked && setActiveStep(idx)}
+                          title={isStageLocked ? 'Locked — Supplier Invoice required' : undefined}
+                          style={isStageLocked ? { cursor: 'not-allowed', opacity: 0.55, pointerEvents: 'auto' } : undefined}
+                        >
+                          <div className="sidebar-step-num">
+                            {isStageLocked ? <Lock size={16} /> : d.files.length > 0 ? <Check size={16} /> : idx + 1}
+                          </div>
+                          <div className="sidebar-step-info">
+                            <span className="sidebar-step-name">{d.label}</span>
+                            {/* Past the invoice, an empty one reads as "not
+                                collected", not as something still outstanding. The
+                                invoice itself reads as outstanding. */}
+                            <span className="sidebar-step-status">
+                              {isStageLocked
+                                ? 'Locked'
+                                : d.files.length > 0
+                                  ? `${d.files.length} uploaded`
+                                  : d.required ? 'Required' : 'Not uploaded'}
+                            </span>
+                          </div>
                         </div>
-                        <div className="sidebar-step-info">
-                          <span className="sidebar-step-name">{d.label}</span>
-                          {/* Optional documents: an empty one reads as "not
-                              collected", not as something still outstanding. */}
-                          <span className="sidebar-step-status">
-                            {d.files.length > 0 ? `${d.files.length} uploaded` : 'Not uploaded'}
-                          </span>
-                        </div>
-                      </div>
-                    ))}
+                      )
+                    })}
                   </div>
 
                   {/* Submit sits under the list it summarises, so what is
@@ -406,17 +515,20 @@ const PurchaseAudit = () => {
                       <button
                         className="sidebar-submit"
                         onClick={() => setIsSubmitConfirmOpen(true)}
-                        disabled={isSubmitting || totalFileCount === 0}
+                        disabled={isSubmitting || !hasInvoice || totalFileCount === 0}
                       >
                         {isSubmitting
                           ? <><Loader2 size={18} className="spin-icon" /> Sending...</>
                           : <><Send size={18} /> Final Submit</>}
                       </button>
 
-                      {totalFileCount === 0 && (
-                        <p className="sidebar-submit-hint">Upload any one document to enable the audit.</p>
+                      {!hasInvoice && (
+                        <p className="sidebar-submit-hint">Upload the Supplier Invoice — a purchase audit cannot run without it.</p>
                       )}
-                      {totalFileCount > 0 && missingDocs.length > 0 && (
+                      {hasInvoice && totalFileCount === 0 && (
+                        <p className="sidebar-submit-hint">Upload any one more document to enable the audit.</p>
+                      )}
+                      {hasInvoice && totalFileCount > 0 && missingDocs.length > 0 && (
                         <p className="sidebar-submit-hint">
                           {missingDocs.length} of {docs.length} not uploaded - the audit will cover only what you send.
                         </p>

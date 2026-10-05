@@ -202,6 +202,12 @@ const SalesAudit = () => {
   const [stageConfirm, setStageConfirm] = useState(null)
   const [stageNotice, setStageNotice] = useState(null)
 
+  // The Purchase Order is the anchor document on the sales side — the SO sheet is
+  // compared against it — so it is the one upload that cannot be skipped: every
+  // later stage, every other document and the final submit stay unavailable until
+  // one is attached. Declared before the paste effect that reads it.
+  const hasPurchaseOrder = purchaseOrderFiles.length > 0
+
   useEffect(() => {
     if (!isSubmitConfirmOpen && !stageConfirm) return
     const handleKeyDown = (e) => {
@@ -227,7 +233,11 @@ const SalesAudit = () => {
             if (activeStep === 0) {
               setPurchaseOrderFiles([pastedFile]);
               setStageNotice(null);
+              return;
             }
+            // Same rule as the dropzones: a paste is an upload, so the
+            // Purchase Order has to be in place before any other section takes one.
+            if (!hasPurchaseOrder) return;
             if (activeStep === 2) setInvoiceFiles([pastedFile]);
             if (activeStep === 3 && invoiceFiles.length > 0) setWeightslipFiles([pastedFile]);
             if (activeStep === 4 && invoiceFiles.length > 0) setGatepassFiles([pastedFile]);
@@ -238,12 +248,39 @@ const SalesAudit = () => {
 
     window.addEventListener('paste', handlePaste);
     return () => window.removeEventListener('paste', handlePaste);
-  }, [activeStep, invoiceFiles.length]);
+  }, [activeStep, invoiceFiles.length, hasPurchaseOrder]);
 
   const handlePurchaseOrderUpload = (files) => {
     setPurchaseOrderFiles(files);
-    if (files.length > 0) setStageNotice(null);
+    if (files.length > 0) {
+      setStageNotice(null);
+      return;
+    }
+    // Every other document on this wizard is attached behind the Purchase Order,
+    // so removing it has to take the dependents with it rather than leave them
+    // stranded against a wizard that can no longer be submitted.
+    setInvoiceFiles([]);
+    setWeightslipFiles([]);
+    setGatepassFiles([]);
+    setQuickCheckResult(null);
   };
+
+  /* Nothing but the Purchase Order may be attached until one is in place, so the
+     remaining sections funnel through these instead of writing state straight from
+     the dropzone. Each refuses the file, drops the user back on the Purchase Order
+     and says why, rather than accepting a document that could never be sent. */
+  const requirePurchaseOrder = (setter, label) => (files) => {
+    if (!hasPurchaseOrder) {
+      setActiveStep(0);
+      setStageNotice(`Upload the Purchase Order first — the ${label} cannot be added without it.`);
+      return;
+    }
+    setter(files);
+  };
+
+  const handleInvoiceUpload = requirePurchaseOrder(setInvoiceFiles, 'invoice');
+  const handleWeightslipUpload = requirePurchaseOrder(setWeightslipFiles, 'weightslip');
+  const handleGatepassUpload = requirePurchaseOrder(setGatepassFiles, 'gatepass');
 
   const handleSubmitAll = async () => {
     // The Purchase Order is the anchor document on the sales side — the SO sheet
@@ -371,11 +408,6 @@ const SalesAudit = () => {
   const uploadedDocCount =
     purchaseOrderFiles.length + invoiceFiles.length + weightslipFiles.length + gatepassFiles.length + 1
   const missingDocCount = steps.length - uploadedDocCount
-
-  // The Purchase Order is the anchor document on the sales side — the SO sheet is
-  // compared against it — so it is the one upload that cannot be skipped: every
-  // later stage and the final submit stay unavailable until one is attached.
-  const hasPurchaseOrder = purchaseOrderFiles.length > 0
 
   const nextStep = () => {
     if (activeStep >= 4) return
@@ -850,6 +882,34 @@ const SalesAudit = () => {
     )
   }
 
+  /* Shown in place of a dropzone whose document cannot be accepted yet. States the
+     gate and offers the step that opens it, rather than leaving a dead dropzone
+     that silently refuses the file. */
+  const renderLockedStage = ({ label, requires, target }) => (
+    <div className="upload-box card" style={{ textAlign: 'center', padding: '3rem 2rem', alignItems: 'center', justifyContent: 'center' }}>
+      <div style={{
+        width: '56px', height: '56px', borderRadius: '50%',
+        background: 'rgba(100,116,139,0.1)', border: '2px dashed rgba(100,116,139,0.35)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1.25rem'
+      }}>
+        <Lock size={24} style={{ color: 'var(--text-muted)' }} />
+      </div>
+      <h3 className="upload-title" style={{ fontSize: '1.15rem', marginBottom: '0.6rem', color: 'var(--text)' }}>
+        {label} Upload Locked
+      </h3>
+      <p style={{ fontSize: '0.92rem', color: 'var(--text-muted)', maxWidth: '420px', margin: '0 auto 1.5rem', lineHeight: '1.6' }}>
+        The {label.toLowerCase()} can only be added once the {requires} has been uploaded.
+      </p>
+      <button
+        className="btn btn-primary"
+        onClick={() => setActiveStep(target)}
+        style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}
+      >
+        <FileText size={16} /> Upload {requires} First
+      </button>
+    </div>
+  )
+
   return (
     <div className={`audit-module audit-wizard sales-audit ${isSidebarCollapsed ? 'sidebar-collapsed' : ''}`} style={result ? { marginRight: 0 } : {}}>
       <div className="module-header">
@@ -945,77 +1005,41 @@ const SalesAudit = () => {
                       </div>
                     )}
                     {activeStep === 2 && (
-                      <DocumentUpload 
-                        title="Invoice Upload"
-                        accepted={{'image/*': ['.png', '.jpg', '.jpeg'], 'application/pdf': ['.pdf']}}
-                        onUpload={setInvoiceFiles}
-                        files={invoiceFiles}
-                      />
+                      hasPurchaseOrder ? (
+                        <DocumentUpload
+                          title="Invoice Upload"
+                          accepted={{'image/*': ['.png', '.jpg', '.jpeg'], 'application/pdf': ['.pdf']}}
+                          onUpload={handleInvoiceUpload}
+                          files={invoiceFiles}
+                        />
+                      ) : renderLockedStage({ label: 'Invoice', requires: 'Purchase Order', target: 0 })
                     )}
                     {activeStep === 3 && (
-                      invoiceFiles.length > 0 ? (
+                      !hasPurchaseOrder ? (
+                        renderLockedStage({ label: 'Weightslip', requires: 'Purchase Order', target: 0 })
+                      ) : invoiceFiles.length > 0 ? (
                         <DocumentUpload
                           title="Weightslip Upload"
                           accepted={{'image/*': ['.png', '.jpg', '.jpeg'], 'application/pdf': ['.pdf']}}
-                          onUpload={setWeightslipFiles}
+                          onUpload={handleWeightslipUpload}
                           files={weightslipFiles}
                         />
                       ) : (
-                        <div className="upload-box card" style={{ textAlign: 'center', padding: '3rem 2rem', alignItems: 'center', justifyContent: 'center' }}>
-                          <div style={{
-                            width: '56px', height: '56px', borderRadius: '50%',
-                            background: 'rgba(100,116,139,0.1)', border: '2px dashed rgba(100,116,139,0.35)',
-                            display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1.25rem'
-                          }}>
-                            <Lock size={24} style={{ color: 'var(--text-muted)' }} />
-                          </div>
-                          <h3 className="upload-title" style={{ fontSize: '1.15rem', marginBottom: '0.6rem', color: 'var(--text)' }}>
-                            Weightslip Upload Locked
-                          </h3>
-                          <p style={{ fontSize: '0.92rem', color: 'var(--text-muted)', maxWidth: '420px', margin: '0 auto 1.5rem', lineHeight: '1.6' }}>
-                            The weightslip can only be added once the invoice has been uploaded.
-                          </p>
-                          <button
-                            className="btn btn-primary"
-                            onClick={() => setActiveStep(2)}
-                            style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}
-                          >
-                            <FileText size={16} /> Upload Invoice First
-                          </button>
-                        </div>
+                        renderLockedStage({ label: 'Weightslip', requires: 'Invoice', target: 2 })
                       )
                     )}
                     {activeStep === 4 && (
-                      invoiceFiles.length > 0 ? (
+                      !hasPurchaseOrder ? (
+                        renderLockedStage({ label: 'Gatepass', requires: 'Purchase Order', target: 0 })
+                      ) : invoiceFiles.length > 0 ? (
                         <DocumentUpload
                           title="Gatepass Upload"
                           accepted={{'image/*': ['.png', '.jpg', '.jpeg'], 'application/pdf': ['.pdf']}}
-                          onUpload={setGatepassFiles}
+                          onUpload={handleGatepassUpload}
                           files={gatepassFiles}
                         />
                       ) : (
-                        <div className="upload-box card" style={{ textAlign: 'center', padding: '3rem 2rem', alignItems: 'center', justifyContent: 'center' }}>
-                          <div style={{
-                            width: '56px', height: '56px', borderRadius: '50%',
-                            background: 'rgba(100,116,139,0.1)', border: '2px dashed rgba(100,116,139,0.35)',
-                            display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1.25rem'
-                          }}>
-                            <Lock size={24} style={{ color: 'var(--text-muted)' }} />
-                          </div>
-                          <h3 className="upload-title" style={{ fontSize: '1.15rem', marginBottom: '0.6rem', color: 'var(--text)' }}>
-                            Gatepass Upload Locked
-                          </h3>
-                          <p style={{ fontSize: '0.92rem', color: 'var(--text-muted)', maxWidth: '420px', margin: '0 auto 1.5rem', lineHeight: '1.6' }}>
-                            The gatepass can only be added once the invoice has been uploaded.
-                          </p>
-                          <button
-                            className="btn btn-primary"
-                            onClick={() => setActiveStep(2)}
-                            style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}
-                          >
-                            <FileText size={16} /> Upload Invoice First
-                          </button>
-                        </div>
+                        renderLockedStage({ label: 'Gatepass', requires: 'Invoice', target: 2 })
                       )
                     )}
 

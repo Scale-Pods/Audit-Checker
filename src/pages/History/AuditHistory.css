@@ -111,7 +111,7 @@
   padding: 0 1rem;
 }
 
-/* ── Purchase / Sales Side Toggle ──────────────────────────────
+/* â”€â”€ Purchase / Sales Side Toggle â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
    The visual treatment (frosted pebble shell, per-side tint) lives in
    pebble-select.css as .pebble-btn. Only layout lives here. */
 .side-toggle-group {
@@ -317,7 +317,7 @@
   }
 }
 
-/* ── Sales Comparison Modal ──────────────────────────────── */
+/* â”€â”€ Sales Comparison Modal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .sales-modal {
   max-width: 1200px !important;
   width: 98vw !important;
@@ -332,7 +332,7 @@
   letter-spacing: 0.08em;
 }
 
-/* ── Sales Comparison Table ──────────────────────────────── */
+/* â”€â”€ Sales Comparison Table â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .sales-compare-table {
   width: 100%;
   border-collapse: collapse;
@@ -472,7 +472,7 @@
   }
 }
 
-/* ── Sales Table ─────────────────────────────────────────── */
+/* â”€â”€ Sales Table â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .sales-data-table {
   min-width: 100%;
 }
@@ -568,7 +568,7 @@
   text-overflow: ellipsis;
 }
 
-/* ── Purchase Ledger Cards ────────────────────────────────────
+/* â”€â”€ Purchase Ledger Cards â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
    The seven-column table hid its meaning behind jargon headers
    ("Audit Identity", "Operational Metrics", "Intelligence Trace")
    that never matched the single value underneath. Each record is
@@ -721,8 +721,8 @@
   max-width: 480px;
 }
 
-/* Labelled facts replace the ambiguous header cells. A two-column grid —
-   fixed label column + monospace value column — keeps every label and every
+/* Labelled facts replace the ambiguous header cells. A two-column grid â€”
+   fixed label column + monospace value column â€” keeps every label and every
    value at the same size and on the same baseline, so "Batch / E-Way Bill /
    Audited" no longer renders as three ragged inline pairs. */
 .purchase-facts {
@@ -814,7 +814,7 @@
   }
 }
 
-/* ── Sales Filter Bar (Quick Entry toggle + score tiers) ─── */
+/* â”€â”€ Sales Filter Bar (Quick Entry toggle + score tiers) â”€â”€â”€ */
 .sales-filter-bar {
   display: flex;
   align-items: center;
@@ -906,41 +906,6 @@
   left: calc(100% - 16px);
 }
 
-.score-filter-group {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
-  flex-wrap: wrap;
-}
-
-.score-pill-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  flex-shrink: 0;
-}
-
-.score-pill.tone-high .score-pill-dot { background: #10b981; }
-.score-pill.tone-medium .score-pill-dot { background: #f59e0b; }
-.score-pill.tone-low .score-pill-dot { background: #ef4444; }
-
-.score-pill.tone-high.active {
-  background: rgba(16, 185, 129, 0.14);
-  border-color: rgba(16, 185, 129, 0.45);
-  color: #10b981;
-}
-
-.score-pill.tone-medium.active {
-  background: rgba(245, 158, 11, 0.14);
-  border-color: rgba(245, 158, 11, 0.45);
-  color: #f59e0b;
-}
-
-.score-pill.tone-low.active {
-  background: rgba(239, 68, 68, 0.14);
-  border-color: rgba(239, 68, 68, 0.45);
-  color: #ef4444;
-}
 
 /* Score marker rendered on every ledger card */
 .sales-score-indicator {
@@ -1001,7 +966,7 @@
   }
 }
 
-/* ── Sales Record List (New) ─────────────────────────────── */
+/* â”€â”€ Sales Record List (New) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .sales-records-list {
   display: flex;
   flex-direction: column;
@@ -1918,7 +1883,7 @@
   font-weight: 600;
 }
 
-/* ── Unified Trace Button ──────────────────────── */
+/* â”€â”€ Unified Trace Button â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .unified-trace-btn {
   display: inline-flex;
   align-items: stretch;
@@ -1966,41 +1931,11 @@
   color: white;
 }
 
-/* ── Universal Button in table row ──────────────────────── */
+/* â”€â”€ Universal Button in table row â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 
-/* ── Address verification badges ───────────────────────── */
-.addr-ok {
-  background: rgba(16, 185, 129, 0.07) !important;
-  color: var(--text) !important;
-}
-
-.addr-fail {
-  background: rgba(239, 68, 68, 0.07) !important;
-  color: var(--text) !important;
-}
-
-.addr-badge {
-  display: block;
-  margin-top: 0.35rem;
-  font-size: 0.6rem;
-  font-weight: 800;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  padding: 2px 7px;
-  border-radius: 99px;
-}
-
-.addr-badge.ok {
-  background: rgba(16, 185, 129, 0.15);
-  color: #10b981;
-  border: 1px solid rgba(16, 185, 129, 0.25);
-}
-
-.addr-badge.fail {
-  background: rgba(239, 68, 68, 0.15);
-  color: #ef4444;
-  border: 1px solid rgba(239, 68, 68, 0.25);
-}
+/* Address verification used to be judged against a hard-coded token list for one
+   known customer. It now compares the documents against each other, so these
+   per-cell badges have no producer. */
 
 .addr-hint-badge {
   font-size: 0.62rem;
@@ -2021,7 +1956,7 @@
   font-size: 0.7rem !important;
 }
 
-/* ── Premium Intelligence View ──────────────────────── */
+/* â”€â”€ Premium Intelligence View â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .intelligence-grid.premium {
   display: grid;
   grid-template-columns: 1.2fr 1fr;
@@ -2259,7 +2194,7 @@
   font-weight: 800;
 }
 
-/* ── Modal Footer Layout ──────────────────────── */
+/* â”€â”€ Modal Footer Layout â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .modal-footer {
   padding: 1.5rem 2.5rem;
   background: rgba(0, 0, 0, 0.05);
@@ -2283,6 +2218,134 @@
   display: flex;
   align-items: center;
   gap: 2.5rem;
+}
+
+/* Steps through the ledger rows that belong to one purchase audit. Sits under the
+   modal subtitle, so the reference and which of its rows is on screen are read
+   together. Disabled at the ends rather than hidden, so the row count stays
+   visible. */
+/* Switches between the ledger rows that belong to one audit. Shared by both
+   modals, so a grouped record looks and behaves the same on either side.
+   Sits under the modal title, so the reference and which of its rows is on
+   screen are read together. Disabled at the ends rather than hidden, so the
+   count stays visible. */
+/* Switches between the ledger records that belong to one audit. Shared by both
+   modals so a grouped record looks and behaves the same on either side.
+
+   One idea per element: a solid counter is the only thing worth looking at, the
+   chevrons are ghost buttons that borrow emphasis on hover, and nothing is
+   boxed. The earlier version nested a bordered circle inside a bordered pill
+   and floated a divider line behind the dots, which is what made it read as
+   clutter rather than a control. */
+/* Switches between the ledger records that belong to one audit. Shared by both
+   modals so a grouped record looks and behaves the same on either side.
+
+   `width: fit-content` is load-bearing. The purchase header wraps this in a
+   column flex with no align-items, so the default stretch pulled the pill the
+   full width of the modal while the dots stayed left-packed, leaving a wide
+   blank gap to the right of the last chevron. The sales header is a row flex,
+   which is why only one side showed it. */
+/* Switches between the ledger records that belong to one audit. Shared by both
+   modals so a grouped record looks and behaves the same on either side.
+
+   `width: fit-content` is load-bearing. The purchase header wraps this in a
+   column flex with no align-items, so the default stretch pulled the pill the
+   full width of the modal while the label stayed left-packed, leaving a wide
+   blank gap to the right. The sales header is a row flex, which is why only one
+   side showed it. */
+.record-stepper {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.15rem;
+  width: fit-content;
+  margin-top: 0.7rem;
+  padding: 0.28rem 0.32rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+}
+
+/* Filled rather than outlined. An earlier pass gave these transparent centres so
+   they would not read as a circle nested inside a circle - but with nothing
+   behind them they stopped reading as buttons at all, which is the affordance
+   that matters most here. */
+.record-stepper .stepper-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.85rem;
+  height: 1.85rem;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.05);
+  color: var(--text);
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, opacity 0.15s ease;
+}
+
+.record-stepper .stepper-btn:hover:not(:disabled) {
+  background: var(--primary);
+  color: #fff;
+}
+
+.record-stepper .stepper-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.record-stepper .stepper-btn:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 1px;
+}
+
+.record-stepper .stepper-label {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.22rem;
+  padding: 0 0.55rem;
+  white-space: nowrap;
+  /* Keeps the pill from twitching as the page number changes width. */
+  font-variant-numeric: tabular-nums;
+}
+
+.record-stepper .stepper-word {
+  font-size: 0.6rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--text-muted);
+}
+
+/* The live page number is the one thing that has to be readable at a glance,
+   so it takes the size and the ink and the rest recedes around it. */
+.record-stepper .stepper-current {
+  font-size: 0.95rem;
+  font-weight: 800;
+  line-height: 1;
+  color: var(--primary);
+}
+
+.record-stepper .stepper-sep {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  opacity: 0.65;
+}
+
+.record-stepper .stepper-total {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--text-muted);
+}
+/* The percent sign on a score capsule. In a monospace face % is drawn at full
+   cap height, so at the same size as the digits it reads as sitting too high.
+   Scaling it down and keeping it on the shared baseline levels it with the
+   numbers without moving the number itself. */
+.cap-pct {
+  margin-left: 0.08em;
+  font-size: 0.72em;
+  opacity: 0.8;
 }
 
 .action-group {
@@ -2561,7 +2624,7 @@
   }
 }
 
-/* ── Invoice Grouping & Swipe Navigation ───────────────────── */
+/* â”€â”€ Invoice Grouping & Swipe Navigation â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .sales-invoice-header {
   display: flex;
   align-items: center;
@@ -2761,276 +2824,161 @@
   }
 }
 
-/* ══════════════════════════════════════════════════════════════
-   UPGRADED UNIVERSAL DOCUMENT LEDGER — PREMIUM STYLES
-   ══════════════════════════════════════════════════════════════ */
+/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+   UPGRADED UNIVERSAL DOCUMENT LEDGER â€” PREMIUM STYLES
+   â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
 
-/* ── Modal sizing ── */
+/* â”€â”€ Modal sizing â”€â”€ */
 .ledger-modal {
   max-width: 1100px !important;
   width: 95vw !important;
 }
 
+/* â•â• Capsule design language â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+   One radius, one type scale and one border treatment for every status
+   pill and control across both ledger modals. Before this the same idea
+   was drawn at 4px, 6px, 8px, 9px, 10px, 50px and 999px inside a single
+   viewport, which is what made the UI read as unresolved.
+
+   Geometry and type live here; the tone colours stay inline because they
+   are computed from the recorded value. Matrix cells stay rectangular on
+   purpose - a grid of rounded rows is markedly slower to scan down. */
+
+.cap {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  white-space: nowrap;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  padding: 0.26rem 0.7rem;
+  font-size: 0.68rem;
+  font-weight: 800;
+  line-height: 1.35;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+/* Numbers are read, not shouted: no uppercase, and tabular figures so a
+   score does not jitter as it animates between values. */
+.cap-num {
+  text-transform: none;
+  letter-spacing: 0;
+  font-family: 'monospace';
+  font-variant-numeric: tabular-nums;
+}
+
+.cap-lg {
+  padding: 0.55rem 0.95rem;
+  font-size: 0.82rem;
+  gap: 0.4rem;
+  border-radius: 999px;
+}
+
+.cap-sm {
+  padding: 0.1rem 0.45rem;
+  font-size: 0.6rem;
+  gap: 0.2rem;
+}
+
+/* Section heading inside the sales collapse control. Same pill as the purchase
+   block title, so the two modals announce their sections identically. */
+.audit-section-pill {
+  margin: 0;
+  padding: 0.32rem 0.8rem;
+  border-color: var(--border);
+  background: rgba(0, 0, 0, 0.03);
+  color: var(--text);
+}
+
+/* Panels and containers get one shared radius. The capsule scale is reserved
+   for pills and controls - a 999px panel with a header bar reads as a lozenge
+   and wastes the corners. */
+.ledger-modal .panel-radius {
+  border-radius: 12px;
+}
+
+.ledger-modal .btn-approve,
+.ledger-modal .btn-reject {
+  border-radius: 999px;
+}
+
+/* Roll-up of the control checks. Sized up because the block starts folded
+   away, so these counts are the only thing an auditor sees until they open it â€”
+   they have to carry the headline on their own. */
 .stat-chip {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  font-size: 0.6rem;
-  font-weight: 700;
-  padding: 2px 8px;
-  border-radius: 6px;
+  gap: 0.4rem;
+  font-size: 0.82rem;
+  font-weight: 800;
+  padding: 0.55rem 0.9rem;
+  border-radius: 999px;
+  border: 1px solid transparent;
 }
 
 .stat-chip.match-chip {
   background: rgba(16, 185, 129, 0.08);
+  border-color: rgba(16, 185, 129, 0.25);
   color: #10b981;
 }
 
 .stat-chip.partial-chip {
   background: rgba(245, 158, 11, 0.08);
+  border-color: rgba(245, 158, 11, 0.25);
   color: #f59e0b;
 }
 
 .stat-chip.mismatch-chip {
   background: rgba(239, 68, 68, 0.08);
+  border-color: rgba(239, 68, 68, 0.25);
   color: #ef4444;
 }
 
-/* ── GRN Column ── */
+/* Once the list is open it is doing the talking, so the count cards step back
+   to chips and let the individual verdict rows carry the weight. */
+.verdict-summary.is-expanded .stat-chip {
+  font-size: 0.62rem;
+  font-weight: 700;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 6px;
+  border-color: transparent;
+}
+
+.verdict-summary.is-expanded {
+  gap: 0.35rem;
+}
+
+/* â”€â”€ GRN Column â”€â”€ */
 .universal-modal .comparison-table .grn-col {
   background: rgba(217, 119, 6, 0.08);
   color: #d97706;
   border-bottom: 2px solid #d97706;
 }
 
-/* ── Ledger Row Statuses ── */
-.ledger-row {
-  transition: background 0.15s;
-}
 
-.ledger-row:hover {
-  background: rgba(0, 0, 0, 0.02);
-}
-
-.universal-modal .comparison-table tbody tr:nth-child(even) {
-  background: rgba(0, 0, 0, 0.01);
-}
-
-/* Row-level status highlighting */
-.status-match-row .field-name-cell {
-  color: #10b981 !important;
-}
-
-.status-partial-row .field-name-cell {
-  color: #f59e0b !important;
-}
-
-.status-mismatch-row .field-name-cell {
-  color: #ef4444 !important;
-}
-
-.status-critical-row .field-name-cell {
-  color: #b91c1c !important;
-}
-
-.duplicate-lr-row .field-name-cell {
-  color: #ea580c !important;
-}
-
-/* ── Row Status Badge ── */
-.row-status-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  padding: 2px 7px;
-  border-radius: 99px;
-  /* 0.52rem rendered at 8.3px on the mobile root — under the legibility floor. */
-  font-size: 0.6rem;
-  font-weight: 800;
-  letter-spacing: 0.04em;
-  white-space: nowrap;
-  vertical-align: middle;
-  cursor: help;
-}
-
-.row-status-badge .badge-label {
-  text-transform: uppercase;
-}
-
-.row-status-badge.status-match {
-  background: rgba(16, 185, 129, 0.12);
-  color: #10b981;
-  border: 1px solid rgba(16, 185, 129, 0.2);
-}
-
-.row-status-badge.status-partial {
-  background: rgba(245, 158, 11, 0.12);
-  color: #f59e0b;
-  border: 1px solid rgba(245, 158, 11, 0.2);
-}
-
-.row-status-badge.status-mismatch {
-  background: rgba(239, 68, 68, 0.12);
-  color: #ef4444;
-  border: 1px solid rgba(239, 68, 68, 0.2);
-}
-
-.row-status-badge.status-critical {
-  background: rgba(185, 28, 28, 0.12);
-  color: #b91c1c;
-  border: 1px solid rgba(185, 28, 28, 0.2);
-  animation: criticalPulse 1.5s ease-in-out infinite;
-}
-
-@keyframes criticalPulse {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(185, 28, 28, 0.3); }
-  50% { box-shadow: 0 0 6px 2px rgba(185, 28, 28, 0.15); }
-}
-
-.row-status-badge.duplicate-lr {
-  background: rgba(234, 88, 12, 0.12);
-  color: #ea580c;
-  border: 1px solid rgba(234, 88, 12, 0.2);
-}
-
-/* ── Row Tooltip ── */
-.row-tooltip {
-  display: none;
-  position: absolute;
-  left: 0;
-  bottom: calc(100% + 4px);
-  background: #1e293b;
-  color: #e2e8f0;
-  font-size: 0.62rem;
-  font-weight: 600;
-  padding: 6px 10px;
-  border-radius: 8px;
-  white-space: nowrap;
-  max-width: 320px;
-  z-index: 100;
-  box-shadow: 0 8px 20px rgba(0,0,0,0.3);
-  border: 1px solid rgba(255,255,255,0.05);
-  pointer-events: none;
-}
-
-.field-name-cell:hover .row-tooltip,
-.row-status-badge:hover + .row-tooltip {
-  display: block;
-}
-
-/* ── Cell status backgrounds in premium section ── */
-.doc-value-cell {
-  position: relative;
-}
-
-/* Cell-level status backgrounds */
-.doc-value-cell.status-match-cell {
-  background: rgba(16, 185, 129, 0.06) !important;
-  color: #059669 !important;
-  font-weight: 600;
-}
-
-.doc-value-cell.status-partial-cell {
-  background: rgba(245, 158, 11, 0.06) !important;
-  color: #d97706 !important;
-  font-weight: 600;
-}
-
-.doc-value-cell.status-mismatch-cell {
-  background: rgba(239, 68, 68, 0.06) !important;
-  color: #dc2626 !important;
-  font-weight: 700;
-}
-
-.doc-value-cell.status-critical-cell {
-  background: rgba(185, 28, 28, 0.06) !important;
-  color: #b91c1c !important;
-  font-weight: 700;
-}
-
-.doc-value-cell.duplicate-lr-cell {
-  background: rgba(234, 88, 12, 0.06) !important;
-  color: #ea580c !important;
-  font-weight: 600;
-}
-
-/* ── Cell Status Badge ── */
-.cell-status-badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
+/* â”€â”€ CONSOLIDATED LR badge â”€â”€
+   Marks a value that a single consolidated LR repeats across every invoice row.
+   It is shown unchanged on each row and never divided between them. */
+.consolidated-badge {
+  display: inline-block;
   margin-left: 6px;
-  flex-shrink: 0;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: rgba(234, 88, 12, 0.12);
+  border: 1px solid rgba(234, 88, 12, 0.3);
+  color: #ea580c;
+  font-size: 0.55rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  white-space: nowrap;
   vertical-align: middle;
-  position: relative;
   cursor: help;
 }
 
-.cell-status-badge.status-match {
-  background: rgba(16, 185, 129, 0.15);
-  color: #10b981;
-  box-shadow: 0 0 6px rgba(16, 185, 129, 0.3);
-}
 
-.cell-status-badge.status-partial {
-  background: rgba(245, 158, 11, 0.15);
-  color: #f59e0b;
-}
-
-.cell-status-badge.status-mismatch {
-  background: rgba(239, 68, 68, 0.15);
-  color: #ef4444;
-}
-
-.cell-status-badge.status-critical {
-  background: rgba(185, 28, 28, 0.15);
-  color: #b91c1c;
-  animation: criticalPulse 1.5s ease-in-out infinite;
-}
-
-.cell-status-badge.duplicate-lr {
-  background: rgba(234, 88, 12, 0.15);
-  color: #ea580c;
-}
-
-/* ── Cell Tooltip ── */
-.cell-tooltip {
-  display: none;
-  position: absolute;
-  top: -4px;
-  left: 50%;
-  transform: translateX(-50%) translateY(-100%);
-  background: #1e293b;
-  color: #e2e8f0;
-  font-size: 0.6rem;
-  font-weight: 600;
-  padding: 5px 10px;
-  border-radius: 8px;
-  white-space: nowrap;
-  max-width: 280px;
-  z-index: 100;
-  box-shadow: 0 8px 20px rgba(0,0,0,0.3);
-  border: 1px solid rgba(255,255,255,0.05);
-  pointer-events: none;
-  text-align: center;
-}
-
-.doc-value-cell:hover .cell-tooltip {
-  display: block;
-}
-
-/* ── N/A Text ── */
-.na-text {
-  color: var(--text-muted);
-  font-style: italic;
-  opacity: 0.4;
-  font-size: 0.7rem;
-}
-
-/* ── Audit block: shared shell for Verdicts / Findings / Summary / Insights ── */
+/* â”€â”€ Audit block: shared shell for Verdicts / Findings / Summary / Insights â”€â”€ */
 .audit-block {
   margin: 1.25rem 0 0;
   padding: 1rem 1.15rem;
@@ -3051,19 +2999,25 @@
   border-bottom: 1px solid var(--border);
 }
 
+/* Section titles are capsules too, so the two modals announce their blocks the
+   same way regardless of which side you are on. */
 .audit-block-title {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 0.45rem;
+  gap: 0.4rem;
   margin: 0;
-  font-size: 0.68rem;
+  padding: 0.3rem 0.75rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: rgba(0, 0, 0, 0.03);
+  font-size: 0.66rem;
   font-weight: 800;
   text-transform: uppercase;
   letter-spacing: 0.1em;
   color: var(--text-muted);
 }
 
-/* ── Compliance Verdicts ── */
+/* â”€â”€ Compliance Verdicts â”€â”€ */
 .verdict-summary {
   display: flex;
   align-items: center;
@@ -3072,22 +3026,24 @@
 }
 
 /* The tone rail lets a long verdict list be scanned down its left edge
-   instead of read row by row. */
+   instead of read row by row. Shaped as a full capsule to match the rest of
+   the control language; the icon carries the tone now that the row is rounded,
+   so the left rail is replaced by a tone border all the way round. */
 .verdict-row {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
-  padding: 0.45rem 0.7rem;
-  border-radius: 9px;
-  border: 1px solid var(--border);
-  border-left: 3px solid var(--verdict-color, var(--border));
+  gap: 0.6rem;
+  min-height: 2.6rem;
+  padding: 0.6rem 1rem;
+  border-radius: 999px;
+  border: 1px solid var(--verdict-border, var(--border));
   background: var(--verdict-bg, rgba(0, 0, 0, 0.015));
 }
 
-.verdict-row.tone-positive { --verdict-color: #10b981; --verdict-bg: rgba(16, 185, 129, 0.06); }
-.verdict-row.tone-negative { --verdict-color: #ef4444; --verdict-bg: rgba(239, 68, 68, 0.06); }
-.verdict-row.tone-warning  { --verdict-color: #f59e0b; --verdict-bg: rgba(245, 158, 11, 0.06); }
-.verdict-row.tone-neutral  { --verdict-color: #94a3b8; --verdict-bg: rgba(100, 116, 139, 0.04); }
+.verdict-row.tone-positive { --verdict-color: #10b981; --verdict-bg: rgba(16, 185, 129, 0.06); --verdict-border: rgba(16, 185, 129, 0.28); }
+.verdict-row.tone-negative { --verdict-color: #ef4444; --verdict-bg: rgba(239, 68, 68, 0.06); --verdict-border: rgba(239, 68, 68, 0.28); }
+.verdict-row.tone-warning  { --verdict-color: #f59e0b; --verdict-bg: rgba(245, 158, 11, 0.06); --verdict-border: rgba(245, 158, 11, 0.28); }
+.verdict-row.tone-neutral  { --verdict-color: #94a3b8; --verdict-bg: rgba(100, 116, 139, 0.04); --verdict-border: rgba(100, 116, 139, 0.22); }
 
 .verdict-row-icon {
   display: flex;
@@ -3098,13 +3054,13 @@
 .verdict-row-label {
   flex: 1;
   min-width: 0;
-  font-size: 0.79rem;
+  font-size: 0.82rem;
   font-weight: 600;
   color: var(--text);
 }
 
 .verdict-row-value {
-  font-size: 0.66rem;
+  font-size: 0.68rem;
   font-weight: 800;
   text-transform: uppercase;
   letter-spacing: 0.05em;
@@ -3112,7 +3068,7 @@
   white-space: nowrap;
 }
 
-/* ── Audit Findings ── */
+/* â”€â”€ Audit Findings â”€â”€ */
 .finding-group + .finding-group {
   margin-top: 0.9rem;
   padding-top: 0.9rem;
@@ -3199,14 +3155,21 @@
   color: var(--text-muted);
 }
 
-/* ── Audit Summary ── */
+/* â”€â”€ Audit Summary â”€â”€ */
+/* The workflow's written conclusion.
+
+   The horizontal margin is the whole point. Flush left and right it shared the
+   exact edge of the section panel above, so the two read as one taller card with
+   a seam in it rather than as a note sitting below. Insetting both sides breaks
+   that alignment, which is what separates them - a different background or
+   border was not enough on its own. */
 .audit-summary-card {
-  margin: 1.25rem 0 0;
-  padding: 1rem 1.15rem;
-  border-radius: 14px;
-  border: 1px solid color-mix(in srgb, var(--primary) 22%, transparent);
-  background: color-mix(in srgb, var(--primary) 6%, transparent);
-  box-shadow: inset 3px 0 0 var(--primary);
+  margin: 1.5rem 1rem 0.5rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--primary) 8%, transparent);
+  box-shadow: inset 4px 0 0 var(--primary);
 }
 
 .audit-summary-head {
@@ -3230,45 +3193,12 @@
   white-space: pre-line;
 }
 
-/* ── Audit Insights ── */
-.insights-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 0.45rem;
-}
-
-.insight-item {
-  display: flex;
-  align-items: flex-start;
-  gap: 0.6rem;
-  padding: 0.5rem 0.7rem;
-  border-radius: 8px;
-  background: rgba(0, 0, 0, 0.02);
-  font-size: 0.79rem;
-  font-weight: 500;
-  line-height: 1.5;
-  color: var(--text);
-}
-
-.insight-bullet {
-  width: 6px;
-  height: 6px;
-  margin-top: 0.55em;
-  border-radius: 50%;
-  background: var(--primary);
-  flex-shrink: 0;
-  opacity: 0.7;
-}
-
-/* ── Modal Body with table ── */
+/* â”€â”€ Modal Body with table â”€â”€ */
 .universal-modal .modal-body {
   padding: 1rem 0;
 }
 
-/* ── Responsive for 5-column table ── */
+/* â”€â”€ Responsive for 5-column table â”€â”€ */
 @media (max-width: 1024px) {
   .ledger-modal {
     max-width: 98vw !important;
@@ -3277,8 +3207,8 @@
 
 @media (max-width: 768px) {
   .stat-chip {
-    font-size: 0.62rem;
-    padding: 1px 6px;
+    font-size: 0.72rem;
+    padding: 0.4rem 0.65rem;
   }
   .audit-block {
     margin-top: 0.9rem;
@@ -3287,9 +3217,6 @@
   .audit-block-head {
     padding-bottom: 0.55rem;
     margin-bottom: 0.65rem;
-  }
-  .insight-item {
-    font-size: 0.72rem;
   }
   .verdict-row,
   .finding-item {
@@ -3306,10 +3233,10 @@
   }
 }
 
-/* ══════════════════════════════════════════════════════════════
+/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
    SALES DETAIL SECTION LAYOUT (target: 440 x 956)
    Grids live here rather than inline so they can reflow per breakpoint.
-   ══════════════════════════════════════════════════════════════ */
+   â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
 
 .audit-stat-grid {
   display: grid;
@@ -3329,10 +3256,46 @@
   gap: 0.7rem;
 }
 
+/* Wide minimum on purpose: at 230px this packed three checks per row, which
+   squeezed a label like "Supplier GSTIN" and its verdict badge onto one line
+   and left the whole block feeling cramped. Two roomy columns read far better. */
 .audit-check-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
-  gap: 0.4rem;
+  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+  gap: 0.6rem;
+}
+
+/* The whole header doubles as the collapse control, so it must not inherit
+   any button chrome the design system would otherwise apply. */
+.audit-block-toggle {
+  width: 100%;
+  background: none;
+  border: 0;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.audit-block-toggle:hover .audit-block-title {
+  color: var(--text);
+}
+
+.audit-block-toggle:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 3px;
+  border-radius: 6px;
+}
+
+.audit-toggle-caret {
+  margin-left: 0.15rem;
+  color: var(--text-muted);
+  flex-shrink: 0;
+  transition: transform 0.18s ease;
+}
+
+.audit-toggle-caret.is-open {
+  transform: rotate(180deg);
 }
 
 /* Sits inline with the other header chips, so it matches their footprint
@@ -3380,14 +3343,14 @@
   background: var(--surface);
 }
 
-/* ══════════════════════════════════════════════════════════════
-   ≤480px MOBILE OPTIMIZATION
+/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+   â‰¤480px MOBILE OPTIMIZATION
    440 x 956 (and every phone down to 320px) gets a full-height
    sheet with an internally scrolling body.
-   ══════════════════════════════════════════════════════════════ */
+   â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
 
 @media (max-width: 480px) {
-  /* The 13px → 16px root step lives in index.css and applies app-wide; a local
+  /* The 13px â†’ 16px root step lives in index.css and applies app-wide; a local
      html/body rule here would override it and make this page the only one
      rendering at 15px. This block handles the sheet layout only. */
 
@@ -3476,7 +3439,7 @@
   /* The button label classes were declared but never actually hidden, so on a
      360px screen the sort control was crushed to a 42px sliver trying to hold
      the "Latest" wordmark next to a 297px search field. Drop the labels and
-     keep the icons — every one of these buttons carries an aria-label or
+     keep the icons â€” every one of these buttons carries an aria-label or
      title. */
   .hide-mobile {
     display: none !important;
@@ -3532,7 +3495,7 @@
     border-right: none !important;
   }
 
-  /* ── Purchase audit cards ── */
+  /* â”€â”€ Purchase audit cards â”€â”€ */
   .audit-row {
     padding: 0.8rem !important;
     margin-bottom: 1rem;
@@ -3584,7 +3547,7 @@
     padding: 0.3rem 0.6rem;
   }
 
-  /* ── Sales record cards ── */
+  /* â”€â”€ Sales record cards â”€â”€ */
   .sales-record-card {
     flex-wrap: wrap;
     gap: 0.6rem;
@@ -3611,7 +3574,7 @@
     font-size: 0.7rem;
   }
 
-  /* ── Universal comparison ledger rows ── */
+  /* â”€â”€ Universal comparison ledger rows â”€â”€ */
   .doc-value-cell {
     padding: 0.6rem 0 !important;
     word-break: break-word;
@@ -3622,7 +3585,7 @@
     font-size: 0.78rem !important;
   }
 
-  /* ── Pagination ── */
+  /* â”€â”€ Pagination â”€â”€ */
   .pagination {
     flex-wrap: wrap;
     gap: 0.5rem !important;
@@ -3631,7 +3594,7 @@
   }
 }
 
-/* ── Large screens ───────────────────────────────────────────
+/* â”€â”€ Large screens â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
    The comparison modal is capped at 1200px for laptop comfort,
    but its matrix carries a field column plus up to five document
    columns. On a 2560px panel that cap forces the PO / Gate Pass /
@@ -3656,7 +3619,7 @@
   }
 }
 
-/* Small handsets (iPhone SE and narrower) — the 480px tier still
+/* Small handsets (iPhone SE and narrower) â€” the 480px tier still
    leaves the toolbar controls competing for one row. */
 @media (max-width: 380px) {
   .history-page .side-toggle-btn {

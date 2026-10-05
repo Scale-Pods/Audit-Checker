@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useMemo } from 'react'
+import React, { useState, useEffect, useMemo, useRef } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { FileText, CheckCircle, AlertTriangle, Eye, Download, Loader2, Truck, Hash, X, Info, IndianRupee, Activity, ChevronLeft, ChevronRight, Check, Shield, TrendingUp, BarChart3, UploadCloud, FileUp, Mail, FileSpreadsheet, ShoppingCart, ClipboardList, Scale, Filter, ArrowDownWideNarrow, ArrowUpNarrowWide } from 'lucide-react'
+import { FileText, CheckCircle, AlertTriangle, Eye, Download, Loader2, Truck, Hash, X, Info, IndianRupee, Activity, ChevronLeft, ChevronRight, ChevronDown, Check, Shield, TrendingUp, UploadCloud, FileUp, Mail, FileSpreadsheet, ShoppingCart, ClipboardList, Scale, Filter, ArrowDownWideNarrow, ArrowUpNarrowWide } from 'lucide-react'
 import { fetchSalesRecords, hasDocData as hasDocPrefixData, isRecordQuickEntry, salesLedgerSource } from '../../api/sales.js'
 import { fetchPurchaseRecords } from '../../api/audits.js'
 import { useSyncRefresh } from '../../context/SyncContext'
@@ -29,10 +29,11 @@ const LEDGERS_PER_PAGE = 15
 // no LR / GRN / E-Way upload for a record, and a column of em-dashes reads as
 // missing data rather than a document that was never collected — so these are
 // rendered only when the record actually carries values for them.
+// Order matches the purchase comparison matrix: Invoice, LR, E-Way, GRN.
 const LEDGER_DOC_COLUMNS = [
-  { key: 'E-Way Bill', label: '🚛 E-Way Bill', className: 'eway-col' },
-  { key: 'LR Copy', label: '📋 LR Copy', className: 'lr-col' },
-  { key: 'GRN', label: '📦 GRN', className: 'grn-col' },
+  { key: 'LR Copy', label: 'LR' },
+  { key: 'E-Way Bill', label: 'E-Way' },
+  { key: 'GRN', label: 'GRN' },
 ];
 
 const getPageItems = (currentPage, totalPages) => {
@@ -107,70 +108,188 @@ const LedgerPagination = ({ totalItems, currentPage, onPageChange, itemLabel }) 
   )
 }
 
-// Known ZV Steels address tokens for fuzzy checking
-const BILL_TO_TOKENS = ['zv steels', 'zvsteels', 'zv metal', 'aaacz0915c', 'gupta bhavan', 'masjid', 'carnac bunder', 'masjid bandar', '400009', 'mumbai', 'maharashtra']
-const SHIP_TO_TOKENS  = ['zv metal', 'roshan fabricators', 'taloja', '410208', 'bhagwan laxmi', 'zv steels', 'midc', 'maharashtra']
+/* ══════════════════════════════════════════════════════════════════
+   Purchase field mapping
 
-const ADDRESS_FIELDS  = ['Bill_To', 'Ship_To', 'Bill To', 'Ship To', 'Recipient', 'Details of Recipient', 'Consignee']
+   Every row of the reconciliation table is declared in PURCHASE_FIELD_SPEC
+   below, against the exact ledger column it reads. Nothing is inferred from a
+   column name any more.
 
-const fuzzyMatch = (value, tokens) => {
-  if (!value) return false;
-  // Deep normalization: remove spaces, dots, and convert to lowercase
-  const normalize = (s) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
-  const normValue = normalize(value);
-  return tokens.some(t => {
-    const normToken = normalize(t);
-    return normValue.includes(normToken);
-  });
-}
+   The previous implementation guessed a label by stripping a document suffix
+   off the column name, which collapsed unrelated columns onto shared labels:
+   Batch_Code_Invoice, batch_number_grn and Coil_Number_LR all became
+   "Batch / Coil Number", and gross_weight_invoice, net_weight_lr and
+   tare_weight_lr all became "Weight". Those rows were then compared against
+   each other, so the UI reported mismatches between fields that were never
+   supposed to meet. A column is now only ever read where it is written down.
+
+   level: 'document' fields identify the whole document, 'item' fields belong
+   to an invoice line. The two are never compared against one another.
+   ══════════════════════════════════════════════════════════════════ */
+
+const PURCHASE_DOC_KEYS = ['Invoice', 'E-Way Bill', 'LR Copy', 'GRN'];
+
+/* The E-Way vehicle number has been written both `Vehicle_No_Eway` and
+   `Vehicle_No_EWay` in this ledger. Both are accepted so a row extracted either
+   way still shows its vehicle, instead of reading as an empty cell. */
+const PURCHASE_COLUMN_ALIASES = {
+  Vehicle_No_Eway: ['Vehicle_No_EWay', 'Vehicle No (EWay)'],
+  Vehicle_No_LR: ['Vehicle No (LR)'],
+};
+
+const readPurchaseColumn = (row, column) => {
+  if (!row || !column) return null;
+  if (hasSourceValue(row[column])) return row[column];
+  const aliases = PURCHASE_COLUMN_ALIASES[column] || [];
+  const found = aliases.find(name => hasSourceValue(row[name]));
+  return found ? row[found] : row[column];
+};
+
+const PURCHASE_FIELD_SPEC = [
+  { id: 'invoice_number', label: 'Invoice Number', level: 'document', kind: 'identifier',
+    sources: { 'Invoice': 'Invoice_Number_Invoice', 'LR Copy': 'Invoice_Number_LR', 'E-Way Bill': 'Invoice_Number_EWay', 'GRN': 'supplier_invoice_no_grn' } },
+  { id: 'invoice_date', label: 'Invoice Date', level: 'document', kind: 'date',
+    sources: { 'Invoice': 'Invoice_Date_Invoice', 'E-Way Bill': 'invoice_date_eway', 'GRN': 'supplier_invoice_date_grn' } },
+  { id: 'supplier', label: 'Supplier Name', level: 'document', kind: 'party',
+    sources: { 'Invoice': 'Supplier_Name_Invoice', 'LR Copy': 'Consigner_name_LR', 'E-Way Bill': 'Supplier_Name_EWay', 'GRN': 'supplier_name_grn' } },
+  /* E-Way carries the supplier's GSTIN on the E-Way bill itself, and the
+     buyer's on the bill-to party — they are different parties, so the two live
+     in separate rows rather than being folded into one GSTIN row. */
+  { id: 'supplier_gstin', label: 'Supplier GSTIN', level: 'document', kind: 'gstin',
+    sources: { 'Invoice': 'Invoice_SupplierGSTIn_(Invoice)', 'LR Copy': 'consignor_gstin_lr', 'E-Way Bill': 'EWB_GSTIn_(EWay)', 'GRN': 'supplier_gstin_grn' } },
+  { id: 'buyer', label: 'Buyer / Bill To', level: 'document', kind: 'address',
+    sources: { 'Invoice': 'Bill_To_Invoice', 'LR Copy': 'billed_to_lr', 'E-Way Bill': 'Bill_To_EWay', 'GRN': 'buyer_name_grn' } },
+  { id: 'buyer_gstin', label: 'Buyer GSTIN', level: 'document', kind: 'gstin',
+    sources: { 'Invoice': 'Invoice_BillToGSTIn_(Invoice)', 'LR Copy': 'billed_to_gstin_lr', 'E-Way Bill': 'bill_to_gstin_eway', 'GRN': 'buyer_gstin_grn' } },
+  { id: 'ship_to', label: 'Ship To', level: 'document', kind: 'address',
+    sources: { 'Invoice': 'Ship_To_Invoice', 'LR Copy': 'Consignee_name_LR', 'E-Way Bill': 'Ship_To_EWay', 'GRN': 'ship_to_grn' } },
+  { id: 'vehicle_no', label: 'Vehicle Number', level: 'document', kind: 'identifier',
+    sources: { 'Invoice': 'vehicle_no_invoice', 'LR Copy': 'Vehicle_No_LR', 'E-Way Bill': 'Vehicle_No_Eway' } },
+  { id: 'hsn', label: 'HSN', level: 'item', kind: 'hsn',
+    sources: { 'Invoice': 'hsn_invoice', 'E-Way Bill': 'hsn_eway', 'GRN': 'hsn_grn' } },
+  { id: 'description', label: 'Description', level: 'item', kind: 'description',
+    sources: { 'Invoice': 'description_invoice', 'LR Copy': 'material_description_lr', 'E-Way Bill': 'description_eway', 'GRN': 'description_grn' } },
+  { id: 'quantity', label: 'Quantity', level: 'item', kind: 'qty',
+    sources: { 'Invoice': 'quantity_invoice', 'E-Way Bill': 'quantity_eway', 'GRN': 'quantity_grn' } },
+  { id: 'uom', label: 'UOM', level: 'item', kind: 'text',
+    sources: { 'Invoice': 'uom_invoice', 'E-Way Bill': 'uom_eway', 'GRN': 'uom_grn' } },
+  /* Total Amount reads the LR's invoice_value_lr. On a consolidated LR that is the
+     value of the whole consignment rather than of this one invoice, so it is
+     flagged: shown unchanged on every invoice row and never divided between them. */
+  { id: 'total_amount', label: 'Total Amount', level: 'document', kind: 'amount', consolidatedDocs: ['LR Copy'],
+    sources: { 'Invoice': 'Total_Amount_Invoice', 'LR Copy': 'invoice_value_lr', 'E-Way Bill': 'Total_Amount_EWay', 'GRN': 'total_amount_grn' } },
+  { id: 'taxable_amount', label: 'Taxable Amount', level: 'item', kind: 'amount',
+    sources: { 'Invoice': 'taxable_amount_invoice', 'E-Way Bill': 'taxable_amount_eway', 'GRN': 'taxable_amount_grn' } },
+  { id: 'tax_amount', label: 'Tax Amount', level: 'document', kind: 'amount',
+    sources: { 'Invoice': 'tax_amount_invoice', 'E-Way Bill': 'tax_amount_eway', 'GRN': 'tax_amount_grn' } },
+  { id: 'po_number', label: 'PO Number', level: 'document', kind: 'identifier',
+    sources: { 'Invoice': 'po_number_invoice', 'LR Copy': 'po_number_lr' } },
+  { id: 'do_number', label: 'DO Number', level: 'document', kind: 'identifier',
+    sources: { 'Invoice': 'do_number_invoice', 'LR Copy': 'do_number_lr' } },
+  { id: 'transporter', label: 'Transporter', level: 'document', kind: 'party',
+    sources: { 'Invoice': 'transporter_name_invoice', 'LR Copy': 'transporter_name_lr', 'E-Way Bill': 'transporter_name_eway' } },
+  { id: 'ewb_number', label: 'E-Way Number', level: 'document', kind: 'ewb',
+    sources: { 'Invoice': 'ewb_number_invoice', 'LR Copy': 'EWB_Number_LR', 'E-Way Bill': 'EWB_Number_EWay' } },
+  { id: 'lr_number', label: 'LR Number', level: 'document', kind: 'identifier',
+    sources: { 'Invoice': 'lr_number_invoice', 'LR Copy': 'LR_Number_LR' } },
+];
+
+// The six outcomes, and nothing else. MISSING and NOT CHECKED are explicitly not
+// failures — they are how the UI says "this document does not carry that field".
+const FIELD_STATUS = {
+  MATCH: 'MATCH',
+  PARTIAL: 'PARTIAL',
+  MISMATCH: 'MISMATCH',
+  MISSING: 'MISSING',
+  INVALID: 'INVALID',
+  NOT_CHECKED: 'NOT CHECKED',
+};
+
+/* ── Comparison-only normalisation ───────────────────────────────────
+   None of this touches a displayed value. The raw extracted string is always
+   what the table shows; these are used only to decide a status. */
+
+// Case, punctuation and whitespace out. The floor every other rule sits on.
+const normAlnumUpper = (v) => String(v).toUpperCase().replace(/[^A-Z0-9]/g, '');
+const normKey = (v) => String(v).toLowerCase().replace(/[^a-z0-9]/g, '');
+
+/* Legal-form folding for party names, per the audit rule that "Limited" and
+   "Ltd." are the same company. Deliberately narrow: the old helper also stripped
+   city names and words like "works" and "plant", which made genuinely different
+   vendors compare equal. Only case, spacing, punctuation and legal form go. */
+const PARTY_LEGAL_FORMS = [
+  [/\blimited\b/g, 'ltd'],
+  [/\bprivate\b/g, 'pvt'],
+  [/\bcorp(?:oration)?\b/g, 'corp'],
+  [/\bcompany\b/g, 'co'],
+  [/\bincorporated\b/g, 'inc'],
+];
+const normPartyName = (v) => {
+  let s = String(v).toLowerCase().replace(/&/g, ' and ');
+  PARTY_LEGAL_FORMS.forEach(([pattern, form]) => { s = s.replace(pattern, form); });
+  return s.replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
+};
+
+/* The tokens that PARTY_LEGAL_FORMS has already collapsed onto one another.
+   Dropping them leaves the trading name, so a supplier billed as "Z V Steels" on
+   one document and "Z V Steels Pvt Ltd" on another compares equal. "llp" and
+   friends are deliberately NOT here - a LLP and a private limited company are
+   separate legal entities, and folding them together would invent matches. */
+const PARTY_FORM_TOKENS = new Set(['ltd', 'pvt', 'corp', 'co', 'inc']);
+const partyCore = (name) => name.split(' ').filter(w => !PARTY_FORM_TOKENS.has(w)).join(' ');
+
+// Digit strings, leading zeros dropped, so 00123 and 123 are the same number.
+const normNumericText = (v) => String(v).replace(/\D/g, '').replace(/^0+(?=\d)/, '');
+
+// 1 - Levenshtein/maxLength. Used only to separate OCR drift from a real
+// difference in a short identifier; it is deliberately not used on free text.
+const editSimilarity = (a, b) => {
+  if (!a && !b) return 1;
+  if (!a || !b) return 0;
+  if (a === b) return 1;
+  let prev = Array.from({ length: b.length + 1 }, (_, i) => i);
+  for (let i = 1; i <= a.length; i += 1) {
+    const curr = [i];
+    for (let j = 1; j <= b.length; j += 1) {
+      curr[j] = Math.min(
+        prev[j] + 1,
+        curr[j - 1] + 1,
+        prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1)
+      );
+    }
+    prev = curr;
+  }
+  return 1 - prev[b.length] / Math.max(a.length, b.length);
+};
+
+// Word-overlap between two free-text values, for descriptions that describe the
+// same thing in different words. Scored 0-1; the boolean word-pair helper that
+// the sales side uses lives elsewhere in this file.
+const tokenOverlap = (a, b) => {
+  const ta = new Set(normKey(a).split(' ').filter(Boolean));
+  const tb = new Set(normKey(b).split(' ').filter(Boolean));
+  if (!ta.size || !tb.size) return 0;
+  const shared = [...ta].filter(t => tb.has(t)).length;
+  return shared / new Set([...ta, ...tb]).size;
+};
+
+// A GSTIN is 15 characters: 2 state digits, 5 letters, 4 digits, 1 letter,
+// 1 entity digit, 3 characters.
+const GSTIN_PATTERN = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z][0-9A-Z]{2}$/i;
+
+// An E-Way Bill number is 12 digits. Anything else was not fully extracted.
+const EWB_DIGITS = 12;
+
+// What "invalid" means per kind, and whether a value can fail that check.
+const PURCHASE_KIND_VALIDATOR = {
+  gstin: (v) => GSTIN_PATTERN.test(normAlnumUpper(v).slice(0, 15)),
+  ewb: (v) => normNumericText(v).length === EWB_DIGITS,
+};
 
 // ── Intelligent Comparison Utilities ─────────────────────────
 const normalizeText = (text) => {
   if (!text || text === '—' || text === 'N/A') return '';
   return text.toString().toLowerCase().replace(/[^a-z0-9]/g, '').trim();
-};
-
-const normalizeInvoiceNo = (text) => {
-  if (!text || text === '—') return '';
-  return text.toString()
-    .toLowerCase()
-    .replace(/^inv[\s\-_:#]*/i, '')
-    .replace(/^invoice[\s\-_:#]*/i, '')
-    .replace(/[\/\s\-_#,.:]/g, '')
-    .trim();
-};
-
-const normalizeSupplierName = (text) => {
-  if (!text || text === '—') return '';
-  let name = text.toString().toLowerCase();
-  
-  // Expand common abbreviation for JSW Steel Coated Products Limited
-  name = name.replace(/jswscpl/g, 'jsw steel coated products');
-  
-  // Remove common location, administration suffixes, and keywords
-  const wordsToRemove = [
-    'tarapur', 'works', 'plant', 'depot', 'mumbai', 'khopoli', 'kalmeshwar', 'vasind',
-    'pvt', 'ltd', 'private', 'limited', 'co', 'company', 'corp', 'corporation', 'inc', 'incorporated'
-  ];
-  
-  wordsToRemove.forEach(w => {
-    name = name.replace(new RegExp('\\b' + w + '\\b', 'g'), '');
-    name = name.replace(new RegExp('-?' + w + '-?', 'g'), '');
-  });
-
-  return name
-    .replace(/[^a-z0-9]/g, '')
-    .trim();
-};
-
-const normalizeHSN = (text) => {
-  if (!text || text === '—') return '';
-  return text.toString().replace(/[^0-9]/g, '');
-};
-
-const normalizeVehicleNo = (text) => {
-  if (!text || text === '—') return '';
-  return text.toString().toUpperCase().replace(/\s/g, '');
 };
 
 const normalizeDate = (text) => {
@@ -220,191 +339,234 @@ const toKG = (value, text) => {
   return value;
 };
 
-const semanticSimilarity = (a, b) => {
-  const na = normalizeText(a);
-  const nb = normalizeText(b);
-  if (!na || !nb) return 0;
-  if (na === nb) return 1;
-  const tokensA = new Set(na.split(/\s+/));
-  const tokensB = new Set(nb.split(/\s+/));
-  const intersection = new Set([...tokensA].filter(t => tokensB.has(t)));
-  const union = new Set([...tokensA, ...tokensB]);
-  return intersection.size / union.size;
+/* ── Status engine ───────────────────────────────────────────────
+   One field, one status, decided in a fixed order — the first rule that can
+   decide the row does:
+
+     1. fewer than two documents carry this field at all  → NOT CHECKED
+     2. nothing was extracted for it                      → NOT CHECKED
+     3. two or more carry it but only one has a value     → MISSING
+     4. a supplied value fails its own format check        → INVALID
+     5. otherwise compare the supplied values by kind      → MATCH / PARTIAL / MISMATCH
+
+   MISSING and NOT CHECKED are never failures, and INVALID is kept apart from
+   MISMATCH on purpose: an E-Way number the extractor only half-read is an
+   extraction problem, not two documents disagreeing. */
+
+const MATCH_REL_TOLERANCE = 0.001;   // 0.1% on money, weight and quantity
+const PARTIAL_REL_TOLERANCE = 0.05;  // 5% before it becomes a real difference
+const OCR_SIMILARITY_FLOOR = 0.85;   // for short identifiers only
+const HSN_SECTION = 4;               // HSN: chapter shares its first 4 digits
+
+/* Fuzzy floors, applied to every kind. OCR, spacing and unit wording all move a
+   value without moving its meaning, so a high-similarity pair is PARTIAL rather
+   than a red mismatch. Only a pair that fails both of these is a real conflict. */
+const FUZZY_MATCH_FLOOR = 0.9;    // effectively the same value
+const FUZZY_PARTIAL_FLOOR = 0.6;  // same value, captured differently
+
+const PURCHASE_UNCHECKED_TEXT = 'No comparison';
+
+const joinDocs = (docs) => (docs.length > 1 ? `${docs.slice(0, -1).join(', ')} and ${docs[docs.length - 1]}` : docs[0]);
+
+/* One fuzzy verdict for a set of values, whichever kind they belong to.
+   Word overlap catches reordering and extra or missing words; character-level
+   similarity catches a mistyped or mis-OCRed digit. Both must be satisfied by
+   the weakest pair in the set, so one outlier cannot be averaged away. */
+const fuzzyVerdict = (present, values, kind) => {
+  let weakest = 1;
+  for (let i = 0; i < present.length; i += 1) {
+    for (let j = i + 1; j < present.length; j += 1) {
+      const a = values[present[i]];
+      const b = values[present[j]];
+      const ka = normKey(a);
+      const kb = normKey(b);
+      const blend = Math.max(tokenOverlap(ka, kb), editSimilarity(ka, kb));
+      weakest = Math.min(weakest, blend);
+    }
+  }
+  if (weakest >= FUZZY_MATCH_FLOOR) {
+    return { status: FIELD_STATUS.MATCH, reason: 'Same value once spacing and punctuation are ignored' };
+  }
+  if (weakest >= FUZZY_PARTIAL_FLOOR) {
+    return { status: FIELD_STATUS.PARTIAL, reason: kind === 'identifier' || kind === 'batch'
+      ? 'Near-identical codes — likely OCR variation'
+      : 'Values are close — likely the same value captured differently' };
+  }
+  return null;
 };
 
-const compareFieldValues = (fieldName, vals, audit) => {
-  const docs = ['Invoice', 'E-Way Bill', 'LR Copy', 'GRN'];
-  const filledDocs = docs.filter(d => vals[d] && vals[d] !== '—');
-  if (filledDocs.length <= 1) return { status: null, reason: 'Single data point — no comparison' };
-  const field = fieldName.toLowerCase();
+/* Last gate before a row is allowed to call itself a mismatch. Every kind falls
+   through here, so no field can report red on values that fuzzy reading says
+   are the same. */
+const mismatchUnlessFuzzy = (present, values, kind, reason) =>
+  fuzzyVerdict(present, values, kind) || { status: FIELD_STATUS.MISMATCH, reason };
 
-  if (field.includes('bill to') || field.includes('recipient')) {
-    const results = filledDocs.map(d => ({ doc: d, match: fuzzyMatch(vals[d], BILL_TO_TOKENS) }));
-    const allOk = results.every(r => r.match);
-    return { status: allOk ? 'MATCH' : 'MISMATCH', reason: allOk ? 'Bill-to address matches known vendor locations' : 'Bill-to address does not match known vendor locations' };
+// Which of two candidate readings of the same numbers should be trusted:
+// as extracted, or after converting tonnes to kilograms. A document that spells
+// out its unit and one that omits it still mean the same quantity.
+const bestNumericSet = (points, convertUnits) => {
+  const raw = points.map(p => p.n);
+  const converted = points.map(p => toKG(p.n, p.u));
+  const spread = ns => Math.max(...ns) - Math.min(...ns);
+  return spread(converted) < spread(raw) && convertUnits ? converted : raw;
+};
+
+const compareNumericField = (kind, present, values) => {
+  const points = present
+    .map(doc => ({ doc, n: extractNumericValue(values[doc]), u: values[doc] }))
+    .filter(p => p.n !== null);
+  if (points.length < 2) return { status: FIELD_STATUS.NOT_CHECKED, reason: PURCHASE_UNCHECKED_TEXT };
+
+  const convertUnits = kind === 'weight' || kind === 'qty';
+  const ns = bestNumericSet(points, convertUnits);
+  const spread = Math.max(...ns) - Math.min(...ns);
+  const scale = Math.max(...ns.map(Math.abs), 1);
+  const unit = kind === 'amount' || kind === 'rate' ? '₹' : '';
+  const show = v => `${unit}${v.toFixed(kind === 'amount' || kind === 'rate' ? 2 : 3)}`;
+
+  if (spread <= Math.max(0.01, scale * MATCH_REL_TOLERANCE)) {
+    return { status: FIELD_STATUS.MATCH, reason: `Values agree across ${points.length} documents` };
   }
-
-  if (field.includes('ship to') || field.includes('consignee')) {
-    const results = filledDocs.map(d => ({ doc: d, match: fuzzyMatch(vals[d], SHIP_TO_TOKENS) }));
-    const allOk = results.every(r => r.match);
-    return { status: allOk ? 'MATCH' : 'MISMATCH', reason: allOk ? 'Ship-to address matches known destinations' : 'Ship-to address does not match known destinations' };
+  if (spread <= Math.max(1, scale * PARTIAL_REL_TOLERANCE)) {
+    return { status: FIELD_STATUS.PARTIAL, reason: `Differs by ${show(spread)} — within rounding tolerance` };
   }
+  // Different numbers can still be the same number written badly, so the fuzzy
+  // reading gets a say before this row turns red.
+  return mismatchUnlessFuzzy(
+    present,
+    values,
+    kind,
+    `${joinDocs(points.map(p => p.doc))} disagree by ${show(spread)}`
+  );
+};
 
-  if (field.includes('invoice number')) {
-    const normalized = filledDocs.map(d => ({ doc: d, norm: normalizeInvoiceNo(vals[d]) }));
-    const unique = new Set(normalized.map(n => n.norm));
-    if (unique.size === 1) return { status: 'MATCH', reason: 'Invoice numbers match after normalization' };
-    if (unique.size === 2) return { status: 'PARTIAL_MATCH', reason: 'Minor variation in invoice number format' };
-    return { status: 'MISMATCH', reason: 'Invoice numbers differ across documents' };
-  }
-
-  if (field.includes('supplier name')) {
-    const normalized = filledDocs.map(d => ({ doc: d, norm: normalizeSupplierName(vals[d]) }));
-    const unique = new Set(normalized.map(n => n.norm));
-    if (unique.size === 1) return { status: 'MATCH', reason: 'Supplier name verified across all documents' };
-    
-    // Fallback: Check if they are all JSW-related entities
-    const allContainJSW = normalized.every(n => n.norm.includes('jsw'));
-    if (allContainJSW && normalized.length > 0) {
-      return { status: 'MATCH', reason: 'Supplier name verified across all documents (JSW Group entity)' };
+const compareTextField = (kind, present, values) => {
+  if (kind === 'party') {
+    const norms = present.map(doc => normPartyName(values[doc]));
+    if (new Set(norms).size === 1) return { status: FIELD_STATUS.MATCH, reason: 'Same party once legal form is folded' };
+    /* Compare the trading name with the legal-form tokens removed, so a supplier
+       billed as "Z V Steels" on one document and "Z V Steels Pvt Ltd" on another
+       is the same company rather than a partial match. The tokens removed are
+       only ones PARTY_LEGAL_FORMS already treats as synonyms, so this folds
+       spelling differences without folding genuinely distinct entities. */
+    const cores = norms.map(partyCore);
+    if (cores.every(c => c && c === cores[0])) {
+      return { status: FIELD_STATUS.MATCH, reason: 'Same company, legal form stated on some documents only' };
     }
-
-    if (unique.size === 2) {
-      const names = Array.from(unique);
-      if (semanticSimilarity(names[0], names[1]) > 0.7) return { status: 'PARTIAL_MATCH', reason: 'Supplier name has minor formatting variation (Ltd/Limited)' };
+    // Group companies legitimately differ, but only when they share a name stem.
+    const stems = new Set(norms.map(n => n.split(' ').slice(0, 2).join(' ')));
+    const words = new Set(norms.flatMap(n => n.split(' ')));
+    if (stems.size === 1 && words.size > 0) {
+      return { status: FIELD_STATUS.PARTIAL, reason: 'Same company name, different legal entity' };
     }
-    return { status: 'MISMATCH', reason: 'Supplier name differs — possible vendor mismatch' };
+    return mismatchUnlessFuzzy(present, values, kind, `${joinDocs(present)} name different parties`);
   }
 
-  if (field.includes('gstin')) {
-    const normalized = filledDocs.map(d => ({ doc: d, norm: normalizeText(vals[d]) }));
-    const unique = new Set(normalized.map(n => n.norm));
-    if (unique.size === 1) return { status: 'MATCH', reason: 'GSTIN verified across documents' };
-    return { status: 'CRITICAL', reason: 'GSTIN MISMATCH — possible tax compliance violation' };
-  }
-
-  if (field.includes('product')) {
-    const normalized = filledDocs.map(d => ({ doc: d, norm: normalizeText(vals[d]) }));
-    const unique = new Set(normalized.map(n => n.norm));
-    if (unique.size === 1) return { status: 'MATCH', reason: 'Product code matches across documents' };
-    if (unique.size === 2) {
-      const codes = Array.from(unique);
-      if (semanticSimilarity(codes[0], codes[1]) > 0.6) return { status: 'PARTIAL_MATCH', reason: 'Product code has minor spacing/format variation' };
-    }
-    return { status: 'MISMATCH', reason: 'Product code differs across documents' };
-  }
-
-  if (field.includes('description')) {
-    let bestSim = 1;
-    for (let i = 0; i < filledDocs.length; i++) {
-      for (let j = i + 1; j < filledDocs.length; j++) {
-        bestSim = Math.min(bestSim, semanticSimilarity(vals[filledDocs[i]], vals[filledDocs[j]]));
+  if (kind === 'address') {
+    const keys = present.map(doc => normKey(values[doc]));
+    if (new Set(keys).size === 1) return { status: FIELD_STATUS.MATCH, reason: 'Addresses match' };
+    let worst = 1;
+    for (let i = 0; i < keys.length; i += 1) {
+      for (let j = i + 1; j < keys.length; j += 1) {
+        worst = Math.min(worst, tokenOverlap(keys[i], keys[j]));
       }
     }
-    if (bestSim >= 0.8) return { status: 'MATCH', reason: 'Descriptions semantically match' };
-    if (bestSim >= 0.4) return { status: 'PARTIAL_MATCH', reason: 'Descriptions partially match — possible OCR variation' };
-    return { status: 'MISMATCH', reason: 'Descriptions differ significantly' };
+    if (worst >= 0.6) return { status: FIELD_STATUS.PARTIAL, reason: 'Address wording differs' };
+    return mismatchUnlessFuzzy(present, values, kind, `${joinDocs(present)} point to different addresses`);
   }
 
-  if (field.includes('hsn')) {
-    const normalized = filledDocs.map(d => ({ doc: d, norm: normalizeHSN(vals[d]) }));
-    const first4 = new Set(normalized.map(n => n.norm.substring(0, 4)));
-    if (first4.size === 1) {
-      const first6 = new Set(normalized.map(n => n.norm.substring(0, 6)));
-      return first6.size === 1
-        ? { status: 'MATCH', reason: 'HSN code fully matches' }
-        : { status: 'PARTIAL_MATCH', reason: 'HSN first 4–6 digits match — sub-classification difference' };
+  if (kind === 'description') {
+    let worst = 1;
+    for (let i = 0; i < present.length; i += 1) {
+      for (let j = i + 1; j < present.length; j += 1) {
+        worst = Math.min(worst, tokenOverlap(values[present[i]], values[present[j]]));
+      }
     }
-    return { status: 'MISMATCH', reason: 'HSN code differs across documents' };
+    if (worst >= 0.8) return { status: FIELD_STATUS.MATCH, reason: 'Descriptions agree' };
+    if (worst >= 0.35) return { status: FIELD_STATUS.PARTIAL, reason: 'Same material described differently' };
+    return mismatchUnlessFuzzy(present, values, kind, 'Descriptions describe different material');
   }
 
-  if (field.includes('batch') || field.includes('coil')) {
-    const normalized = filledDocs.map(d => ({ doc: d, norm: normalizeText(vals[d]) }));
-    const unique = new Set(normalized.map(n => n.norm));
-    if (unique.size === 1) return { status: 'MATCH', reason: 'Batch/coil number matches' };
-    return { status: 'MISMATCH', reason: 'Batch/coil number differs' };
+  if (kind === 'date') {
+    const norms = present.map(doc => normalizeDate(values[doc]));
+    if (new Set(norms).size === 1) return { status: FIELD_STATUS.MATCH, reason: 'Dates agree' };
+    return mismatchUnlessFuzzy(present, values, kind, `${joinDocs(present)} carry different dates`);
   }
 
-  if (field.includes('vehicle')) {
-    const normalized = filledDocs.map(d => ({ doc: d, norm: normalizeVehicleNo(vals[d]) }));
-    const unique = new Set(normalized.map(n => n.norm));
-    if (unique.size === 1) return { status: 'MATCH', reason: 'Vehicle number matches transport records' };
-    return { status: 'MISMATCH', reason: 'Vehicle number differs between documents' };
-  }
+  // hsn / batch / identifier / plain text
+  const norms = present.map(doc => normAlnumUpper(values[doc]));
+  const unique = new Set(norms);
+  if (unique.size === 1) return { status: FIELD_STATUS.MATCH, reason: 'Values match across documents' };
 
-  if (field.includes('weight') || field.includes('quantity')) {
-    const numericVals = {};
-    filledDocs.forEach(d => {
-      const raw = extractNumericValue(vals[d]);
-      numericVals[d] = raw !== null ? toKG(raw, vals[d]) : null;
-    });
-    const valid = Object.entries(numericVals).filter(([, v]) => v !== null);
-    if (valid.length <= 1) return { status: null, reason: 'Insufficient data' };
-    const invVal = numericVals['Invoice'];
-    const lrVal = numericVals['LR Copy'];
-    if (invVal && lrVal) {
-      const ratio = lrVal / invVal;
-      if (ratio > 1.5 && ratio < 2.5) return { status: 'DUPLICATE_LR_CASE', reason: 'LR weight appears duplicated (combined shipment pattern)' };
+  if (kind === 'hsn') {
+    if (new Set(norms.map(n => n.slice(0, HSN_SECTION))).size === 1) {
+      return { status: FIELD_STATUS.PARTIAL, reason: 'Same HSN chapter, different sub-classification' };
     }
-    const allV = valid.map(([, v]) => v);
-    const maxDiff = Math.max(...allV) - Math.min(...allV);
-    if (maxDiff <= 250) return { status: 'MATCH', reason: `Weight within 250 KG tolerance (${Math.round(maxDiff)} KG diff)` };
-    if (maxDiff <= 500) return { status: 'PARTIAL_MATCH', reason: `Weight difference ${Math.round(maxDiff)} KG — within extended tolerance` };
-    return { status: 'MISMATCH', reason: `Weight differs by ${Math.round(maxDiff)} KG — possible discrepancy` };
+    return mismatchUnlessFuzzy(present, values, kind, 'HSN codes are in different chapters');
   }
 
-  if (field.includes('total amount') || field === 'amount') {
-    const numericVals = {};
-    filledDocs.forEach(d => { numericVals[d] = extractNumericValue(vals[d]); });
-    const valid = Object.entries(numericVals).filter(([, v]) => v !== null);
-    if (valid.length <= 1) return { status: null, reason: 'Single data point' };
-    const allV = valid.map(([, v]) => v);
-    const maxDiff = Math.max(...allV) - Math.min(...allV);
-    if (maxDiff < 1) return { status: 'MATCH', reason: `Amount matches within ₹1 tolerance (₹${maxDiff.toFixed(2)} diff)` };
-    return { status: 'MISMATCH', reason: `Amount differs by ₹${maxDiff.toFixed(2)}` };
+  if (kind === 'identifier' || kind === 'batch') {
+    let worst = 1;
+    for (let i = 0; i < norms.length; i += 1) {
+      for (let j = i + 1; j < norms.length; j += 1) {
+        worst = Math.min(worst, editSimilarity(norms[i], norms[j]));
+      }
+    }
+    if (worst >= OCR_SIMILARITY_FLOOR) {
+      return { status: FIELD_STATUS.PARTIAL, reason: 'Near-identical codes — likely OCR variation' };
+    }
   }
 
-  if (field.includes('date')) {
-    const normalized = filledDocs.map(d => ({ doc: d, norm: normalizeDate(vals[d]) }));
-    const unique = new Set(normalized.map(n => n.norm));
-    if (unique.size === 1) return { status: 'MATCH', reason: 'Dates match after normalization' };
-    return { status: 'MISMATCH', reason: 'Date values differ across documents' };
-  }
-
-  const filled = Object.values(vals).filter(v => v !== '—');
-  const normalizedFilled = filled.map(v => v.toString().toLowerCase().replace(/\s+/g, ' ').trim());
-  if (new Set(normalizedFilled).size > 1) return { status: 'MISMATCH', reason: 'Values differ across documents' };
-  return { status: 'MATCH', reason: 'Values match across documents' };
+  return mismatchUnlessFuzzy(present, values, kind, `${joinDocs(present)} carry different values`);
 };
 
-const generateInsights = (comparisons, fieldMap) => {
-  const insights = [];
-  const matched = Object.values(comparisons).filter(c => c.status === 'MATCH').length;
-  const partial = Object.values(comparisons).filter(c => c.status === 'PARTIAL_MATCH').length;
-  const mismatched = Object.values(comparisons).filter(c => c.status === 'MISMATCH' || c.status === 'CRITICAL').length;
-  const dupLR = Object.values(comparisons).filter(c => c.status === 'DUPLICATE_LR_CASE').length;
+/**
+ * Decide one field row.
+ * @param spec entry from PURCHASE_FIELD_SPEC
+ * @param values map of document key to the raw extracted string
+ * @returns {{status: string, reason: string}}
+ */
+const evaluatePurchaseField = (spec, values) => {
+  const applicable = PURCHASE_DOC_KEYS.filter(doc => spec.sources[doc]);
+  const present = applicable.filter(doc => hasSourceValue(values[doc]));
 
-  if (matched > partial + mismatched) insights.push('Majority of fields match across all documents — high data integrity.');
-  if (partial > 0) insights.push(`${partial} field(s) show partial matches — likely due to formatting or OCR variations.`);
-  if (mismatched > 0) insights.push(`${mismatched} field(s) have critical or significant mismatches requiring attention.`);
-  if (dupLR > 0) insights.push('LR weight pattern suggests combined shipment entry — common logistics scenario.');
+  if (applicable.length < 2 || present.length === 0) {
+    return { status: FIELD_STATUS.NOT_CHECKED, reason: PURCHASE_UNCHECKED_TEXT };
+  }
+  if (present.length === 1) {
+    const blank = applicable.filter(doc => !hasSourceValue(values[doc]));
+    return { status: FIELD_STATUS.MISSING, reason: `Absent on ${joinDocs(blank)}` };
+  }
 
-  const supl = fieldMap['Supplier Name'];
-  if (supl) {
-    const suplDocs = Object.values(supl).filter(v => v !== '—');
-    if (new Set(suplDocs.map(s => normalizeSupplierName(s))).size === 1 && suplDocs.length >= 2) {
-      insights.push('Invoice, EWay and GRN supplier details align successfully.');
+  const validator = PURCHASE_KIND_VALIDATOR[spec.kind];
+  if (validator) {
+    const bad = present.filter(doc => !validator(values[doc]));
+    if (bad.length > 0) {
+      return {
+        status: FIELD_STATUS.INVALID,
+        reason: `${spec.label} on ${joinDocs(bad)} failed its format check`,
+      };
     }
   }
 
-  const veh = fieldMap['Vehicle No'];
-  if (veh && veh['E-Way Bill'] !== '—' && veh['LR Copy'] !== '—') {
-    if (normalizeVehicleNo(veh['E-Way Bill']) === normalizeVehicleNo(veh['LR Copy'])) {
-      insights.push('Vehicle number matches transport records — logistics chain verified.');
-    }
+  switch (spec.kind) {
+    case 'amount':
+    case 'rate':
+    case 'qty':
+    case 'weight':
+    case 'number':
+      return compareNumericField(spec.kind, present, values);
+    case 'party':
+    case 'address':
+    case 'description':
+    case 'date':
+    case 'hsn':
+    case 'identifier':
+    case 'batch':
+      return compareTextField(spec.kind, present, values);
+    default:
+      return compareTextField('text', present, values);
   }
-
-  return insights;
 };
 
 // ── Purchase verdict schema ─────────────────────────────────────
@@ -460,9 +622,34 @@ const getPurchaseDocumentPresence = (record) => {
   return present;
 };
 
-const UnifiedAuditModal = ({ audit, onClose, onDecision, isProcessing }) => {
+/* One purchase audit is split across several ledger rows — one per reconciled
+   document — and the history card groups them by invoice number. `records` is
+   that group and the modal steps through it; the card passes the whole group so
+   every row stays reachable. `audit` alone still works, so a single-row group
+   needs no special case. */
+const UnifiedAuditModal = ({ audit: initialAudit, records, onClose, onDecision, processingId }) => {
   const [view] = useState('universal');
-  if (!audit) return null;
+  const [currentIndex, setCurrentIndex] = useState(0);
+  // The control-check list is supporting detail behind the comparison matrix,
+  // so a freshly opened record leads with the matrix alone; the counts in the
+  // header still show what the pipeline concluded.
+  const [checksOpen, setChecksOpen] = useState(false);
+  // Material cards repeat what the matrix already shows, one document at a time.
+  // Open by default because it is the view people actually ask for.
+  const [materialOpen, setMaterialOpen] = useState(true);
+
+  const groupRecords = records && records.length > 0 ? records : (initialAudit ? [initialAudit] : []);
+
+  if (groupRecords.length === 0) return null;
+
+  const totalRecords = groupRecords.length;
+  // Clamped rather than trusted: a refetch can shrink the group under an open
+  // modal, and the footer has to stay on a row that still exists.
+  const safeIndex = Math.min(currentIndex, totalRecords - 1);
+  const audit = groupRecords[safeIndex];
+  // The decision is written per row, so only the row currently on screen can be
+  // the one being written — not whichever row the group happens to open on.
+  const isProcessing = processingId === audit.id;
 
   const parseAuditResult = (resultStr) => {
     if (!resultStr) return null;
@@ -477,95 +664,49 @@ const UnifiedAuditModal = ({ audit, onClose, onDecision, isProcessing }) => {
 
   const result = parseAuditResult(audit.Audit_Result);
 
-  // ── Enhanced field parser with GRN support ──
-  const fieldMap = {};
-  Object.entries(audit).forEach(([key, val]) => {
-    const EXCLUDED_KEYS = ['Audit_Result', 'Audit_Intelligence', 'id', 'created_at'];
-    if (EXCLUDED_KEYS.some(k => key.toLowerCase().includes(k.toLowerCase()))) return;
-
-    let docType = null;
-    let fieldBase = key;
-
-    if (key.match(/[ _]\(Invoice\)$|_Invoice$/i)) { docType = 'Invoice'; fieldBase = key.replace(/[ _]\(Invoice\)$|_Invoice$/i, ''); }
-    else if (key.match(/[ _]\(EWay\)$|_EWay$/i)) { docType = 'E-Way Bill'; fieldBase = key.replace(/[ _]\(EWay\)$|_EWay$/i, ''); }
-    else if (key.match(/[ _]\(LR\)$|_LR$/i)) { docType = 'LR Copy'; fieldBase = key.replace(/[ _]\(LR\)$|_LR$/i, ''); }
-    else if (key.match(/[ _]\(GRN\)$|_GRN$/i)) { docType = 'GRN'; fieldBase = key.replace(/[ _]\(GRN\)$|_GRN$/i, ''); }
-
-    if (docType) {
-      const lowKey = fieldBase.toLowerCase();
-      if (lowKey.includes('invoice_number') || lowKey.includes('invoice_no')) {
-        fieldBase = 'Invoice Number';
-      } else if (lowKey.includes('lr_number')) {
-        fieldBase = 'LR Number';
-      } else if (lowKey.includes('ewb_number') || lowKey.includes('eway_number')) {
-        fieldBase = 'E-Way Bill Number';
-      } else if (lowKey.includes('gstin')) {
-        fieldBase = 'GSTIN';
-      } else if (lowKey.includes('batch_code') || lowKey.includes('coil_number') || lowKey.includes('batch_number')) {
-        fieldBase = 'Batch / Coil Number';
-      } else if (lowKey === 'consigner_name' || lowKey === 'supplier_name' || lowKey === 'consignor_name' ||
-                 (lowKey.includes('supplier') && lowKey.includes('name')) ||
-                 (lowKey.includes('consign') && lowKey.includes('name'))) {
-        fieldBase = 'Supplier Name';
-      } else if (lowKey === 'consignee_name' || lowKey === 'ship_to') {
-        fieldBase = 'Ship To';
-      } else if (lowKey === 'bill_to') {
-        fieldBase = 'Bill To';
-      } else if (lowKey.includes('product') || lowKey.includes('item_description') || lowKey.includes('item')) {
-        fieldBase = 'Product';
-      } else if (lowKey.includes('description') || lowKey.includes('desc')) {
-        fieldBase = 'Description';
-      } else if (lowKey.includes('hsn') || lowKey.includes('sac')) {
-        fieldBase = 'HSN';
-      } else if (lowKey.includes('vehicle') || lowKey.includes('veh_no')) {
-        fieldBase = 'Vehicle No';
-      } else if (lowKey.includes('weight') || lowKey.includes('wt')) {
-        fieldBase = 'Weight';
-      } else if (lowKey.includes('total_amount') || lowKey === 'amount') {
-        fieldBase = 'Total Amount';
-      } else if (lowKey.includes('quantity') || lowKey.includes('qty')) {
-        fieldBase = 'Quantity';
-      } else {
-        fieldBase = fieldBase.replace(/^(Invoice|EWay|EWB|LR|Supplier|Consigner|Consignee)[_ ]+/i, '');
-      }
-
-      fieldBase = fieldBase.replace(/_/g, ' ').trim();
-      if (fieldBase.toLowerCase().includes('total amount')) fieldBase = 'Total Amount';
-      if (fieldBase.toLowerCase() === 'name' && !lowKey.includes('supplier') && !lowKey.includes('consigner') && !lowKey.includes('consignee')) return;
-
-      if (!fieldMap[fieldBase]) fieldMap[fieldBase] = { Invoice: '—', 'E-Way Bill': '—', 'LR Copy': '—', 'GRN': '—' };
-      fieldMap[fieldBase][docType] = val?.toString() || '—';
-    }
+  // ── Field rows, built only from the declared spec ──
+  // Nothing here guesses a label from a column name. Each row reads exactly the
+  // columns PURCHASE_FIELD_SPEC gives it, so a field only ever appears because it
+  // was written down, and the values in it can only come from documents it is
+  // meant to be compared against.
+  const fieldResults = PURCHASE_FIELD_SPEC.map((spec) => {
+    const values = {};
+    PURCHASE_DOC_KEYS.forEach((doc) => {
+      const column = spec.sources[doc];
+      values[doc] = column ? readPurchaseColumn(audit, column) : null;
+    });
+    // Which documents actually carried a value. A cell only gets tinted when at
+    // least two did, because that is the only time there is something to
+    // compare the value against.
+    const comparableDocs = PURCHASE_DOC_KEYS.filter(doc => spec.sources[doc] && hasSourceValue(values[doc]));
+    return { spec, values, comparableDocs, ...evaluatePurchaseField(spec, values) };
   });
 
-  // Keep only the documents this record actually has. Invoice is the anchor
-  // document and is always shown, so a single-document audit still has a column.
+  // Keep only the documents this record actually carries data for. Invoice is
+  // the anchor document and is always shown, so a single-document audit still
+  // has a column.
   const activeDocColumns = LEDGER_DOC_COLUMNS.filter(({ key }) =>
-    Object.values(fieldMap).some((vals) => vals[key] && vals[key] !== '—')
+    fieldResults.some(({ spec, values }) => spec.sources[key] && hasSourceValue(values[key]))
   );
 
-  const isAddressField = (name) =>
-    ADDRESS_FIELDS.some(f => name.toLowerCase().includes(f.toLowerCase().replace(/ /g, '_')) ||
-                              name.toLowerCase().includes(f.toLowerCase()));
+  /* A row where no document carries a value says nothing at all - it is an
+     em-dash in every column, which reads as "this field failed" rather than "this
+     document never had the field". Drop those rows so the matrix only shows what
+     was actually extracted. A row that is populated in some documents but not
+     others is kept, with the absent documents shown as "—", because that gap is
+     the comparison. */
+  const populatedFieldResults = fieldResults.filter(({ comparableDocs }) => comparableDocs.length > 0);
 
-  const isBillTo = (name) => name.toLowerCase().includes('bill') || name.toLowerCase().includes('recipient');
-  const isShipTo = (name) => name.toLowerCase().includes('ship') || name.toLowerCase().includes('consignee');
+  // Counts what the table actually draws, so the header never claims more fields
+  // than the auditor can see.
+  const totalFields = populatedFieldResults.length;
 
-  const getAddressStatus = (fieldBase, docType, value) => {
-    if (value === '—') return null;
-    if (isBillTo(fieldBase)) return fuzzyMatch(value, BILL_TO_TOKENS) ? 'ok' : 'fail';
-    if (isShipTo(fieldBase)) return fuzzyMatch(value, SHIP_TO_TOKENS) ? 'ok' : 'fail';
-    return null;
-  };
-
-  // ── Compute all field comparisons ──
-  const comparisons = {};
-  Object.entries(fieldMap).forEach(([fieldBase, vals]) => {
-    comparisons[fieldBase] = compareFieldValues(fieldBase, vals, audit);
-  });
-
-  const totalFields = Object.keys(comparisons).length;
-  const webhookScore = parseInt(result?.overall?.final_score);
+  // The matrix rows, in spec order. A grouped audit repeats one invoice date
+  // across all of its rows, so the date row is drawn on the first row of the
+  // group only — on rows 2+ it would just re-print the same value.
+  const visibleFieldResults = safeIndex === 0
+    ? populatedFieldResults
+    : populatedFieldResults.filter(({ spec }) => spec.id !== 'invoice_date');
 
   // ── Flat verdict columns written by the purchase workflow ──
   // Only the checks this row actually recorded are shown, so an un-audited or
@@ -583,84 +724,125 @@ const UnifiedAuditModal = ({ audit, onClose, onDecision, isProcessing }) => {
   // The workflow's own score is authoritative when present; older rows only
   // carry it inside the embedded JSON report. It is never derived locally —
   // a row the pipeline has not scored renders as "not recorded" rather than
-  // inventing a percentage from the field-by-field comparison.
-  const ledgerScore = hasSourceValue(audit.match_score)
-    ? parseScoreValue(audit.match_score)
-    : parseScoreValue(webhookScore);
-  const criticalFindings = toFindingList(audit.critical_mismatches);
-  const warningFindings = toFindingList(audit.warnings);
-  const missingDocFindings = toFindingList(audit.missing_documents);
-  const auditNarrative = hasSourceValue(audit.Audit_Result) && !result ? String(audit.Audit_Result).trim() : '';
+  // inventing a percentage from the field-by-field comparison. The pipeline
+  // writes it to `match_score` or `audit_score` depending on the run.
+  const ledgerScore = pickScore(audit, result);
+  const purchaseStatus = [audit.match_status, audit.audit_status].find(hasSourceValue) ?? null;
+
+  /* The run's own conclusion, in prose. Newer pipelines write it to
+     `audit_summary`; older rows only carry the embedded report string. Kept
+     verbatim - this is the pipeline speaking, not something to reword. */
+  const purchaseSummary = [
+    audit.audit_summary,
+    hasSourceValue(audit.Audit_Result) && !result ? audit.Audit_Result : null,
+  ].find(hasSourceValue) ?? '';
+
+  /* One card per document, built from PURCHASE_FIELD_SPEC rather than a second
+     hand-written list. The matrix and these cards therefore cannot disagree
+     about which column a value came from - there is only one mapping.
+
+     A card lists every field that document declares, gaps included, because the
+     empty ones are the point: they show which columns the extractor missed. Only
+     a document that carries at least one real value gets a card at all. */
+  const materialCards = PURCHASE_DOC_CARDS
+    .map(({ doc, kind }) => ({
+      doc,
+      kind,
+      title: DOC_ACCENTS[kind].label,
+      rows: PURCHASE_FIELD_SPEC
+        .filter(spec => spec.sources[doc])
+        .map(spec => ({
+          label: spec.label,
+          value: showText(readPurchaseColumn(audit, spec.sources[doc])),
+        })),
+    }))
+    .filter(card => card.rows.some(row => row.value !== '—'));
   const decision = normalizePurchaseDecision(audit.Result);
 
-  const insights = generateInsights(comparisons, fieldMap);
-
-  const statusIcon = (status) => {
-    switch (status) {
-      case 'MATCH': return <Check size={12} />;
-      case 'PARTIAL_MATCH': return <AlertTriangle size={12} />;
-      case 'MISMATCH': return <X size={12} />;
-      case 'CRITICAL': return <AlertTriangle size={12} />;
-      case 'DUPLICATE_LR_CASE': return <Truck size={12} />;
-      default: return null;
-    }
+  /* Row tint, matching the sales matrix: red for a real conflict, amber for a
+     near-match, flat when the row agrees. MISSING, INVALID and NOT CHECKED stay
+     flat — none of them is a disagreement between documents. */
+  const rowTint = (status) => {
+    if (status === FIELD_STATUS.MISMATCH) return 'rgba(239,68,68,0.03)';
+    if (status === FIELD_STATUS.PARTIAL || status === FIELD_STATUS.INVALID) return 'rgba(245,158,11,0.03)';
+    return 'transparent';
   };
 
-  const statusClass = (status) => {
-    switch (status) {
-      case 'MATCH': return 'status-match';
-      case 'PARTIAL_MATCH': return 'status-partial';
-      case 'MISMATCH': return 'status-mismatch';
-      case 'CRITICAL': return 'status-critical';
-      case 'DUPLICATE_LR_CASE': return 'status-duplicate-lr';
-      default: return '';
-    }
+  /* Value colour inside a cell. Only a genuine conflict or an unreadable value
+     is coloured; everything else is left as ordinary text. */
+  const valueColor = (status, filled) => {
+    if (!filled) return '#94a3b8';
+    if (status === FIELD_STATUS.MISMATCH) return '#ef4444';
+    if (status === FIELD_STATUS.PARTIAL || status === FIELD_STATUS.INVALID) return '#d97706';
+    return 'var(--text)';
   };
 
-  const renderCell = (fieldBase, docType, value) => {
-    const addr = isAddressField(fieldBase);
-    if (docType === 'LR Copy' && addr) return <td key={docType} className="doc-value-cell not-applicable"><span className="na-text">N/A</span></td>;
+  /* Cell wash, matching the sales matrix's per-document shading. */
+  const cellWash = (status, filled, applicable, comparable) => {
+    if (!filled || !applicable || !comparable) return 'transparent';
+    if (status === FIELD_STATUS.MISMATCH) return 'rgba(239,68,68,0.10)';
+    if (status === FIELD_STATUS.PARTIAL || status === FIELD_STATUS.INVALID) return 'rgba(245,158,11,0.10)';
+    return 'rgba(16,185,129,0.10)';
+  };
 
-    if (fieldBase === 'LR Number' && (docType === 'Invoice' || docType === 'E-Way Bill')) {
-      return <td key={docType} className="doc-value-cell not-applicable"><span className="na-text">N/A</span></td>;
-    }
-
-    if ((fieldBase === 'E-Way Bill Number' || fieldBase === 'Vehicle No') && docType === 'Invoice') {
-      return <td key={docType} className="doc-value-cell not-applicable"><span className="na-text">N/A</span></td>;
-    }
-
-    if (fieldBase === 'Batch / Coil Number' && docType === 'E-Way Bill') {
-      return <td key={docType} className="doc-value-cell not-applicable"><span className="na-text">N/A</span></td>;
-    }
-
-    const status = addr ? getAddressStatus(fieldBase, docType, value) : null;
-    const comp = comparisons[fieldBase];
-    const cellStatus = comp?.status;
-
-    let extraClass = '';
-    if (cellStatus && value !== '—') {
-      extraClass = statusClass(cellStatus) + '-cell';
-    }
-    if (status === 'ok')   extraClass = 'addr-ok';
-    if (status === 'fail') extraClass = 'addr-fail';
+  /* One cell = one document's value for one spec row.
+     A document that this field does not apply to gets an em dash, not "N/A" —
+     absence of a field is not a finding. */
+  const renderCell = (spec, docType, value, result) => {
+    const applies = Boolean(spec.sources[docType]);
+    const filled = applies && hasSourceValue(value);
+    // With fewer than two documents carrying a value there is nothing to
+    // compare, so the cell is not tinted either way.
+    const comparable = result.comparableDocs.length >= 2;
 
     return (
-      <td key={docType} data-label={docType.replace(/_/g, ' ')} className={`doc-value-cell ${extraClass}`}>
-        <span className="cell-value">{value}</span>
-        {!addr && cellStatus && value !== '—' && (
-          <span className={`cell-status-badge ${statusClass(cellStatus)}`} title={comp?.reason || ''}>
-            {statusIcon(cellStatus)}
+      <td
+        key={docType}
+        data-label={docType}
+        title={filled ? result.reason : ''}
+        style={{
+          ...purchaseTdStyle,
+          minWidth: PURCHASE_VALUE_MIN_WIDTH,
+          textAlign: 'center',
+          background: cellWash(result.status, filled, applies, comparable),
+        }}
+      >
+        <span style={{
+          display: 'block', fontSize: '0.82rem', fontWeight: 600, fontFamily: 'monospace',
+          color: valueColor(result.status, filled), lineHeight: 1.6,
+          overflowWrap: 'anywhere',
+        }}>
+          {filled ? String(value).trim() : '—'}
+        </span>
+        {filled && spec.consolidatedDocs?.includes(docType) && (
+          <span className="consolidated-badge" title="Repeated on every row of a consolidated LR. Not split, allocated or summed across rows.">
+            CONSOLIDATED LR
           </span>
-        )}
-        {addr && status && (
-          <span className={`addr-badge ${status}`}>
-            {status === 'ok' ? '✓' : '✗'}
-          </span>
-        )}
-        {!addr && cellStatus && value !== '—' && comp?.reason && (
-          <div className="cell-tooltip">{comp.reason}</div>
         )}
       </td>
+    );
+  };
+
+  /* One row of the purchase comparison matrix, in the order the spec declares.
+     The matrix is a fixed reading order, so grouping rows into sections would
+     move fields away from where they belong. */
+  const renderRow = (result) => {
+    const { spec } = result;
+    return (
+      <tr style={{ borderBottom: '1px solid var(--border)', background: rowTint(result.status) }}>
+        <td style={{
+          ...purchaseTdStyle,
+          minWidth: 150,
+          fontWeight: 700,
+          fontSize: '0.82rem',
+          color: 'var(--text)',
+          whiteSpace: 'nowrap',
+        }}>
+          {spec.label}
+        </td>
+        {renderCell(spec, 'Invoice', result.values.Invoice, result)}
+        {activeDocColumns.map(({ key }) => renderCell(spec, key, result.values[key], result))}
+      </tr>
     );
   };
 
@@ -674,16 +856,29 @@ const UnifiedAuditModal = ({ audit, onClose, onDecision, isProcessing }) => {
               Universal Document Ledger
             </h2>
             <p className="modal-subtitle">Ref: {audit.Invoice_Number_Invoice || audit.id}</p>
+            {totalRecords > 1 && (
+              <RecordStepper
+                noun="Material"
+                current={safeIndex}
+                total={totalRecords}
+                onSelect={setCurrentIndex}
+              />
+            )}
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem', marginTop: '0.5rem' }}>
               {ledgerScore !== null ? (
-                <span style={{
-                  display: 'inline-flex', alignItems: 'baseline', gap: '0.2rem',
-                  padding: '0.2rem 0.6rem', borderRadius: '6px',
-                  fontSize: '0.8rem', fontWeight: 800, fontFamily: 'monospace',
+                /* Uses the shared cap class rather than a one-off inline style,
+                   so it aligns on the centre line like every other capsule
+                   instead of on a baseline. The percent is its own element
+                   because monospace draws % at full cap height, which towers
+                   over the digits beside it. */
+                <span className="cap cap-num" style={{
+                  fontSize: '0.8rem',
                   background: SCORE_COLOR(ledgerScore).bg,
                   color: SCORE_COLOR(ledgerScore).text,
-                  border: `1px solid ${SCORE_COLOR(ledgerScore).border}`
-                }}>{ledgerScore}%</span>
+                  borderColor: SCORE_COLOR(ledgerScore).border,
+                }}>
+                  {ledgerScore}<span className="cap-pct">%</span>
+                </span>
               ) : (
                 /* No dial and no gauge anywhere in this modal any more: the
                    score reads as a flat chip beside the invoice reference, the
@@ -694,10 +889,10 @@ const UnifiedAuditModal = ({ audit, onClose, onDecision, isProcessing }) => {
                   <span>Not scored</span>
                 </span>
               )}
-              {hasSourceValue(audit.match_status) && <AuditStatusBadge value={audit.match_status} />}
+              {hasSourceValue(purchaseStatus) && <AuditStatusBadge value={purchaseStatus} />}
               <span style={{
                 display: 'inline-flex', alignItems: 'center', gap: '0.25rem',
-                padding: '0.2rem 0.6rem', borderRadius: '6px',
+                padding: '0.2rem 0.6rem', borderRadius: '999px',
                 fontSize: '0.68rem', fontWeight: 800, textTransform: 'uppercase',
                 letterSpacing: '0.05em', background: 'rgba(0,0,0,0.03)',
                 color: 'var(--text-muted)', border: '1px solid var(--border)'
@@ -705,7 +900,7 @@ const UnifiedAuditModal = ({ audit, onClose, onDecision, isProcessing }) => {
               {decision && (
                 <span style={{
                   display: 'inline-flex', alignItems: 'center', gap: '0.3rem',
-                  padding: '0.2rem 0.65rem', borderRadius: '50px',
+                  padding: '0.2rem 0.65rem', borderRadius: '999px',
                   fontSize: '0.68rem', fontWeight: 800, textTransform: 'uppercase',
                   letterSpacing: '0.05em',
                   background: decision === 'Approve' ? 'rgba(16,185,129,0.12)' : 'rgba(239,68,68,0.12)',
@@ -785,8 +980,8 @@ const UnifiedAuditModal = ({ audit, onClose, onDecision, isProcessing }) => {
                         {result.vehicle_match?.score || 'Pending'}
                       </span>
                       <div className="tooltip-mini">
-                        <div className="tooltip-row"><span>EWB No:</span> <strong>{audit.Vehicle_No_EWay || audit['Vehicle_No_EWay'] || audit['Vehicle No (EWay)'] || '—'}</strong></div>
-                        <div className="tooltip-row"><span>LR No:</span> <strong>{audit.Vehicle_No_LR || audit['Vehicle_No_LR'] || audit['Vehicle No (LR)'] || '—'}</strong></div>
+                        <div className="tooltip-row"><span>EWB No:</span> <strong>{readPurchaseColumn(audit, 'Vehicle_No_EWay') || '—'}</strong></div>
+                        <div className="tooltip-row"><span>LR No:</span> <strong>{readPurchaseColumn(audit, 'Vehicle_No_LR') || '—'}</strong></div>
                       </div>
                     </div>
                     <div className="metric-row-premium has-tooltip">
@@ -830,51 +1025,50 @@ const UnifiedAuditModal = ({ audit, onClose, onDecision, isProcessing }) => {
           ) : (
             <>
               <div className="universal-table-wrapper animate-fade-in">
-                <table className="comparison-table">
+                <table style={{
+                  width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem',
+                  border: '1px solid var(--border)', borderRadius: '12px', overflow: 'hidden'
+                }}>
                   <thead>
-                    <tr>
-                      <th className="field-col" style={{ width: '18%', padding: '0.75rem' }}>Field</th>
-                      <th className="doc-col invoice-col" style={{ padding: '0.75rem' }}>📄 Invoice</th>
-                      {activeDocColumns.map(({ key, label, className }) => (
-                        <th key={key} className={`doc-col ${className}`} style={{ padding: '0.75rem' }}>{label}</th>
+                    <tr style={{ background: 'rgba(0,0,0,0.03)' }}>
+                      <th style={purchaseThStyle}>Field</th>
+                      <th style={{ ...purchaseThStyle, textAlign: 'center' }}>Invoice</th>
+                      {activeDocColumns.map(({ key, label }) => (
+                        <th key={key} style={{ ...purchaseThStyle, textAlign: 'center' }}>{label}</th>
                       ))}
                     </tr>
                   </thead>
                   <tbody>
-                    {Object.entries(fieldMap).map(([fieldBase, vals]) => {
-                      const comp = comparisons[fieldBase];
-                      return (
-                        <tr key={fieldBase} className={`ledger-row ${comp?.status ? statusClass(comp.status) + '-row' : ''}`}>
-                          <td data-label="Field Identity" className="field-name-cell">
-                            <span className="field-label-text">{fieldBase.replace(/_/g, ' ')}</span>
-                            {comp?.status && (
-                              <span className={`row-status-badge ${statusClass(comp.status)}`} title={comp.reason || ''}>
-                                {statusIcon(comp.status)}
-                                <span className="badge-label">
-                                  {comp.status === 'DUPLICATE_LR_CASE' ? 'DUPLICATE LR' : comp.status === 'PARTIAL_MATCH' ? 'PARTIAL' : comp.status}
-                                </span>
-                              </span>
-                            )}
-                            {comp?.reason && <div className="row-tooltip">{comp.reason}</div>}
-                          </td>
-                          {renderCell(fieldBase, 'Invoice', vals['Invoice'])}
-                          {activeDocColumns.map(({ key }) => renderCell(fieldBase, key, vals[key]))}
-                        </tr>
-                      )
-                    })}
+                    {visibleFieldResults.map(renderRow)}
                   </tbody>
                 </table>
               </div>
 
-              {/* ── Compliance Verdicts (flat columns from the audit workflow) ── */}
+              {/* ── Control Checks ─────────────────────────────────────────
+                  The audit workflow's own YES / NO / PARTIAL verdicts, kept
+                  deliberately separate from the comparison matrix above. The
+                  matrix is computed in this browser from the raw document
+                  columns; these are what the pipeline recorded for the same
+                  row, and they cover controls the matrix does not carry
+                  (batch, weight, rate). The two can disagree, so an auditor
+                  has to be able to read both.
+
+                  Collapsed when the record opens: the matrix is the reason this
+                  modal exists, and the three count cards stay on screen so the
+                  pipeline's headline verdict is never more than one click away. */}
               {hasVerdicts && (
                 <section className="audit-block animate-fade-in">
-                  <header className="audit-block-head">
+                  <button
+                    type="button"
+                    className="audit-block-head audit-block-toggle"
+                    onClick={() => setChecksOpen(o => !o)}
+                    aria-expanded={checksOpen}
+                  >
                     <h4 className="audit-block-title">
                       <Shield size={13} />
-                      Compliance Verdicts
+                      Control Checks
                     </h4>
-                    <div className="verdict-summary">
+                    <div className={`verdict-summary${checksOpen ? ' is-expanded' : ''}`}>
                       {verdictSummary.match > 0 && (
                         <span className="stat-chip match-chip"><Check size={11} /> {verdictSummary.match} Match</span>
                       )}
@@ -884,78 +1078,79 @@ const UnifiedAuditModal = ({ audit, onClose, onDecision, isProcessing }) => {
                       {verdictSummary.issue > 0 && (
                         <span className="stat-chip mismatch-chip"><X size={11} /> {verdictSummary.issue} Issue{verdictSummary.issue !== 1 ? 's' : ''}</span>
                       )}
+                      <ChevronDown
+                        size={15}
+                        className={`audit-toggle-caret${checksOpen ? ' is-open' : ''}`}
+                      />
                     </div>
-                  </header>
-                  <div className="audit-check-grid">
-                    {verdicts.map(c => <CheckRow key={c.key} label={c.label} value={audit[c.key]} />)}
-                  </div>
+                  </button>
+
+                  {checksOpen && (
+                    <div className="audit-check-grid">
+                      {verdicts.map(c => <CheckRow key={c.key} label={c.label} value={audit[c.key]} />)}
+                    </div>
+                  )}
                 </section>
               )}
 
-              {/* ── Findings recorded by the audit workflow ── */}
-              {(criticalFindings.length > 0 || warningFindings.length > 0 || missingDocFindings.length > 0) && (
+              {/* The same per-document view the sales modal calls Material Information. It
+                  restates the matrix one card at a time, which is easier to read
+                  when you are checking a single document rather than scanning
+                  across columns. */}
+              {materialCards.length > 0 && (
                 <section className="audit-block animate-fade-in">
-                  <header className="audit-block-head">
+                  <button
+                    type="button"
+                    className="audit-block-head audit-block-toggle"
+                    onClick={() => setMaterialOpen(o => !o)}
+                    aria-expanded={materialOpen}
+                  >
                     <h4 className="audit-block-title">
-                      <FileText size={13} />
-                      Audit Findings
+                      <ClipboardList size={13} />
+                      Material Information
                     </h4>
-                  </header>
-                  <FindingList
-                    tone="critical"
-                    title="Critical Mismatches"
-                    items={criticalFindings}
-                    emptyText="No critical mismatches recorded."
-                  />
-                  <FindingList
-                    tone="warning"
-                    title="Warnings"
-                    items={warningFindings}
-                    emptyText="No warnings recorded."
-                  />
-                  <FindingList
-                    tone="missing"
-                    title="Missing Documents"
-                    items={missingDocFindings}
-                    emptyText="All expected documents are available."
-                    icon={Info}
-                  />
+                    <div className={`verdict-summary${materialOpen ? ' is-expanded' : ''}`}>
+                      <span className="cap">
+                        {materialCards.length} Document{materialCards.length !== 1 ? 's' : ''}
+                      </span>
+                      <ChevronDown
+                        size={15}
+                        className={`audit-toggle-caret${materialOpen ? ' is-open' : ''}`}
+                      />
+                    </div>
+                  </button>
+
+                  {materialOpen && (
+                    <div className="audit-doc-grid">
+                      {materialCards.map(card => (
+                        <DocPanel key={card.kind} kind={card.kind} title={card.title} rows={card.rows} />
+                      ))}
+                    </div>
+                  )}
                 </section>
               )}
 
-              <SummaryBlock summary={auditNarrative} />
-
-              {/* ── Audit Insights Panel ── */}
-              {insights.length > 0 && (
-                <section className="audit-block animate-fade-in">
-                  <header className="audit-block-head">
-                    <h4 className="audit-block-title">
-                      <BarChart3 size={13} />
-                      Audit Insights
-                    </h4>
-                  </header>
-                  <ul className="insights-list">
-                    {insights.map((insight, i) => (
-                      <li key={i} className="insight-item">
-                        <span className="insight-bullet" />
-                        <span>{insight}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </section>
-              )}
+              {/* The workflow's own written conclusion, shown on its own. The
+                  findings lists it was generated alongside were dropped, but the
+                  summary is the part an auditor actually reads to decide. */}
+              <SummaryBlock summary={purchaseSummary} />
             </>
           )}
         </div>
 
-        <div className="modal-footer">
-            <p className="footer-hint">{activeDocColumns.length + 1}-way cross-document validation · {totalFields} fields analyzed</p>
+<div className="modal-footer">
+            {/* Page position is deliberately not repeated here. The capsule in
+                the header already states it, and two counters for one value is
+                how they drift out of step. */}
+            <p className="footer-hint">
+              {activeDocColumns.length + 1}-way cross-document validation — {totalFields} fields analyzed
+            </p>
             <div className="flex footer-actions">
                 <button className="btn btn-outline" onClick={onClose}>Close</button>
                 {decision ? (
                   <span style={{
                     display: 'inline-flex', alignItems: 'center', gap: '0.35rem',
-                    padding: '0.5rem 1rem', borderRadius: '8px', fontSize: '0.8rem', fontWeight: 700,
+                    padding: '0.5rem 1rem', borderRadius: '999px', fontSize: '0.8rem', fontWeight: 700,
                     background: decision === 'Approve' ? 'rgba(16,185,129,0.12)' : 'rgba(239,68,68,0.12)',
                     color: decision === 'Approve' ? '#10b981' : '#ef4444',
                     border: `1px solid ${decision === 'Approve' ? 'rgba(16,185,129,0.25)' : 'rgba(239,68,68,0.25)'}`
@@ -1013,6 +1208,26 @@ const SALES_COMPARE_FIELDS = [
 // Group sales records by the main order number (so_number OR so_po_number)
 const getSalesGroupKey = (record) =>
   record.so_number || record.so_po_number || record['so_number'] || 'Unknown';
+
+/* Group purchase records by invoice number. One purchase audit writes a row per
+   reconciled document, so several rows share an invoice number and belong to the
+   same audit on screen.
+
+   The fallbacks are the alternate spellings the purchase pipeline has written the
+   same value under. Rows with no invoice number at all are NOT bucketed together
+   the way the sales side buckets 'Unknown' — they have nothing in common, so each
+   falls back to its own row id and stays a card of its own. */
+const getPurchaseGroupKey = (record) => {
+  const candidates = [
+    record.Invoice_Number_Invoice,
+    record.invoice_number,
+    record.inv_number,
+    record.tax_invoice_number,
+  ];
+  const invoiceNo = candidates.find(hasSourceValue);
+  if (invoiceNo) return String(invoiceNo).trim().toUpperCase();
+  return record.id !== undefined && record.id !== null ? `row-${record.id}` : null;
+};
 
 // Common abbreviation normalizer for name fuzzy matching
 const normalizeNameTokens = (str) => {
@@ -1310,17 +1525,6 @@ const toList = (items) => {
   return items.map(findingText).filter(Boolean);
 };
 
-// The purchase workflow writes its findings as a single newline-delimited text
-// column rather than a JSON array, and a clean run is stored as the literal
-// string "[]". Both shapes are normalised to a list of one-line strings.
-const toFindingList = (value) => {
-  if (Array.isArray(value)) return value.map(findingText).filter(Boolean);
-  if (value === null || value === undefined) return [];
-  const raw = String(value).trim();
-  if (!raw || raw === '[]') return [];
-  return raw.split(/\r?\n/).map(findingText).filter(Boolean);
-};
-
 // Match statuses are normalised to a single visual language so an auditor reads
 // every check the same way: MATCH/YES = verified, MISMATCH/NO = failed,
 // PARTIAL = needs review, missing (null) = never evaluated.
@@ -1366,17 +1570,112 @@ const DOC_ACCENTS = {
   invoice: { icon: FileText,        label: 'Invoice',       color: '#3b82f6', bg: 'rgba(37,99,235,0.10)' },
   gp:      { icon: ClipboardList,   label: 'Gate Pass',     color: '#06b6d4', bg: 'rgba(6,182,212,0.10)' },
   ws:      { icon: Scale,           label: 'Weight Slip',   color: '#f43f5e', bg: 'rgba(244,63,94,0.10)' },
+  lr:      { icon: Truck,           label: 'LR Copy',       color: '#8b5cf6', bg: 'rgba(139,92,246,0.10)' },
+  eway:    { icon: Truck,           label: 'E-Way Bill',    color: '#0ea5e9', bg: 'rgba(14,165,233,0.10)' },
+  grn:     { icon: ClipboardList,   label: 'GRN',           color: '#d97706', bg: 'rgba(217,119,6,0.10)' },
 };
 
+// The purchase documents a material card can be built for, in the same order as
+// the matrix columns so the two read left to right together.
+const PURCHASE_DOC_CARDS = [
+  { doc: 'Invoice',    kind: 'invoice' },
+  { doc: 'LR Copy',    kind: 'lr' },
+  { doc: 'E-Way Bill', kind: 'eway' },
+  { doc: 'GRN',        kind: 'grn' },
+];
+
+/* Which dot slots to render, given a live index and a total.
+
+   Below the cap every record gets a dot. Above it, a long ledger would produce
+   a meaningless wall of identical dots, so the first and last are pinned and the
+   live record gets a run of neighbours between them. Gaps between runs are
+   marked with an ellipsis rather than quietly closed up, because a dot row that
+   silently hides the ends is worse than one that admits it trimmed them. */
+/* One record switcher, shared by both ledger modals.
+   They were built separately and had drifted apart: purchase had a capsule
+   stepper, sales had bare "Item 1 of 3" text flanked by two separate buttons
+   and a row of 8px dots. Same job, two different looks.
+
+   Position is stated as a page number. Morphing dots were tried here and read as
+   decoration: at this size, sitting under a title in a modal, nobody could tell
+   they were the slider. A number is unambiguous and states the total, which is
+   the part a dot row of any length cannot tell you. */
+const RecordStepper = ({ noun, current, total, onSelect }) => {
+  const shellRef = useRef(null);
+  const wheelLock = useRef(0);
+
+  // React registers wheel as a passive listener at the root, so an onWheel
+  // handler cannot call preventDefault and would silently let the modal scroll
+  // as well as paging. The listener has to be attached natively.
+  useEffect(() => {
+    const el = shellRef.current;
+    if (!el) return undefined;
+
+    const onWheel = (e) => {
+      if (Math.abs(e.deltaY) < Math.abs(e.deltaX)) return;
+
+      // Trackpad momentum fires dozens of events per flick, which would fling
+      // through every record at once. One page per flick is the useful rate.
+      const now = Date.now();
+      if (now - wheelLock.current < 200) { e.preventDefault(); return; }
+      if (Math.abs(e.deltaY) < 10) return;
+
+      const next = Math.max(0, Math.min(total - 1, current + Math.sign(e.deltaY)));
+      // At either end the scroll is left alone, so hovering the capsule can
+      // never trap you - the modal still scrolls when there is nothing to page.
+      if (next === current) return;
+
+      e.preventDefault();
+      wheelLock.current = now;
+      onSelect(next);
+    };
+
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  }, [current, total, onSelect]);
+
+  if (total <= 1) return null;
+  const go = (next) => onSelect(Math.max(0, Math.min(total - 1, next)));
+  const lower = noun.toLowerCase();
+
+  return (
+    <div className="record-stepper" ref={shellRef} title={`${noun} ${current + 1} of ${total} — scroll to change`}>
+      <button
+        type="button"
+        className="stepper-btn"
+        onClick={() => go(current - 1)}
+        disabled={current === 0}
+        aria-label={`Previous ${lower}`}
+      >
+        <ChevronLeft size={17} />
+      </button>
+
+      {/* Announces the change to assistive tech, which the dots did not. */}
+      <span className="stepper-label" aria-live="polite">
+        <span className="stepper-word">{noun}</span>
+        <span className="stepper-current">{current + 1}</span>
+        <span className="stepper-sep" aria-hidden="true">/</span>
+        <span className="stepper-total">{total}</span>
+      </span>
+
+      <button
+        type="button"
+        className="stepper-btn"
+        onClick={() => go(current + 1)}
+        disabled={current === total - 1}
+        aria-label={`Next ${lower}`}
+      >
+        <ChevronRight size={17} />
+      </button>
+    </div>
+  );
+};
 const MatchBadge = ({ value }) => {
   const b = MATCH_STATUS_BADGE(value);
   const ToneIcon = { positive: CheckCircle, negative: X, warning: AlertTriangle, neutral: Info }[b.tone];
   return (
-    <span style={{
-      display: 'inline-flex', alignItems: 'center', gap: '0.3rem', whiteSpace: 'nowrap',
-      padding: '0.2rem 0.6rem', borderRadius: '6px', fontSize: '0.68rem', fontWeight: 800,
-      backgroundColor: b.bg, color: b.text, border: `1px solid ${b.border}`,
-      textTransform: 'uppercase', letterSpacing: '0.04em'
+    <span className="cap" style={{
+      backgroundColor: b.bg, color: b.text, borderColor: b.border,
     }}>
       <ToneIcon size={10} />
       {b.label}
@@ -1388,13 +1687,10 @@ const AuditStatusBadge = ({ value }) => {
   const b = AUDIT_STATUS_BADGE(value);
   const ToneIcon = { positive: CheckCircle, negative: AlertTriangle, warning: AlertTriangle, neutral: Info }[b.tone];
   return (
-    <span style={{
-      display: 'inline-flex', alignItems: 'center', gap: '0.35rem', whiteSpace: 'nowrap',
-      padding: '0.25rem 0.7rem', borderRadius: '50px', fontSize: '0.68rem', fontWeight: 800,
-      backgroundColor: b.bg, color: b.text, border: `1px solid ${b.border}`,
-      textTransform: 'uppercase', letterSpacing: '0.05em'
+    <span className="cap cap-lg" style={{
+      backgroundColor: b.bg, color: b.text, borderColor: b.border,
     }}>
-      <ToneIcon size={11} />
+      <ToneIcon size={12} />
       {b.label}
     </span>
   );
@@ -1405,10 +1701,9 @@ const ScoreBadge = ({ value }) => {
   if (n === null) return <span style={{ fontSize: '0.85rem', fontWeight: 800, color: '#94a3b8', fontFamily: 'monospace' }}>—</span>;
   const c = SCORE_COLOR(n);
   return (
-    <span style={{
-      display: 'inline-flex', alignItems: 'baseline', gap: '0.15rem',
-      padding: '0.25rem 0.7rem', borderRadius: '8px', fontSize: '0.95rem', fontWeight: 800,
-      fontFamily: 'monospace', backgroundColor: c.bg, color: c.text, border: `1px solid ${c.border}`
+    <span className="cap cap-lg cap-num" style={{
+      fontSize: '1rem',
+      backgroundColor: c.bg, color: c.text, borderColor: c.border,
     }}>
       {Number.isInteger(n) ? n : n.toFixed(1)}
     </span>
@@ -1420,7 +1715,7 @@ const StatCard = ({ label, value }) => {
   const isEmpty = display === '—';
   return (
     <div style={{
-      padding: '0.6rem 0.75rem', borderRadius: '10px',
+      padding: '0.6rem 0.75rem', borderRadius: '12px',
       border: '1px solid var(--border)', background: 'rgba(0,0,0,0.015)'
     }}>
       <div style={{
@@ -1462,7 +1757,7 @@ const DocPanel = ({ kind, title, rows }) => {
 
   return (
     <div style={{
-      border: '1px solid var(--border)', borderRadius: '10px',
+      border: '1px solid var(--border)', borderRadius: '12px',
       background: 'rgba(0,0,0,0.015)', overflow: 'hidden'
     }}>
       <div style={{
@@ -1471,7 +1766,7 @@ const DocPanel = ({ kind, title, rows }) => {
         borderBottom: '1px solid var(--border)'
       }}>
         <span style={{
-          display: 'inline-flex', padding: '0.22rem', borderRadius: '6px',
+          display: 'inline-flex', padding: '0.22rem', borderRadius: '999px',
           background: accent.bg, color: accent.color
         }}>
           <PanelIcon size={12} />
@@ -1509,7 +1804,7 @@ const SectionLabel = ({ children, action }) => (
 
 const MatchStrip = ({ title, items }) => (
   <div style={{
-    marginTop: '0.8rem', padding: '0.6rem 0.75rem', borderRadius: '10px',
+    marginTop: '0.8rem', padding: '0.6rem 0.75rem', borderRadius: '12px',
     border: '1px solid var(--border)', background: 'rgba(0,0,0,0.015)'
   }}>
     <SectionLabel>{title}</SectionLabel>
@@ -1517,7 +1812,7 @@ const MatchStrip = ({ title, items }) => (
       {items.map(item => (
         <div key={item.label} style={{
           display: 'flex', alignItems: 'center', gap: '0.45rem',
-          padding: '0.28rem 0.6rem', borderRadius: '8px',
+          padding: '0.28rem 0.6rem', borderRadius: '999px',
           border: '1px solid var(--border)', background: 'var(--surface)'
         }}>
           <span style={{ fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-muted)' }}>{item.label}</span>
@@ -1607,7 +1902,7 @@ const SummaryBlock = ({ summary }) => {
 const AuditStatusStrip = ({ score, status }) => (
   <div style={{
     display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '1.5rem',
-    padding: '0.6rem 0.85rem', borderRadius: '10px',
+    padding: '0.6rem 0.85rem', borderRadius: '12px',
     border: '1px solid var(--border)', background: 'rgba(0,0,0,0.02)'
   }}>
     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
@@ -1679,7 +1974,7 @@ const SingleFilePicker = ({ label, file, onSelectFile, isPending }) => {
           {label} Document
         </span>
         {isPending && (
-          <span style={{ fontSize: '0.68rem', fontWeight: 800, color: '#ef4444', background: 'rgba(239,68,68,0.1)', padding: '2px 6px', borderRadius: '4px' }}>
+          <span style={{ fontSize: '0.68rem', fontWeight: 800, color: '#ef4444', background: 'rgba(239,68,68,0.1)', padding: '2px 6px', borderRadius: '999px' }}>
             Pending Upload
           </span>
         )}
@@ -1717,7 +2012,7 @@ const SingleFilePicker = ({ label, file, onSelectFile, isPending }) => {
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', overflow: 'hidden' }}>
           <div style={{
             padding: '0.5rem',
-            borderRadius: '8px',
+            borderRadius: '12px',
             background: file ? 'rgba(16,185,129,0.12)' : 'rgba(37,99,235,0.1)',
             color: file ? 'var(--success)' : 'var(--primary)',
             display: 'flex'
@@ -1744,7 +2039,7 @@ const SingleFilePicker = ({ label, file, onSelectFile, isPending }) => {
             style={{
               background: 'rgba(239,68,68,0.1)',
               border: 'none',
-              borderRadius: '6px',
+              borderRadius: '999px',
               color: '#ef4444',
               cursor: 'pointer',
               padding: '4px 8px',
@@ -1768,7 +2063,7 @@ const SingleFilePicker = ({ label, file, onSelectFile, isPending }) => {
               background: 'var(--primary)',
               color: 'white',
               border: 'none',
-              borderRadius: '8px',
+              borderRadius: '999px',
               padding: '0.4rem 0.85rem',
               fontSize: '0.75rem',
               fontWeight: 700,
@@ -1877,7 +2172,7 @@ const PendingDocsUploadModal = ({ group, onClose, onUploadSuccess }) => {
         }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-              <div style={{ padding: '0.6rem', borderRadius: '10px', background: 'rgba(245,158,11,0.12)', color: '#f59e0b', display: 'flex' }}>
+              <div style={{ padding: '0.6rem', borderRadius: '12px', background: 'rgba(245,158,11,0.12)', color: '#f59e0b', display: 'flex' }}>
                 <FileUp size={18} />
               </div>
               <div>
@@ -1903,7 +2198,7 @@ const PendingDocsUploadModal = ({ group, onClose, onUploadSuccess }) => {
               return (
                 <span key={d.key} style={{
                   display: 'inline-flex', alignItems: 'center', gap: '0.35rem',
-                  padding: '0.3rem 0.75rem', borderRadius: '6px', fontSize: '0.72rem', fontWeight: 700,
+                  padding: '0.3rem 0.75rem', borderRadius: '999px', fontSize: '0.72rem', fontWeight: 700,
                   background: isMissing ? 'rgba(239,68,68,0.1)' : 'rgba(16,185,129,0.1)',
                   color: isMissing ? '#ef4444' : '#10b981',
                   border: `1px solid ${isMissing ? 'rgba(239,68,68,0.2)' : 'rgba(16,185,129,0.2)'}`
@@ -1931,7 +2226,7 @@ const PendingDocsUploadModal = ({ group, onClose, onUploadSuccess }) => {
           {uploadError && (
             <div style={{
               display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.75rem 1rem',
-              borderRadius: '8px', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)',
+              borderRadius: '12px', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)',
               color: '#ef4444', fontSize: '0.8rem', fontWeight: 600, marginBottom: '1rem'
             }}>
               <AlertTriangle size={14} />
@@ -2025,24 +2320,24 @@ const SalesRecordModal = ({ records, onClose, invoiceNumber, onDecision, isProce
         borderBottom: '1px solid var(--border)', background: 'rgba(0,0,0,0.02)'
       }}
     >
-      <h3 style={{ margin: 0, fontSize: '0.8rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--text)' }}>{title}</h3>
+<h3 className="cap audit-section-pill">{title}</h3>
       <ChevronRight size={16} style={{ transform: isSectionOpen(title, defaultOpen) ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform 0.2s', color: 'var(--text-muted)' }} />
     </div>
   );
 
   const Badge = ({ value, green, yellow, red }) => {
     const score = value !== null && value !== undefined && value !== '' ? Number(value) : null;
-    if (score === null) return <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748b' }}>—</span>;
+    if (score === null) return <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748b' }}>-</span>;
     let colors;
     if (green && score >= green) colors = { bg: 'rgba(16,185,129,0.12)', text: '#10b981' };
     else if (yellow && score >= yellow) colors = { bg: 'rgba(245,158,11,0.12)', text: '#eab308' };
     else if (red) colors = { bg: 'rgba(239,68,68,0.12)', text: '#ef4444' };
     else colors = { bg: 'rgba(100,116,139,0.08)', text: '#64748b' };
-    return <span style={{ padding: '0.2rem 0.6rem', borderRadius: '6px', fontSize: '0.85rem', fontWeight: 800, backgroundColor: colors.bg, color: colors.text }}>{score}</span>;
+    return <span className="cap cap-num" style={{ fontSize: '0.85rem', backgroundColor: colors.bg, color: colors.text }}>{score}</span>;
   };
 
   const CollapseSection = ({ title, children, defaultOpen = false }) => (
-    <div style={{ border: '1px solid var(--border)', borderRadius: '10px', overflow: 'hidden', marginBottom: '1rem', background: 'var(--surface)' }}>
+    <div style={{ border: '1px solid var(--border)', borderRadius: '12px', overflow: 'hidden', marginBottom: '1rem', background: 'var(--surface)' }}>
       <SectionHeader title={title} defaultOpen={defaultOpen} />
       {isSectionOpen(title, defaultOpen) && <div className="audit-section-body">{children}</div>}
     </div>
@@ -2282,7 +2577,7 @@ const QUICK_ENTRY_CHECKS = [
                 {isQuickEntry && (
                   <span style={{
                     fontSize: '0.68rem', fontWeight: 800, textTransform: 'uppercase',
-                    letterSpacing: '0.08em', padding: '0.2rem 0.6rem', borderRadius: '6px',
+                    letterSpacing: '0.08em', padding: '0.2rem 0.6rem', borderRadius: '999px',
                     background: 'rgba(245,158,11,0.12)', color: '#f59e0b',
                     border: '1px solid rgba(245,158,11,0.25)', verticalAlign: 'middle'
                   }}>
@@ -2290,43 +2585,15 @@ const QUICK_ENTRY_CHECKS = [
                   </span>
                 )}
               </h2>
-              {hasMultiple && (
-                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>
-                  Item {currentIndex + 1} of {totalItems}
-                </span>
-              )}
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
               {hasMultiple && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-                  <button
-                    onClick={() => setCurrentIndex(Math.max(0, currentIndex - 1))}
-                    disabled={currentIndex === 0}
-                    style={{ ...navBtnStyle, opacity: currentIndex === 0 ? 0.4 : 1 }}
-                  >
-                    <ChevronLeft size={16} /> Prev
-                  </button>
-                  <div style={{ display: 'flex', gap: '0.35rem', alignItems: 'center' }}>
-                    {records.map((_, i) => (
-                      <span
-                        key={i}
-                        onClick={() => setCurrentIndex(i)}
-                        style={{
-                          width: '8px', height: '8px', borderRadius: '50%', cursor: 'pointer',
-                          background: i === currentIndex ? 'var(--primary)' : 'var(--border)',
-                          transition: 'all 0.2s'
-                        }}
-                      />
-                    ))}
-                  </div>
-                  <button
-                    onClick={() => setCurrentIndex(Math.min(totalItems - 1, currentIndex + 1))}
-                    disabled={currentIndex === totalItems - 1}
-                    style={{ ...navBtnStyle, opacity: currentIndex === totalItems - 1 ? 0.4 : 1 }}
-                  >
-                    Next <ChevronRight size={16} />
-                  </button>
-                </div>
+                <RecordStepper
+                  noun="Item"
+                  current={currentIndex}
+                  total={totalItems}
+                  onSelect={setCurrentIndex}
+                />
               )}
               <div style={{ textAlign: 'right' }}>
                 <div style={{ fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-muted)', marginBottom: '0.15rem' }}>Audit Score</div>
@@ -2341,7 +2608,7 @@ const QUICK_ENTRY_CHECKS = [
           {/* Document Number Strip */}
           <div style={{
             display: 'flex', flexWrap: 'wrap', gap: '1.25rem', marginTop: '0.75rem',
-            padding: '0.65rem 0.85rem', background: 'rgba(0,0,0,0.02)', borderRadius: '8px',
+            padding: '0.65rem 0.85rem', background: 'rgba(0,0,0,0.02)', borderRadius: '12px',
             fontSize: '0.75rem', alignItems: 'center'
           }}>
             {(isQuickEntry ? [
@@ -2373,7 +2640,7 @@ const QUICK_ENTRY_CHECKS = [
             <div style={{ overflowX: 'auto' }}>
               <table style={{
                 width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem',
-                border: '1px solid var(--border)', borderRadius: '8px', overflow: 'hidden'
+                border: '1px solid var(--border)', borderRadius: '12px', overflow: 'hidden'
               }}>
                 <thead>
                   <tr style={{ background: 'rgba(0,0,0,0.03)' }}>
@@ -2564,7 +2831,7 @@ const QUICK_ENTRY_CHECKS = [
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.9rem' }}>
               <div style={{
                 display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '0.4rem 1.25rem',
-                padding: '0.5rem 0.75rem', borderRadius: '8px',
+                padding: '0.5rem 0.75rem', borderRadius: '12px',
                 border: '1px solid var(--border)', background: 'rgba(0,0,0,0.02)'
               }}>
                 <span style={{
@@ -2815,7 +3082,7 @@ const QUICK_ENTRY_CHECKS = [
               {hasMatrixMismatch && !toList(I.critical_mismatches).length && !toList(I.warnings).length && (
                 <div style={{
                   display: 'flex', alignItems: 'flex-start', gap: '0.5rem', padding: '0.7rem 0.85rem',
-                  borderRadius: '8px', backgroundColor: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.15)',
+                  borderRadius: '12px', backgroundColor: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.15)',
                   color: '#ef4444', fontSize: '0.82rem', fontWeight: 600
                 }}>
                   <AlertTriangle size={15} style={{ flexShrink: 0, marginTop: '1px' }} />
@@ -2826,7 +3093,7 @@ const QUICK_ENTRY_CHECKS = [
               {!hasMatrixMismatch && !toList(I.critical_mismatches).length && !toList(I.warnings).length && !toList(I.missing_documents).length && !hasSourceValue(I.audit_summary) && (
                 <div style={{
                   display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.7rem 0.85rem',
-                  borderRadius: '8px', backgroundColor: 'rgba(16,185,129,0.06)', border: '1px solid rgba(16,185,129,0.15)',
+                  borderRadius: '12px', backgroundColor: 'rgba(16,185,129,0.06)', border: '1px solid rgba(16,185,129,0.15)',
                   color: '#10b981', fontSize: '0.82rem', fontWeight: 600
                 }}>
                   <CheckCircle size={15} />
@@ -2850,7 +3117,7 @@ const QUICK_ENTRY_CHECKS = [
             {hasDecision ? (
               <span style={{
                 display: 'inline-flex', alignItems: 'center', gap: '0.35rem',
-                padding: '0.5rem 1rem', borderRadius: '8px', fontSize: '0.8rem', fontWeight: 700,
+                padding: '0.5rem 1rem', borderRadius: '999px', fontSize: '0.8rem', fontWeight: 700,
                 background: decisionStatus === 'Approve' ? 'rgba(16,185,129,0.12)' : 'rgba(239,68,68,0.12)',
                 color: decisionStatus === 'Approve' ? '#10b981' : '#ef4444',
                 border: `1px solid ${decisionStatus === 'Approve' ? 'rgba(16,185,129,0.25)' : 'rgba(239,68,68,0.25)'}`
@@ -2888,12 +3155,24 @@ const tdStyle = {
   padding: '0.5rem 0.75rem', borderBottom: '1px solid var(--border)', verticalAlign: 'top'
 };
 
-const navBtnStyle = {
-  display: 'inline-flex', alignItems: 'center', gap: '0.25rem',
-  padding: '0.4rem 0.85rem', borderRadius: '8px', border: '1px solid var(--border)',
-  background: 'var(--surface)', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 600,
-  color: 'var(--text)'
+/* The purchase matrix has to hold GSTINs, coil descriptions and six-figure
+   amounts across up to four document columns at once, so it reads as cramped at
+   the sales matrix's density. These layer more air on top of thStyle/tdStyle
+   rather than changing the shared pair, which would reflow the sales table too. */
+const purchaseThStyle = {
+  ...thStyle,
+  padding: '0.9rem 1rem',
+  fontSize: '0.74rem',
 };
+
+const purchaseTdStyle = {
+  ...tdStyle,
+  padding: '0.85rem 1rem',
+};
+
+// Stops a column collapsing to nothing when a long description lands in one
+// document and the others are short.
+const PURCHASE_VALUE_MIN_WIDTH = 165;
 
 const DATE_FILTERS = [
   { value: 'all', label: 'All Time' },
@@ -2904,6 +3183,15 @@ const DATE_FILTERS = [
   { value: 'past6m', label: 'Past 6 Months' },
   { value: 'thisYear', label: 'This Year' },
   { value: 'custom', label: 'Custom Range' },
+];
+
+// Score tiers for the purchase dropdown. Labels state the band so the number is
+// not a guess: the boundaries are the ones getScoreTier uses.
+const SCORE_FILTERS = [
+  { value: 'all', label: 'Score: All' },
+  { value: 'high', label: 'Score: High (>75)' },
+  { value: 'medium', label: 'Score: Medium (50-75)' },
+  { value: 'low', label: 'Score: Low (<50)' },
 ];
 
 const getDateCutoff = (filter) => {
@@ -3029,6 +3317,21 @@ const formatLedgerTimestamp = (value) => {
   });
 };
 
+/* The dial on a grouped card. A purchase audit is split across several rows and
+   only some of them carry a score, so the card shows the highest one recorded —
+   the audit is not weaker than its best-measured row, and showing a blank dial
+   because the sibling rows went unscored would understate it. Rows that were
+   never scored at all still read as "not recorded". */
+const getPurchaseGroupScore = (group) => {
+  let best = null;
+  group.records.forEach((record) => {
+    const { value } = getLedgerScore(record, parseLedgerAuditResult(record));
+    if (value !== null && (best === null || value > best)) best = value;
+  });
+  if (best === null) return { value: null, text: '—', tone: 'none' };
+  return { value: best, text: `${best}%`, tone: getScoreTier(best) };
+};
+
 // ── Sales Ledger Score Helpers ───────────────────────────────
 // Sales records carry their audit score under `intelligence.audit_score`
 // (or at the top level when the transform hasn't split it out). Some rows only
@@ -3117,6 +3420,7 @@ const AuditHistory = () => {
   const [purchasePage, setPurchasePage] = useState(1)
   const [salesPage, setSalesPage] = useState(1)
   const [salesQuickOnly, setSalesQuickOnly] = useState(false)
+  const [purchaseScoreFilter, setPurchaseScoreFilter] = useState('all') // 'all' | 'high' | 'medium' | 'low'
   const [salesScoreFilter, setSalesScoreFilter] = useState('all') // 'all' | 'high' | 'medium' | 'low'
 
   // Derived: which groups already have a decision saved
@@ -3304,11 +3608,13 @@ const AuditHistory = () => {
 
   // The two sales ledgers are separate tables, so flipping the toggle is a
   // ledger change, not a client-side filter — the previously loaded rows are
-  // dropped and the other table is read.
+  // dropped and the other table is read. This one does show the loader: the
+  // request crosses to the server, and without it the stale rows from the other
+  // ledger sat there looking like the new ledger had simply not changed.
   useEffect(() => {
     setSelectedSalesGroup(null);
     setSalesPage(1);
-    fetchSalesHistory(false);
+    fetchSalesHistory();
   }, [salesQuickOnly]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useSyncRefresh(() => {
@@ -3363,12 +3669,14 @@ const AuditHistory = () => {
   };
 
   const filteredHistory = useMemo(() => {
-    const filtered = history.filter(item => 
+    const term = searchTerm.toLowerCase();
+    const matchesText = (value) => hasSourceValue(value) && String(value).toLowerCase().includes(term);
+    const filtered = history.filter(item =>
       isWithinDateFilter(item.created_at, dateFilter, customDateRange) &&
-      ((item.Invoice_Number_Invoice?.toLowerCase().includes(searchTerm.toLowerCase())) ||
-      (item.Supplier_Name_Invoice?.toLowerCase().includes(searchTerm.toLowerCase())) ||
-      (item.Vehicle_No_Eway?.toLowerCase().includes(searchTerm.toLowerCase())) ||
-      (item.id?.toString().includes(searchTerm)))
+      (matchesText(item.Invoice_Number_Invoice) ||
+      matchesText(item.Supplier_Name_Invoice) ||
+      matchesText(readPurchaseColumn(item, 'Vehicle_No_Eway')) ||
+      (item.id?.toString().includes(term)))
     );
     return [...filtered].sort((a, b) => {
       const da = new Date(a.created_at || 0).getTime();
@@ -3376,6 +3684,40 @@ const AuditHistory = () => {
       return sortOrder === 'latest' ? db - da : da - db;
     });
   }, [history, searchTerm, sortOrder, dateFilter, customDateRange])
+
+  /* One purchase audit can land on the ledger as several rows — one per reconciled
+     document — so the flat list above is collapsed to one card per invoice number.
+     The rows are kept in newest-first order inside the group because the modal
+     steps through them in that order. */
+  const groupedPurchaseHistory = useMemo(() => {
+    const groups = new Map();
+
+    filteredHistory.forEach(record => {
+      const key = getPurchaseGroupKey(record);
+      if (!key) return;
+      if (!groups.has(key)) {
+        groups.set(key, {
+          key,
+          invoiceNumber: record.Invoice_Number_Invoice || 'Invoice number unavailable',
+          records: [],
+          latestDate: record.created_at,
+        });
+      }
+      groups.get(key).records.push(record);
+      const current = groups.get(key);
+      if (record.created_at && (!current.latestDate || new Date(record.created_at) > new Date(current.latestDate))) {
+        current.latestDate = record.created_at;
+      }
+    });
+
+    const rows = Array.from(groups.values());
+    /* Tier filter, same bands as the sales side: High >75, Medium 50-75, Low <50.
+       Scored off the group rather than a single row, because an invoice split
+       across four documents keeps the score of the record that actually carried
+       it. Rows with no score at all have tone 'none' and fall out of every tier. */
+    if (purchaseScoreFilter === 'all') return rows;
+    return rows.filter(group => getPurchaseGroupScore(group).tone === purchaseScoreFilter);
+  }, [filteredHistory, purchaseScoreFilter])
 
   const filteredSalesHistory = useMemo(() => {
     const term = searchTerm.toLowerCase();
@@ -3434,11 +3776,11 @@ const AuditHistory = () => {
   useEffect(() => {
     setPurchasePage(1)
     setSalesPage(1)
-  }, [activeSide, searchTerm, sortOrder, dateFilter, customDateRange, salesQuickOnly, salesScoreFilter])
+  }, [activeSide, searchTerm, sortOrder, dateFilter, customDateRange, salesQuickOnly, salesScoreFilter, purchaseScoreFilter])
 
   useEffect(() => {
-    setPurchasePage(page => Math.max(1, Math.min(page, Math.ceil(filteredHistory.length / LEDGERS_PER_PAGE))))
-  }, [filteredHistory.length])
+    setPurchasePage(page => Math.max(1, Math.min(page, Math.ceil(groupedPurchaseHistory.length / LEDGERS_PER_PAGE))))
+  }, [groupedPurchaseHistory.length])
 
   useEffect(() => {
     setSalesPage(page => Math.max(1, Math.min(page, Math.ceil(groupedSalesHistory.length / LEDGERS_PER_PAGE))))
@@ -3469,11 +3811,11 @@ const AuditHistory = () => {
           : 'Search sales invoices or customers...'];
   }, [activeSide, history, salesHistory])
 
-  const purchaseTotalPages = Math.max(1, Math.ceil(filteredHistory.length / LEDGERS_PER_PAGE))
+  const purchaseTotalPages = Math.max(1, Math.ceil(groupedPurchaseHistory.length / LEDGERS_PER_PAGE))
   const salesTotalPages = Math.max(1, Math.ceil(groupedSalesHistory.length / LEDGERS_PER_PAGE))
   const currentPurchasePage = Math.min(Math.max(purchasePage, 1), purchaseTotalPages)
   const currentSalesPage = Math.min(Math.max(salesPage, 1), salesTotalPages)
-  const paginatedHistory = filteredHistory.slice((currentPurchasePage - 1) * LEDGERS_PER_PAGE, currentPurchasePage * LEDGERS_PER_PAGE)
+  const paginatedHistory = groupedPurchaseHistory.slice((currentPurchasePage - 1) * LEDGERS_PER_PAGE, currentPurchasePage * LEDGERS_PER_PAGE)
   const paginatedSalesHistory = groupedSalesHistory.slice((currentSalesPage - 1) * LEDGERS_PER_PAGE, currentSalesPage * LEDGERS_PER_PAGE)
 
   // Derive sales table columns dynamically (must be before any early return)
@@ -3533,6 +3875,18 @@ const AuditHistory = () => {
               onChange={setDateFilter}
               icon={Filter}
               ariaLabel="Filter by date"
+            />
+            {/* Score tiers, same dropdown on both sides. It lives in the toolbar
+                rather than above the ledger because a filter that lives with the
+                results disappears when the results it produced are empty — which
+                leaves you unable to clear the filter that emptied them. */}
+            <PebbleSelect
+              className="date-filter-wrap"
+              value={activeSide === 'purchase' ? purchaseScoreFilter : salesScoreFilter}
+              options={SCORE_FILTERS}
+              onChange={activeSide === 'purchase' ? setPurchaseScoreFilter : setSalesScoreFilter}
+              icon={Shield}
+              ariaLabel="Filter by audit score"
             />
             {dateFilter === 'custom' && (
               <div className="custom-date-range">
@@ -3602,29 +3956,56 @@ const AuditHistory = () => {
           ) : (
           <>
           <div className="purchase-ledger-list">
-            {paginatedHistory.map((record) => {
-              const result = parseLedgerAuditResult(record);
-              const score = getLedgerScore(record, result);
-              const amount = parseLedgerAmount(
-                record.Total_Amount_Invoice ?? record.Total_Amount_EWay ?? record.Amount
-              );
-              const invoiceNo = record.Invoice_Number_Invoice || 'Invoice number unavailable';
-              const supplier = record.Supplier_Name_Invoice || 'Unknown supplier';
-              const docPresence = getPurchaseDocumentPresence(record);
-              const openAudit = () => setSelectedAudit(record);
+            {paginatedHistory.map((group) => {
+              const score = getPurchaseGroupScore(group);
+              const amount = (() => {
+                // The rows are one invoice split across documents, not separate
+                // invoices, so they all carry the same value — taking the first
+                // one that has it rather than summing, which would multiply the
+                // total by the number of documents.
+                for (const record of group.records) {
+                  const value = parseLedgerAmount(
+                    record.Total_Amount_Invoice ?? record.Total_Amount_EWay ?? record.Amount
+                  );
+                  if (value !== null && value !== undefined) return value;
+                }
+                return null;
+              })();
+              const invoiceNo = group.invoiceNumber;
+              const supplier = group.records.find(r => hasSourceValue(r.Supplier_Name_Invoice))?.Supplier_Name_Invoice || 'Unknown supplier';
+              const openAudit = () => setSelectedAudit(group);
+
+              /* Document chips are a union across the group: the audit captured
+                 all four documents, but each row only carries the columns for
+                 the document it reconciled, so a per-row read would show three
+                 of the four as "not provided" for every row. Facts are read the
+                 same way — first row in the group that has a value wins. */
+              const docPresence = PURCHASE_DOC_FAMILIES.reduce((acc, fam) => {
+                acc[fam.key] = group.records.some(record => getPurchaseDocumentPresence(record)[fam.key]);
+                return acc;
+              }, {});
+
+              const pickFact = (field, fallback) =>
+                group.records.find(r => hasSourceValue(r[field]))?.[field] || fallback;
+
+              /* Either spelling of the E-Way vehicle column will do, so a row
+                 extracted under the other one is not shown as a blank card fact. */
+              const pickVehicle = () =>
+                group.records.map(r => readPurchaseColumn(r, 'Vehicle_No_EWay'))
+                  .find(v => hasSourceValue(v));
 
               // A label with nothing after it is just noise, so facts without a
               // value drop out and the remaining ones re-flow into the grid.
               const facts = [
-                { icon: <Truck size={12} />, label: 'Vehicle', value: record.Vehicle_No_EWay },
-                { icon: <Hash size={12} />, label: 'Batch', value: record.Batch_Code_Invoice },
-                { icon: <FileText size={12} />, label: 'E-Way Bill', value: record.EWB_Number_EWay || record.Invoice_Number_EWay },
-                { icon: <Activity size={12} />, label: 'Audited', value: formatLedgerTimestamp(record.created_at), always: true },
+                { icon: <Truck size={12} />, label: 'Vehicle', value: pickVehicle() },
+                { icon: <Hash size={12} />, label: 'Batch', value: pickFact('Batch_Code_Invoice') },
+                { icon: <FileText size={12} />, label: 'E-Way Bill', value: pickFact('EWB_Number_EWay') || pickFact('Invoice_Number_EWay') },
+                { icon: <Activity size={12} />, label: 'Audited', value: formatLedgerTimestamp(group.latestDate), always: true },
               ].filter((fact) => fact.always || (fact.value && String(fact.value).trim()));
 
               return (
                 <article
-                  key={record.id}
+                  key={group.key}
                   className={`purchase-record-card tone-${score.tone}`}
                   onClick={openAudit}
                   onKeyDown={(e) => {
@@ -3652,7 +4033,10 @@ const AuditHistory = () => {
                     <div className="purchase-card-head">
                       <div className="purchase-identity">
                         <h3 className="purchase-invoice-no" title={invoiceNo}>{invoiceNo}</h3>
-                        <span className="purchase-ref">REF {record.id}</span>
+                        <span className="purchase-ref">REF {group.records[0].id}</span>
+                        {group.records.length > 1 && (
+                          <span className="item-count-badge">{group.records.length} items</span>
+                        )}
                       </div>
                     </div>
 
@@ -3667,7 +4051,7 @@ const AuditHistory = () => {
                             title={has ? `${fam.label} captured` : `${fam.label} not provided`}
                             style={{
                               display: 'inline-flex', alignItems: 'center', gap: '0.25rem',
-                              padding: '0.12rem 0.45rem', borderRadius: '5px',
+                              padding: '0.12rem 0.45rem', borderRadius: '999px',
                               fontSize: '0.6rem', fontWeight: 800, textTransform: 'uppercase',
                               letterSpacing: '0.05em', whiteSpace: 'nowrap',
                               background: has ? 'rgba(16,185,129,0.10)' : 'rgba(0,0,0,0.03)',
@@ -3700,10 +4084,10 @@ const AuditHistory = () => {
             })}
           </div>
           <LedgerPagination
-            totalItems={filteredHistory.length}
+            totalItems={groupedPurchaseHistory.length}
             currentPage={currentPurchasePage}
             onPageChange={setPurchasePage}
-            itemLabel="purchase audit records"
+            itemLabel="purchase audits"
           />
           </>
           )}
@@ -3739,26 +4123,6 @@ const AuditHistory = () => {
                 <span className="quick-switch-knob" />
               </button>
             </label>
-            <div className="score-filter-group" role="group" aria-label="Filter by audit score">
-              {[
-                { key: 'all', label: 'All' },
-                { key: 'high', label: 'High' },
-                { key: 'medium', label: 'Medium' },
-                { key: 'low', label: 'Low' },
-              ].map(option => (
-                <button
-                  key={option.key}
-                  type="button"
-                  className={`filter-pill score-pill ${option.key === 'all' ? '' : `tone-${option.key}`} ${salesScoreFilter === option.key ? 'active' : ''}`}
-                  onClick={() => setSalesScoreFilter(option.key)}
-                  aria-pressed={salesScoreFilter === option.key}
-                  title={option.key === 'high' ? 'Score above 75%' : option.key === 'medium' ? 'Score 50–75%' : option.key === 'low' ? 'Score below 50%' : 'All score tiers'}
-                >
-                  {option.key !== 'all' && <span className="score-pill-dot" />}
-                  {option.label}
-                </button>
-              ))}
-            </div>
           </div>
 
           {groupedSalesHistory.length === 0 ? (
@@ -3812,7 +4176,7 @@ const AuditHistory = () => {
                       {hasPendingDocs && !groupDecision && (
                         <span style={{
                           display: 'inline-flex', alignItems: 'center', gap: '0.3rem',
-                          padding: '0.2rem 0.6rem', borderRadius: '5px', fontSize: '0.68rem', fontWeight: 800,
+                          padding: '0.2rem 0.6rem', borderRadius: '999px', fontSize: '0.68rem', fontWeight: 800,
                           background: 'rgba(245,158,11,0.15)', color: '#f59e0b',
                           border: '1px solid rgba(245,158,11,0.3)', textTransform: 'uppercase', letterSpacing: '0.05em'
                         }}>
@@ -3904,11 +4268,17 @@ const AuditHistory = () => {
       )}
 
       {selectedAudit && (
-        <UnifiedAuditModal 
-          audit={selectedAudit} 
-          onClose={() => setSelectedAudit(null)} 
+        /* Keyed by the audit so each one opens on its own first row. Remounting
+           is what resets the stepper — an effect doing it would be a second
+           render pass on every open, and would also reset if the key stayed
+           the same. */
+        <UnifiedAuditModal
+          key={selectedAudit.key}
+          audit={selectedAudit}
+          records={selectedAudit.records}
+          onClose={() => setSelectedAudit(null)}
           onDecision={handleDecisionClick}
-          isProcessing={decisionProcessing === selectedAudit.id}
+          processingId={decisionProcessing}
         />
       )}
 
@@ -3940,6 +4310,3 @@ const AuditHistory = () => {
 }
 
 export default AuditHistory
-
-
-
