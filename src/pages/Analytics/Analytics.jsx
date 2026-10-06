@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react'
 import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, Legend } from 'recharts'
-import { RefreshCw, AlertTriangle, TrendingUp, ShieldCheck, Zap, Activity, IndianRupee } from 'lucide-react'
+import { RefreshCw, TrendingUp, ShieldCheck, Zap, Activity, IndianRupee } from 'lucide-react'
 import { SquareWaveLoader } from '@/components/ui/square-wave-loader'
 import { fetchPurchaseRecords } from '../../api/audits.js'
 import { useSyncRefresh } from '../../context/SyncContext'
@@ -210,45 +210,6 @@ const Analytics = () => {
         </div>
       </div>
 
-      <div className="card bg-[var(--surface)] rounded-[32px] overflow-hidden border border-[var(--border)] shadow-xl">
-        <div className="card-header p-10 border-b border-[var(--border)] bg-[var(--background)]">
-          <h3 className="text-xl font-black text-[var(--text)] flex items-center gap-3">
-             <AlertTriangle className="text-error" size={20} /> Discrepancy Snapshot
-          </h3>
-        </div>
-        <div className="table-responsive">
-          <table className="data-table w-full">
-            <thead>
-              <tr className="text-[var(--text)] bg-[var(--background)] font-black">
-                <th className="px-10 py-6 text-[10px] font-black uppercase tracking-widest text-left">Identity</th>
-                <th className="px-10 py-6 text-[10px] font-black uppercase tracking-widest text-left">Supplier</th>
-                <th className="px-10 py-6 text-[10px] font-black uppercase tracking-widest text-left">Amount</th>
-                <th className="px-10 py-6 text-[10px] font-black uppercase tracking-widest text-center">Score</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-[var(--border)]">
-              {analyticsData.failedAudits.length > 0 ? (
-                analyticsData.failedAudits.map((a, i) => (
-                  <tr key={a.id || i} className="hover:bg-[var(--background)] transition-colors">
-                    <td className="px-10 py-8 font-black text-[var(--text)]">{a.Invoice_Number_Invoice || 'N/A'}</td>
-                    <td className="px-10 py-8 text-[var(--text-muted)] text-xs">{a.Supplier_Name_Invoice || 'Unknown'}</td>
-                    <td className="px-10 py-8 font-bold text-[var(--text)]">₹{parseFloat(String(a.Total_Amount_Invoice || '0').replace(/[^0-9.-]/g, '')).toLocaleString()}</td>
-                    <td className="px-10 py-8 text-center">
-                      <span className="bg-error/10 text-error px-4 py-2 rounded-full font-black text-xs">
-                        {parseAuditResult(a.Audit_Result)?.overall?.final_score || 'N/A'}
-                      </span>
-                    </td>
-                  </tr>
-                ))
-              ) : (
-                <tr>
-                  <td colSpan="4" className="p-20 text-center text-slate-500 uppercase tracking-widest text-[10px]">Zero Violations Detected</td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
     </div>
   )
 }
