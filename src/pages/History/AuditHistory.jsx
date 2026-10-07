@@ -4148,12 +4148,14 @@ const AuditHistory = () => {
                                groupDecision === 'Reject' ? 'rgba(239, 68, 68, 0.12)' :
                                hasPendingDocs ? 'rgba(245,158,11,0.06)' : '';
                 // Score marker on the ledger itself: tier shows the colour before
-                // the user even opens the record.
+                // the user even opens the record. The Quick Check ledger carries no
+                // score, so both the marker and its edge colour are skipped there.
                 const scoreInfo = getSalesGroupScoreInfo(group);
+                const showScore = !salesQuickOnly;
                 return (
                 <div 
                   key={group.invoiceNumber || idx} 
-                  className={`sales-record-card tone-${scoreInfo.tier}`}
+                  className={`sales-record-card${showScore ? ` tone-${scoreInfo.tier}` : ''}`}
                   style={{
                     ...(cardBg ? { backgroundColor: cardBg } : {}),
                     ...(hasPendingDocs && !groupDecision ? { borderLeft: '3px solid #f59e0b' } : {})
@@ -4193,12 +4195,14 @@ const AuditHistory = () => {
                     </div>
                   </div>
                   <div className="sales-record-action">
+                    {showScore && (
                     <span
                       className={`sales-score-indicator tone-${scoreInfo.tier}`}
                       title={scoreInfo.value !== null ? `Audit score: ${scoreInfo.text} (${scoreInfo.tier === 'high' ? 'High, above 75%' : scoreInfo.tier === 'medium' ? 'Medium, 50–75%' : scoreInfo.tier === 'low' ? 'Low, below 50%' : 'no score'})` : 'No audit score recorded'}
                     >
                       {scoreInfo.value !== null ? `${scoreInfo.value}%` : '—'}
                     </span>
+                    )}
                     {groupDecision && (
                       <span className={`sales-decision-badge ${groupDecision === 'Approve' ? 'badge-approve' : 'badge-reject'}`} style={{
                         background: groupDecision === 'Approve' ? 'rgba(16,185,129,0.15)' : 'rgba(239,68,68,0.15)',
