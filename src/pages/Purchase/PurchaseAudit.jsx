@@ -80,23 +80,29 @@ const DocumentUpload = ({ title, accepted, onUpload, files, isSubmitted, multipl
     multiple: !!multiple
   })
 
-  const renderFilePreview = (f, index) => (
-    <div key={index || 0} className="file-preview animate-scale-in">
-      <FileIcon className="file-icon" size={32} />
-      <div className="file-info">
-        <span className="file-name" style={{ fontSize: '1.1rem' }}>{f.name}</span>
-        <span className="file-size">{(f.size / 1024).toFixed(2)} KB</span>
+  const renderFilePreview = (f, index) => {
+    const ext = f.name.includes('.') ? f.name.split('.').pop().toUpperCase() : ''
+    return (
+      <div key={index || 0} className="file-preview animate-scale-in">
+        <FileIcon className="file-icon" size={26} />
+        <div className="file-info">
+          <span className="file-name" title={f.name}>{f.name}</span>
+          <span className="file-meta">
+            <span className="file-size">{(f.size / 1024).toFixed(2)} KB</span>
+            {ext && <span className="file-ext">{ext}</span>}
+          </span>
+        </div>
+        {!isSubmitted && (
+          <button className="remove-btn" onClick={(e) => {
+            e.stopPropagation();
+            onUpload(prev => prev.filter((_, i) => i !== index))
+          }}>
+            <X size={20} />
+          </button>
+        )}
       </div>
-      {!isSubmitted && (
-        <button className="remove-btn" onClick={(e) => {
-          e.stopPropagation();
-          onUpload(prev => prev.filter((_, i) => i !== index))
-        }}>
-          <X size={20} />
-        </button>
-      )}
-    </div>
-  )
+    )
+  }
 
   const hasFiles = files && files.length > 0
 

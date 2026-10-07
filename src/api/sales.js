@@ -47,17 +47,25 @@ export const hasDocData = (record, prefix) =>
 // authoritative signal for one.
 export const isRecordQuickEntry = (record) => record?.__source === QUICK_CHECK_SOURCE;
 
-// Quick checks written before the split are still sitting in the main sales
-// table. They carry no invoice / gate pass / weightslip data, so they are
-// neither a full audit nor a quick entry — they are left out of the normal
-// sales ledger rather than rendered as an empty comparison. Rows read from
-// the quick-check table need no such check: that table only ever holds SO and
-// PO data.
+// A row in the main table is a real sales audit when it carries the audit's own
+// output — the score, the status, the missing-document list or the workflow's
+// Completed marker — or any of the movement documents. Quick checks written
+// before the split are SO-and-PO rows with none of that, so they stay out of
+// the normal sales ledger rather than being rendered as an empty comparison.
+// Rows read from the quick-check table need no such check: the source tag
+// already tells the two apart.
+const hasAuditResults = (record) =>
+  hasDocData(record, 'inv_') ||
+  hasDocData(record, 'gp_') ||
+  hasDocData(record, 'ws_') ||
+  record?.audit_score != null ||
+  record?.audit_status != null ||
+  (Array.isArray(record?.missing_documents) && record.missing_documents.length > 0) ||
+  (typeof record?.Status === 'string' && record.Status.trim() !== '');
+
 const isRecordLegacyQuickEntry = (record) =>
   record?.__source !== QUICK_CHECK_SOURCE &&
-  !hasDocData(record, 'inv_') &&
-  !hasDocData(record, 'gp_') &&
-  !hasDocData(record, 'ws_');
+  !hasAuditResults(record);
 
 export const fetchSalesRecords = async (source = SALES_SOURCE) => {
   const resolvedSource = source in LEDGERS ? source : SALES_SOURCE;

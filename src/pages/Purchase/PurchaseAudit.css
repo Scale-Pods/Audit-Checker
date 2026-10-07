@@ -228,7 +228,8 @@
 .file-preview {
   display: flex;
   align-items: center;
-  padding: 1.5rem;
+  gap: 1rem;
+  padding: 1rem 1.25rem;
   background: var(--card-bg);
   border-radius: 16px;
   border: 1px solid var(--border);
@@ -236,21 +237,74 @@
   box-shadow: var(--shadow-sm);
 }
 
-.file-info {
-  margin-left: 1.25rem;
-  display: flex;
-  flex-direction: column;
-  flex: 1;
+/* Tinted tile behind the glyph so a long filename has a fixed left edge to
+   start from instead of the icon floating on the card. */
+.file-preview .file-icon {
+  flex-shrink: 0;
+  padding: 0.55rem;
+  border-radius: 12px;
+  color: var(--primary);
+  background: rgba(37, 99, 235, 0.08);
+  border: 1px solid rgba(37, 99, 235, 0.18);
 }
 
+.file-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  flex: 1;
+  min-width: 0;
+}
+
+/* Truncated rather than wrapped: names like SO-PO-SO260919-01985.png used to
+   break onto a second line and shove the remove button out of the row. */
 .file-name {
   font-weight: 600;
-  font-size: 1.1rem;
+  font-size: 1rem;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.file-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  font-size: 0.82rem;
+  color: var(--text-muted);
 }
 
 .file-size {
-  font-size: 0.85rem;
+  font-size: inherit;
+}
+
+.file-ext {
+  font-family: monospace;
+  font-size: 0.65rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 0.1rem 0.45rem;
+  border-radius: 6px;
+  background: rgba(100, 116, 139, 0.12);
+  border: 1px solid var(--border);
   color: var(--text-muted);
+}
+
+.file-badge {
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.65rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 0.15rem 0.55rem;
+  border-radius: 999px;
+  background: rgba(37, 99, 235, 0.1);
+  border: 1px solid rgba(37, 99, 235, 0.28);
+  color: var(--primary);
 }
 
 .remove-btn {
@@ -262,6 +316,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  flex-shrink: 0;
   transition: all 0.2s;
 }
 

@@ -77,7 +77,11 @@ const convertPdfToImage = async (file) => {
   await page.render({ canvasContext: ctx, viewport }).promise
   page.cleanup()
   const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'))
-  return new File([blob], file.name.replace(/\.pdf$/i, '.png'), { type: 'image/png' })
+  const converted = new File([blob], file.name.replace(/\.pdf$/i, '.png'), { type: 'image/png' })
+  // Flagged on the file itself so the preview can badge a genuine PDF
+  // conversion — a plain PNG upload keeps its own name and must not claim one.
+  converted.convertedFromPdf = true
+  return converted
 }
 
 const DocumentUpload = ({ title, accepted, onUpload, files, isSubmitted, required }) => {
@@ -110,26 +114,32 @@ const DocumentUpload = ({ title, accepted, onUpload, files, isSubmitted, require
     noDrag: converting
   })
 
-  const renderFilePreview = (f, index) => (
-    <div key={index || 0} className="file-preview animate-scale-in">
-      <FileIcon className="file-icon" size={32} />
-      <div className="file-info">
-        <span className="file-name" style={{ fontSize: '1.1rem' }}>{f.name}</span>
-        <span className="file-size">{(f.size / 1024).toFixed(2)} KB</span>
-        {f.name.endsWith('.png') && !f.name.startsWith('Pasted-Image') && (
-          <span className="file-badge" style={{ fontSize: '10px', fontWeight: '700', padding: '1px 6px', borderRadius: '4px', backgroundColor: 'rgba(37, 99, 235, 0.1)', color: 'var(--primary)', marginLeft: '0.5rem' }}>converted</span>
+  const renderFilePreview = (f, index) => {
+    const ext = f.name.includes('.') ? f.name.split('.').pop().toUpperCase() : ''
+    return (
+      <div key={index || 0} className="file-preview animate-scale-in">
+        <FileIcon className="file-icon" size={26} />
+        <div className="file-info">
+          <span className="file-name" title={f.name}>{f.name}</span>
+          <span className="file-meta">
+            <span className="file-size">{(f.size / 1024).toFixed(2)} KB</span>
+            {ext && <span className="file-ext">{ext}</span>}
+            {f.convertedFromPdf && (
+              <span className="file-badge" title="Uploaded as a PDF and converted to an image for the audit">PDF → PNG</span>
+            )}
+          </span>
+        </div>
+        {!isSubmitted && (
+          <button className="remove-btn" onClick={(e) => {
+            e.stopPropagation();
+            onUpload(prev => prev.filter((_, i) => i !== index))
+          }}>
+            <X size={20} />
+          </button>
         )}
       </div>
-      {!isSubmitted && (
-        <button className="remove-btn" onClick={(e) => {
-          e.stopPropagation();
-          onUpload(prev => prev.filter((_, i) => i !== index))
-        }}>
-          <X size={20} />
-        </button>
-      )}
-    </div>
-  )
+    )
+  }
 
   const hasFiles = files && files.length > 0
 
@@ -205,16 +215,14 @@ const SalesAudit = () => {
   const [docNumber, setDocNumber] = useState('')
   const [isSubmitConfirmOpen, setIsSubmitConfirmOpen] = useState(false)
   const [stageConfirm, setStageConfirm] = useState(null)
-  const [stageNotice, setStageNotice] = useState(null)
 
-  // Either the Purchase Order or the Invoice anchors a sales audit — the SO sheet
-  // is compared against one of them — so at least one of the two must be attached.
-  // Both are interchangeable: neither needs the other first, and both unlock every
-  // later stage. The Weightslip and the Gatepass hang off that pair and stay
-  // optional throughout. Declared before the paste effect that reads them.
-  const hasPurchaseOrder = purchaseOrderFiles.length > 0
-  const hasInvoice = invoiceFiles.length > 0
-  const hasAnchor = hasPurchaseOrder || hasInvoice
+  // Every document on this wizard stands alone: none needs another attached
+  // first, and removing one never takes the others with it. Two exceptions
+  // ride on that: the Weightslip needs at least one of the Purchase Order /
+  // Invoice pair in place before it can be added, and Final Submit wants one
+  // of the same pair. The Gatepass and the Weightslip itself (once attached)
+  // stay optional outright.
+  const hasAnchor = purchaseOrderFiles.length > 0 || invoiceFiles.length > 0
 
   useEffect(() => {
     if (!isSubmitConfirmOpen && !stageConfirm) return
@@ -238,22 +246,19 @@ const SalesAudit = () => {
           const blob = item.getAsFile();
           if (blob && blob.type.startsWith('image/')) {
             const pastedFile = new File([blob], `Pasted-Image-${Date.now()}.png`, { type: blob.type });
-            if (activeStep === 0) {
-              setPurchaseOrderFiles([pastedFile]);
-              setStageNotice(null);
-              return;
-            }
-            // Same rule as the dropzones: a paste is an upload. The Invoice is an
-            // anchor in its own right, so it always takes one; the movement
-            // documents need an anchor — either document — in place first.
-            if (activeStep === 2) {
-              setInvoiceFiles([pastedFile]);
-              setStageNotice(null);
-              return;
-            }
-            if (!hasAnchor) return;
-            if (activeStep === 3) setWeightslipFiles([pastedFile]);
-            if (activeStep === 4) setGatepassFiles([pastedFile]);
+            // Same rule as the dropzones: a paste is an upload, and every
+            // section takes one on its own — the Weightslip being the sole
+            // exception, needing a Purchase Order or Invoice in place first.
+            const setters = {
+              0: setPurchaseOrderFiles,
+              2: setInvoiceFiles,
+              3: setWeightslipFiles,
+              4: setGatepassFiles
+            };
+            const setFiles = setters[activeStep];
+            if (!setFiles) return;
+            if (activeStep === 3 && !hasAnchor) return;
+            setFiles([pastedFile]);
           }
         }
       }
@@ -263,53 +268,22 @@ const SalesAudit = () => {
     return () => window.removeEventListener('paste', handlePaste);
   }, [activeStep, hasAnchor]);
 
+  /* Every dropzone writes its own state — nothing but the Weightslip needs
+     another document in place first, and removing one never clears the rest.
+     Two side effects are the exception: the Quick Check result is built from
+     the Purchase Order alone, and the Weightslip loses its footing when the
+     last anchor document goes with it. */
   const handlePurchaseOrderUpload = (files) => {
     setPurchaseOrderFiles(files);
-    if (files.length > 0) {
-      setStageNotice(null);
-      return;
-    }
-    // The Invoice stands on its own, so it survives the Purchase Order being
-    // removed. The Weightslip and the Gatepass only ever had an anchor to hang
-    // off — with neither document left they go too, rather than stranding a
-    // wizard that can no longer be submitted.
-    if (invoiceFiles.length === 0) {
-      setWeightslipFiles([]);
-      setGatepassFiles([]);
-    }
+    if (files.length > 0) return;
     setQuickCheckResult(null);
+    if (invoiceFiles.length === 0) setWeightslipFiles([]);
   };
 
   const handleInvoiceUpload = (files) => {
     setInvoiceFiles(files);
-    if (files.length > 0) {
-      setStageNotice(null);
-      return;
-    }
-    // Mirror of the Purchase Order removal: the movement documents need an
-    // anchor, so with no Purchase Order left they cannot stay attached.
-    if (purchaseOrderFiles.length === 0) {
-      setWeightslipFiles([]);
-      setGatepassFiles([]);
-    }
+    if (files.length === 0 && purchaseOrderFiles.length === 0) setWeightslipFiles([]);
   };
-
-  /* The Weightslip and the Gatepass can only hang off an anchor document, so
-     these sections funnel through this instead of writing state straight from
-     the dropzone. It refuses the file, drops the user back on the anchor
-     stages and says why, rather than accepting a document that could never
-     be sent. */
-  const requireAnchor = (setter, label) => (files) => {
-    if (!hasAnchor) {
-      setActiveStep(0);
-      setStageNotice(`Upload the Purchase Order or Invoice first — the ${label} cannot be added without one of them.`);
-      return;
-    }
-    setter(files);
-  };
-
-  const handleWeightslipUpload = requireAnchor(setWeightslipFiles, 'weightslip');
-  const handleGatepassUpload = requireAnchor(setGatepassFiles, 'gatepass');
 
   const handleSubmitAll = async () => {
     // Either the Purchase Order or the Invoice anchors the audit — the SO sheet
@@ -446,15 +420,13 @@ const SalesAudit = () => {
     if (activeStep !== 1) {
       const files = steps[activeStep].files
       if (!files || files.length === 0) {
-        // The Purchase Order and the Invoice are interchangeable anchors, so
-        // either may be skipped — the other one covers it. The Weightslip and
-        // the Gatepass are optional outright. Every empty stage therefore only
-        // asks for confirmation rather than blocking the way forward.
+        // Nothing gates anything else, so every empty stage — including the
+        // two anchor documents — only asks for confirmation rather than
+        // blocking the way forward.
         setStageConfirm({ label: steps[activeStep].label, target })
         return
       }
     }
-    setStageNotice(null)
     setActiveStep(target)
   }
 
@@ -465,7 +437,6 @@ const SalesAudit = () => {
 
   const prevStep = () => {
     if (activeStep > 0) {
-      setStageNotice(null)
       setActiveStep(activeStep - 1)
     }
   }
@@ -912,9 +883,9 @@ const SalesAudit = () => {
     )
   }
 
-  /* Shown in place of a dropzone whose document cannot be accepted yet. States the
-     gate and offers the step that opens it, rather than leaving a dead dropzone
-     that silently refuses the file. */
+  /* Shown in place of the Weightslip dropzone while neither anchor document is
+     in place. States the gate and offers the step that opens it, rather than
+     leaving a dead dropzone that silently refuses the file. */
   const renderLockedStage = ({ label, requires, target }) => (
     <div className="upload-box card" style={{ textAlign: 'center', padding: '3rem 2rem', alignItems: 'center', justifyContent: 'center' }}>
       <div style={{
@@ -947,7 +918,7 @@ const SalesAudit = () => {
         <div className="header-actions">
           {(result || allDone) && (
             <button className="btn btn-outline" onClick={() => {
-              setResult(null); setInvoiceFiles([]); setGatepassFiles([]); setWeightslipFiles([]); setPurchaseOrderFiles([]); setAllDone(false); setActiveStep(0); setWebhookResponse(null); setQuickCheckResult(null); setStageNotice(null); setDocType('PO'); setDocNumber('');
+              setResult(null); setInvoiceFiles([]); setGatepassFiles([]); setWeightslipFiles([]); setPurchaseOrderFiles([]); setAllDone(false); setActiveStep(0); setWebhookResponse(null); setQuickCheckResult(null); setDocType('PO'); setDocNumber('');
             }}>
               Reset Audit
             </button>
@@ -1005,13 +976,6 @@ const SalesAudit = () => {
                           onUpload={handlePurchaseOrderUpload}
                           files={purchaseOrderFiles}
                         />
-                        {stageNotice && (
-                          <div className="stage-notice animate-fade-in">
-                            <AlertTriangle size={18} />
-                            <span>{stageNotice}</span>
-                            <button onClick={() => setStageNotice(null)} aria-label="Dismiss notice"><X size={14} /></button>
-                          </div>
-                        )}
                       </div>
                     )}
                     {activeStep === 1 && (
@@ -1048,7 +1012,7 @@ const SalesAudit = () => {
                         <DocumentUpload
                           title="Weightslip Upload"
                           accepted={{'image/*': ['.png', '.jpg', '.jpeg'], 'application/pdf': ['.pdf']}}
-                          onUpload={handleWeightslipUpload}
+                          onUpload={setWeightslipFiles}
                           files={weightslipFiles}
                         />
                       ) : (
@@ -1056,16 +1020,12 @@ const SalesAudit = () => {
                       )
                     )}
                     {activeStep === 4 && (
-                      hasAnchor ? (
-                        <DocumentUpload
-                          title="Gatepass Upload"
-                          accepted={{'image/*': ['.png', '.jpg', '.jpeg'], 'application/pdf': ['.pdf']}}
-                          onUpload={handleGatepassUpload}
-                          files={gatepassFiles}
-                        />
-                      ) : (
-                        renderLockedStage({ label: 'Gatepass', requires: 'Purchase Order or Invoice', target: 0 })
-                      )
+                      <DocumentUpload
+                        title="Gatepass Upload"
+                        accepted={{'image/*': ['.png', '.jpg', '.jpeg'], 'application/pdf': ['.pdf']}}
+                        onUpload={setGatepassFiles}
+                        files={gatepassFiles}
+                      />
                     )}
 
                     {/* One row: the rotating hint on the left, navigation on
@@ -1125,10 +1085,9 @@ const SalesAudit = () => {
                   <div className="sidebar-nav-list">
                     {steps.map((s, idx) => {
                       const StepIcon = s.icon;
-                      // The Weightslip and the Gatepass are the only stages with a
-                      // gate: they need an anchor, and either document serves.
-                      const isStageLocked =
-                        (idx === 3 || idx === 4) && !hasAnchor;
+                      // The Weightslip is the one stage with a gate: it needs an
+                      // anchor document, and either one of the pair serves.
+                      const isStageLocked = idx === 3 && !hasAnchor;
                       const lockedReason = 'Purchase Order or Invoice required';
                       return (
                         <div 
@@ -1144,7 +1103,7 @@ const SalesAudit = () => {
                           <div className="sidebar-step-info">
                             <span className="sidebar-step-name">{s.label}</span>
                             <span className="sidebar-step-status">
-                              {isStageLocked ? 'Locked' : idx === 1 ? 'Added' : s.files.length > 0 ? `${s.files.length} uploaded` : idx === 3 || idx === 4 ? 'Optional' : !hasAnchor ? 'Required' : 'Not uploaded'}
+                              {isStageLocked ? 'Locked' : idx === 1 ? 'Added' : s.files.length > 0 ? `${s.files.length} uploaded` : idx === 3 ? 'Optional' : idx === 4 ? 'Not uploaded' : !hasAnchor ? 'Required' : 'Not uploaded'}
                             </span>
                           </div>
                         </div>
