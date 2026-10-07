@@ -138,7 +138,12 @@ const DocumentUpload = ({ title, accepted, onUpload, files, isSubmitted, require
       <h3 className="upload-title text-primary flex items-center gap-2" style={{ fontSize: '1.25rem', marginBottom: '1.5rem' }}>
         <UploadCloud size={24} /> {title}
         {required && (
-          <span className="required-tag" title="This document is mandatory">Required</span>
+          <span
+            className="required-tag"
+            title={typeof required === 'string' ? `${required} — one of these must be uploaded` : 'This document is mandatory'}
+          >
+            {typeof required === 'string' ? required : 'Required'}
+          </span>
         )}
       </h3>
       
@@ -202,11 +207,14 @@ const SalesAudit = () => {
   const [stageConfirm, setStageConfirm] = useState(null)
   const [stageNotice, setStageNotice] = useState(null)
 
-  // The Purchase Order is the anchor document on the sales side — the SO sheet is
-  // compared against it — so it is the one upload that cannot be skipped: every
-  // later stage, every other document and the final submit stay unavailable until
-  // one is attached. Declared before the paste effect that reads it.
+  // Either the Purchase Order or the Invoice anchors a sales audit — the SO sheet
+  // is compared against one of them — so at least one of the two must be attached.
+  // Both are interchangeable: neither needs the other first, and both unlock every
+  // later stage. The Weightslip and the Gatepass hang off that pair and stay
+  // optional throughout. Declared before the paste effect that reads them.
   const hasPurchaseOrder = purchaseOrderFiles.length > 0
+  const hasInvoice = invoiceFiles.length > 0
+  const hasAnchor = hasPurchaseOrder || hasInvoice
 
   useEffect(() => {
     if (!isSubmitConfirmOpen && !stageConfirm) return
@@ -235,12 +243,17 @@ const SalesAudit = () => {
               setStageNotice(null);
               return;
             }
-            // Same rule as the dropzones: a paste is an upload, so the
-            // Purchase Order has to be in place before any other section takes one.
-            if (!hasPurchaseOrder) return;
-            if (activeStep === 2) setInvoiceFiles([pastedFile]);
-            if (activeStep === 3 && invoiceFiles.length > 0) setWeightslipFiles([pastedFile]);
-            if (activeStep === 4 && invoiceFiles.length > 0) setGatepassFiles([pastedFile]);
+            // Same rule as the dropzones: a paste is an upload. The Invoice is an
+            // anchor in its own right, so it always takes one; the movement
+            // documents need an anchor — either document — in place first.
+            if (activeStep === 2) {
+              setInvoiceFiles([pastedFile]);
+              setStageNotice(null);
+              return;
+            }
+            if (!hasAnchor) return;
+            if (activeStep === 3) setWeightslipFiles([pastedFile]);
+            if (activeStep === 4) setGatepassFiles([pastedFile]);
           }
         }
       }
@@ -248,7 +261,7 @@ const SalesAudit = () => {
 
     window.addEventListener('paste', handlePaste);
     return () => window.removeEventListener('paste', handlePaste);
-  }, [activeStep, invoiceFiles.length, hasPurchaseOrder]);
+  }, [activeStep, hasAnchor]);
 
   const handlePurchaseOrderUpload = (files) => {
     setPurchaseOrderFiles(files);
@@ -256,37 +269,54 @@ const SalesAudit = () => {
       setStageNotice(null);
       return;
     }
-    // Every other document on this wizard is attached behind the Purchase Order,
-    // so removing it has to take the dependents with it rather than leave them
-    // stranded against a wizard that can no longer be submitted.
-    setInvoiceFiles([]);
-    setWeightslipFiles([]);
-    setGatepassFiles([]);
+    // The Invoice stands on its own, so it survives the Purchase Order being
+    // removed. The Weightslip and the Gatepass only ever had an anchor to hang
+    // off — with neither document left they go too, rather than stranding a
+    // wizard that can no longer be submitted.
+    if (invoiceFiles.length === 0) {
+      setWeightslipFiles([]);
+      setGatepassFiles([]);
+    }
     setQuickCheckResult(null);
   };
 
-  /* Nothing but the Purchase Order may be attached until one is in place, so the
-     remaining sections funnel through these instead of writing state straight from
-     the dropzone. Each refuses the file, drops the user back on the Purchase Order
-     and says why, rather than accepting a document that could never be sent. */
-  const requirePurchaseOrder = (setter, label) => (files) => {
-    if (!hasPurchaseOrder) {
+  const handleInvoiceUpload = (files) => {
+    setInvoiceFiles(files);
+    if (files.length > 0) {
+      setStageNotice(null);
+      return;
+    }
+    // Mirror of the Purchase Order removal: the movement documents need an
+    // anchor, so with no Purchase Order left they cannot stay attached.
+    if (purchaseOrderFiles.length === 0) {
+      setWeightslipFiles([]);
+      setGatepassFiles([]);
+    }
+  };
+
+  /* The Weightslip and the Gatepass can only hang off an anchor document, so
+     these sections funnel through this instead of writing state straight from
+     the dropzone. It refuses the file, drops the user back on the anchor
+     stages and says why, rather than accepting a document that could never
+     be sent. */
+  const requireAnchor = (setter, label) => (files) => {
+    if (!hasAnchor) {
       setActiveStep(0);
-      setStageNotice(`Upload the Purchase Order first — the ${label} cannot be added without it.`);
+      setStageNotice(`Upload the Purchase Order or Invoice first — the ${label} cannot be added without one of them.`);
       return;
     }
     setter(files);
   };
 
-  const handleInvoiceUpload = requirePurchaseOrder(setInvoiceFiles, 'invoice');
-  const handleWeightslipUpload = requirePurchaseOrder(setWeightslipFiles, 'weightslip');
-  const handleGatepassUpload = requirePurchaseOrder(setGatepassFiles, 'gatepass');
+  const handleWeightslipUpload = requireAnchor(setWeightslipFiles, 'weightslip');
+  const handleGatepassUpload = requireAnchor(setGatepassFiles, 'gatepass');
 
   const handleSubmitAll = async () => {
-    // The Purchase Order is the anchor document on the sales side — the SO sheet
-    // is compared against it — so a sales audit cannot be sent without one.
-    if (purchaseOrderFiles.length === 0) {
-      setSubmitError('A Purchase Order is required before the audit can be submitted.')
+    // Either the Purchase Order or the Invoice anchors the audit — the SO sheet
+    // is compared against one of them — so a sales audit cannot be sent with
+    // neither attached.
+    if (!hasAnchor) {
+      setSubmitError('A Purchase Order or Invoice is required before the audit can be submitted.')
       return
     }
 
@@ -416,10 +446,10 @@ const SalesAudit = () => {
     if (activeStep !== 1) {
       const files = steps[activeStep].files
       if (!files || files.length === 0) {
-        if (!hasPurchaseOrder) {
-          setStageNotice('Purchase Order is required. Upload it to continue to the next stage.')
-          return
-        }
+        // The Purchase Order and the Invoice are interchangeable anchors, so
+        // either may be skipped — the other one covers it. The Weightslip and
+        // the Gatepass are optional outright. Every empty stage therefore only
+        // asks for confirmation rather than blocking the way forward.
         setStageConfirm({ label: steps[activeStep].label, target })
         return
       }
@@ -970,7 +1000,7 @@ const SalesAudit = () => {
                         </div>
                         <DocumentUpload
                           title="PO Upload"
-                          required
+                          required={!hasAnchor && 'PO or Invoice'}
                           accepted={{'image/*': ['.png', '.jpg', '.jpeg'], 'application/pdf': ['.pdf']}}
                           onUpload={handlePurchaseOrderUpload}
                           files={purchaseOrderFiles}
@@ -1005,19 +1035,16 @@ const SalesAudit = () => {
                       </div>
                     )}
                     {activeStep === 2 && (
-                      hasPurchaseOrder ? (
-                        <DocumentUpload
-                          title="Invoice Upload"
-                          accepted={{'image/*': ['.png', '.jpg', '.jpeg'], 'application/pdf': ['.pdf']}}
-                          onUpload={handleInvoiceUpload}
-                          files={invoiceFiles}
-                        />
-                      ) : renderLockedStage({ label: 'Invoice', requires: 'Purchase Order', target: 0 })
+                      <DocumentUpload
+                        title="Invoice Upload"
+                        required={!hasAnchor && 'PO or Invoice'}
+                        accepted={{'image/*': ['.png', '.jpg', '.jpeg'], 'application/pdf': ['.pdf']}}
+                        onUpload={handleInvoiceUpload}
+                        files={invoiceFiles}
+                      />
                     )}
                     {activeStep === 3 && (
-                      !hasPurchaseOrder ? (
-                        renderLockedStage({ label: 'Weightslip', requires: 'Purchase Order', target: 0 })
-                      ) : invoiceFiles.length > 0 ? (
+                      hasAnchor ? (
                         <DocumentUpload
                           title="Weightslip Upload"
                           accepted={{'image/*': ['.png', '.jpg', '.jpeg'], 'application/pdf': ['.pdf']}}
@@ -1025,13 +1052,11 @@ const SalesAudit = () => {
                           files={weightslipFiles}
                         />
                       ) : (
-                        renderLockedStage({ label: 'Weightslip', requires: 'Invoice', target: 2 })
+                        renderLockedStage({ label: 'Weightslip', requires: 'Purchase Order or Invoice', target: 0 })
                       )
                     )}
                     {activeStep === 4 && (
-                      !hasPurchaseOrder ? (
-                        renderLockedStage({ label: 'Gatepass', requires: 'Purchase Order', target: 0 })
-                      ) : invoiceFiles.length > 0 ? (
+                      hasAnchor ? (
                         <DocumentUpload
                           title="Gatepass Upload"
                           accepted={{'image/*': ['.png', '.jpg', '.jpeg'], 'application/pdf': ['.pdf']}}
@@ -1039,7 +1064,7 @@ const SalesAudit = () => {
                           files={gatepassFiles}
                         />
                       ) : (
-                        renderLockedStage({ label: 'Gatepass', requires: 'Invoice', target: 2 })
+                        renderLockedStage({ label: 'Gatepass', requires: 'Purchase Order or Invoice', target: 0 })
                       )
                     )}
 
@@ -1100,14 +1125,11 @@ const SalesAudit = () => {
                   <div className="sidebar-nav-list">
                     {steps.map((s, idx) => {
                       const StepIcon = s.icon;
-                      // Every stage after the Purchase Order depends on it, and the
-                      // movement documents additionally need the invoice.
+                      // The Weightslip and the Gatepass are the only stages with a
+                      // gate: they need an anchor, and either document serves.
                       const isStageLocked =
-                        (idx > 0 && !hasPurchaseOrder) ||
-                        ((idx === 3 || idx === 4) && invoiceFiles.length === 0);
-                      const lockedReason = (idx > 0 && !hasPurchaseOrder)
-                        ? 'Purchase Order required'
-                        : 'Invoice required';
+                        (idx === 3 || idx === 4) && !hasAnchor;
+                      const lockedReason = 'Purchase Order or Invoice required';
                       return (
                         <div 
                           key={idx} 
@@ -1122,7 +1144,7 @@ const SalesAudit = () => {
                           <div className="sidebar-step-info">
                             <span className="sidebar-step-name">{s.label}</span>
                             <span className="sidebar-step-status">
-                              {isStageLocked ? 'Locked' : idx === 1 ? 'Added' : s.files.length > 0 ? `${s.files.length} uploaded` : idx === 0 ? 'Required' : 'Not uploaded'}
+                              {isStageLocked ? 'Locked' : idx === 1 ? 'Added' : s.files.length > 0 ? `${s.files.length} uploaded` : idx === 3 || idx === 4 ? 'Optional' : !hasAnchor ? 'Required' : 'Not uploaded'}
                             </span>
                           </div>
                         </div>
@@ -1134,29 +1156,27 @@ const SalesAudit = () => {
                       to go over and what is being skipped are in one glance.
                       Hidden once the audit is with the workflow.
 
-                      The Purchase Order and the invoice are both required here -
-                      moving the button only changes where it is reached from,
-                      not what the sales audit needs - so the hint names whichever
-                      one is still missing. */}
+                      Either anchor document satisfies the audit here — the two
+                      are interchangeable — so the button stays disabled until
+                      one of them is attached, and the hint says so. The
+                      Weightslip and the Gatepass are optional and only ever
+                      draw the "not uploaded" soft hint. */}
                   {!allDone && (
                     <div className="sidebar-submit-wrap">
                       <button
                         className="sidebar-submit"
                         onClick={() => setIsSubmitConfirmOpen(true)}
-                        disabled={isSubmitting || !hasPurchaseOrder || invoiceFiles.length === 0}
+                        disabled={isSubmitting || !hasAnchor}
                       >
                         {isSubmitting
                           ? <><Loader2 size={18} className="spin-icon" /> Sending...</>
                           : <><Send size={18} /> Final Submit</>}
                       </button>
 
-                      {!hasPurchaseOrder && (
-                        <p className="sidebar-submit-hint">Upload the Purchase Order — a sales audit cannot run without it.</p>
+                      {!hasAnchor && (
+                        <p className="sidebar-submit-hint">Upload the Purchase Order or Invoice — a sales audit cannot run without one of them.</p>
                       )}
-                      {hasPurchaseOrder && invoiceFiles.length === 0 && (
-                        <p className="sidebar-submit-hint">Upload the invoice to enable the audit.</p>
-                      )}
-                      {hasPurchaseOrder && invoiceFiles.length > 0 && missingDocCount > 0 && (
+                      {hasAnchor && missingDocCount > 0 && (
                         <p className="sidebar-submit-hint">
                           {missingDocCount} of {steps.length} not uploaded - the audit will cover only what you send.
                         </p>

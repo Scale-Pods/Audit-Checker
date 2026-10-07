@@ -781,7 +781,8 @@
   opacity: 1;
 }
 
-/* Marks a document the wizard will not let you go forward without. */
+/* Marks a document the wizard will not let you go forward without. On the sales
+   side it labels the anchor pair, where either document satisfies the rule. */
 .required-tag {
   display: inline-flex;
   align-items: center;
