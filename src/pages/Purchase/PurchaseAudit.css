@@ -633,9 +633,12 @@
   inset: 0;
   z-index: 100;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
-  padding: 1.5rem;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  padding: max(1rem, env(safe-area-inset-top)) 1.5rem max(1rem, env(safe-area-inset-bottom));
   background: rgba(4, 7, 14, 0.72);
   backdrop-filter: blur(6px);
   animation: confirmModalFadeIn 0.18s ease;
@@ -644,6 +647,10 @@
   position: relative;
   width: 100%;
   max-width: 460px;
+  max-height: calc(100dvh - 2rem);
+  margin: auto;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   padding: 2.25rem 2rem 1.75rem;
   text-align: center;
   background: var(--surface);

@@ -273,6 +273,26 @@ a {
   color: inherit;
 }
 
+/* Media can never force a page wider than its column (logos, chart canvases,
+   pasted screenshots). Inline SVG icons keep their explicit width/height. */
+img,
+video,
+canvas {
+  max-width: 100%;
+  height: auto;
+}
+
+/* Used by the Users and History heading rows. It was referenced in the markup
+   but never declared, so those headers stacked instead of splitting the title
+   and the action button. Wrapping keeps it intact on handsets. */
+.flex-between {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
 button {
   cursor: pointer;
   border: none;

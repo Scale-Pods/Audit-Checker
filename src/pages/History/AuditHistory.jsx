@@ -4,6 +4,8 @@ import { FileText, CheckCircle, AlertTriangle, Eye, Download, Loader2, Truck, Ha
 import { fetchSalesRecords, hasDocData as hasDocPrefixData, isRecordQuickEntry, salesLedgerSource } from '../../api/sales.js'
 import { fetchPurchaseRecords } from '../../api/audits.js'
 import { useSyncRefresh } from '../../context/SyncContext'
+import { useAuth } from '../../context/AuthContext'
+import { canAccess } from '../../lib/access'
 import { SquareWaveLoader } from '@/components/ui/square-wave-loader'
 import { PebbleSelect } from '@/components/ui/pebble-select'
 import { PlaceholdersAndVanishInput } from '@/components/ui/placeholders-and-vanish-input'
@@ -24,6 +26,13 @@ const PENDING_DOCS_UPLOAD_WEBHOOK = 'https://n8n.srv1010832.hstgr.cloud/webhook/
 // Flip this to true once the workflow is deployed.
 const PENDING_DOCS_UPLOAD_ENABLED = false
 const LEDGERS_PER_PAGE = 15
+
+// The ledger sort cycles through date order and reference-number order: the
+// toggle advances one step per click and wraps back to the start. Date comes
+// first, then SO descending (Z→A / highest first) before ascending, so the
+// reference ledger can be flipped to its descending order right after Oldest.
+const SORT_ORDER_NEXT = { latest: 'oldest', oldest: 'ref-desc', 'ref-desc': 'ref-asc', 'ref-asc': 'latest' };
+const SORT_ORDER_LABELS = { latest: 'Latest', oldest: 'Oldest', 'ref-desc': 'SO ↓', 'ref-asc': 'SO ↑' };
 
 // Optional documents in the cross-document ledger. The webhook often returns
 // no LR / GRN / E-Way upload for a record, and a column of em-dashes reads as
@@ -1205,9 +1214,47 @@ const SALES_COMPARE_FIELDS = [
   { label: 'GSTIN',              invoice: 'inv_gstin',               so: null,                   po: 'po_gstin',              gp: null,                    ws: null,                       type: 'text' },
 ];
 
-// Group sales records by the main order number (so_number OR so_po_number)
-const getSalesGroupKey = (record) =>
-  record.so_number || record.so_po_number || record['so_number'] || 'Unknown';
+/* Sales records are grouped by their SO number, but not every row carries one —
+   the workflow may only have written the order under a different number. Rows
+   with an SO group by it; rows without are keyed off the best order / PO
+   reference they have so each keeps its own ledger instead of piling into a
+   shared "Unknown" bucket. The prefix keeps an SO group and a no-SO group from
+   colliding when they happen to share a number. */
+const normalizeSalesKey = (value) => (hasSourceValue(value) ? String(value).trim().toUpperCase() : null);
+
+const getSalesReferenceKey = (record) =>
+  [record.inv_order_number, record.sheet_order_number, record.inv_party_order_number,
+   record.sheet_party_order_number, record.po_number, record.so_po_number]
+    .map(normalizeSalesKey)
+    .find(Boolean);
+
+const getSalesGroupKey = (record) => {
+  const so = normalizeSalesKey(record.so_number);
+  if (so) return `SO:${so}`;
+  const reference = getSalesReferenceKey(record);
+  if (reference) return `ORD:${reference}`;
+  const uid = record.__uid || (record.id != null ? `row-${record.id}` : JSON.stringify(record));
+  return `NOKEY:${uid}`;
+};
+
+/* Duplicate detection compares reference numbers after stripping every
+   non-alphanumeric character, so "SO-123", "so 123" and "SO123" read as the
+   same entry even though the grouping keys kept them apart. */
+const normalizeRefKey = (value) =>
+  hasSourceValue(value) ? String(value).trim().toUpperCase().replace(/[^A-Z0-9]/g, '') : null;
+
+/* Natural ordering so SO2 sorts before SO10 rather than after it. */
+const compareRefKeys = (a, b) =>
+  String(a || '').localeCompare(String(b || ''), undefined, { numeric: true, sensitivity: 'base' });
+
+/* Display identity for a sales group: whether its SO is present and what to
+   show in the ledger header when it is not. */
+const getSalesGroupDisplay = (record) => {
+  const so = normalizeSalesKey(record.so_number);
+  if (so) return { hasSO: true, displayId: so, orderOrPo: null };
+  const orderOrPo = getSalesReferenceKey(record);
+  return { hasSO: false, displayId: orderOrPo || null, orderOrPo };
+};
 
 /* Group purchase records by invoice number. One purchase audit writes a row per
    reconciled document, so several rows share an invoice number and belong to the
@@ -2081,6 +2128,7 @@ const SingleFilePicker = ({ label, file, onSelectFile, isPending }) => {
 
 // ── Pending Documents Upload Modal ──────────────────────────────
 const PendingDocsUploadModal = ({ group, onClose, onUploadSuccess }) => {
+  const { currentUser } = useAuth();
   const record = group.records[0];
   const pendingInfo = isRecordPendingDocuments(record);
   // Only the documents this ledger is actually missing are offered for upload.
@@ -2133,7 +2181,7 @@ const PendingDocsUploadModal = ({ group, onClose, onUploadSuccess }) => {
       const formData = new FormData();
       // The ledger identity travels with every upload so the audit can be re-linked.
       const soNum = record.so_number || record.so_po_number || record.inv_order_number
-        || record.order_number || record['Invoice Number'] || group.invoiceNumber || '';
+        || record.order_number || record['Invoice Number'] || group.orderOrPo || '';
       formData.append('so_number', soNum);
       formData.append('so_no', soNum);
       formData.append('SO Number', soNum);
@@ -2149,6 +2197,7 @@ const PendingDocsUploadModal = ({ group, onClose, onUploadSuccess }) => {
         formData.append(d.field, renamed, fileName);
         formData.append(`${d.field}Name`, file.name);
       });
+      formData.append('submitted_by', currentUser?.email || '');
       const res = await fetch(PENDING_DOCS_UPLOAD_WEBHOOK, { method: 'POST', body: formData });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       setUploadSuccess(true);
@@ -2178,7 +2227,7 @@ const PendingDocsUploadModal = ({ group, onClose, onUploadSuccess }) => {
               <div>
                 <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 800, color: 'var(--text)' }}>Upload Pending Documents</h3>
                 <p style={{ margin: '0.15rem 0 0', fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 600 }}>
-                  SO: {record.so_number || group.invoiceNumber || '—'}
+                  SO: {record.so_number || group.orderOrPo || '—'}
                   {hasDocPrefixData(record, 'po_') ? ` · PO: ${record.po_number || '—'}` : ''}
                   {hasDocPrefixData(record, 'gp_') ? ` · GP: ${record.gp_number || '—'}` : ''}
                 </p>
@@ -2290,14 +2339,14 @@ const SalesRecordModal = ({ records, onClose, invoiceNumber, onDecision, isProce
   const check = (key) => (I[key] !== undefined && I[key] !== null && I[key] !== '' ? I[key] : record[key]);
 
   // A document column is only worth showing when the record actually carries
-  // data for it — quick entries have no gp_/ws_/inv_ values at all.
+  // data for it — quick entries have no gp_/ws_/inv_ values at all. Placeholder
+  // strings ('null', '-', 'N/A'...) count as missing too, so a webhook that
+  // wrote literal "null" into every inv_ cell cannot resurrect a fake Invoice
+  // column.
   const hasDocData = (prefix) =>
     Object.keys(record).some(k => {
       if (!k.startsWith(prefix)) return false;
-      const val = record[k];
-      if (val === null || val === undefined) return false;
-      if (typeof val === 'string') return val.trim() !== '';
-      return true;
+      return hasSourceValue(record[k]);
     });
 
   const hasInvoiceData = hasDocData('inv_');
@@ -2612,21 +2661,25 @@ const QUICK_ENTRY_CHECKS = [
             fontSize: '0.75rem', alignItems: 'center'
           }}>
             {(isQuickEntry ? [
-              { label: 'SO #', value: v('so_number') },
+              { label: 'SO #', value: v('so_number'), noSO: !hasSourceValue(record.so_number) },
               { label: 'PO #', value: v('po_number') },
               { label: 'Customer', value: v('so_customer_name') },
               { label: 'Supplier', value: v('po_supplier_name') },
               { label: 'Check', value: 'SO vs PO' },
             ] : [
-              { label: 'Invoice #', value: invoiceNumber || v('inv_order_number') },
-              { label: 'SO #', value: v('so_number') },
+              { label: 'Invoice #', value: invoiceNumber || v('inv_order_number'), show: hasInvoiceData },
+              { label: 'SO #', value: v('so_number'), noSO: !hasSourceValue(record.so_number) },
               { label: 'PO #', value: v('po_number'), show: hasPOData },
               { label: 'GP #', value: v('gp_number'), show: hasGPData },
               { label: 'WS #', value: v('ws_number'), show: hasWSData },
             ]).filter(item => item.show !== false).map((item, idx) => (
               <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
                 <span style={{ fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', fontSize: '0.68rem', letterSpacing: '0.05em' }}>{item.label}</span>
-                <span style={{ fontWeight: 700, color: 'var(--text)', fontSize: '0.8rem' }}>{item.value || '—'}</span>
+                {item.noSO ? (
+                  <span className="no-so-badge no-so-inline">No SO Found</span>
+                ) : (
+                  <span style={{ fontWeight: 700, color: 'var(--text)', fontSize: '0.8rem' }}>{item.value || '—'}</span>
+                )}
               </div>
             ))}
           </div>
@@ -3194,6 +3247,16 @@ const SCORE_FILTERS = [
   { value: 'low', label: 'Score: Low (<50)' },
 ];
 
+// Sales decision filter. "No SO" is a ledger state rather than a decision: the
+// group carries no sales order number, so it is filtered separately from the
+// approved / rejected outcomes.
+const SALES_DECISION_FILTERS = [
+  { value: 'all', label: 'Decision: All' },
+  { value: 'approved', label: 'Approved' },
+  { value: 'rejected', label: 'Rejected' },
+  { value: 'no-so', label: 'No SO Found' },
+];
+
 const getDateCutoff = (filter) => {
   const now = new Date();
   const start = new Date(now);
@@ -3401,7 +3464,12 @@ const isWithinDateFilter = (createdAt, filter, customRange) => {
 
 const AuditHistory = () => {
   const [searchParams, setSearchParams] = useSearchParams();
-  const [activeSide, setActiveSide] = useState('purchase') // 'purchase' | 'sales'
+  const { access } = useAuth();
+  // Ledger sides follow the same role map as the audit pages: a sales-only
+  // user never sees the purchase toggle and vice versa.
+  const canSeePurchase = canAccess(access, '/purchase');
+  const canSeeSales = canAccess(access, '/sales');
+  const [activeSide, setActiveSide] = useState(() => (canAccess(access, '/purchase') ? 'purchase' : 'sales')) // 'purchase' | 'sales'
   const [pendingUploadGroup, setPendingUploadGroup] = useState(null)
   const [history, setHistory] = useState([])
   const [salesHistory, setSalesHistory] = useState([])
@@ -3414,7 +3482,7 @@ const AuditHistory = () => {
   const [selectedSalesGroup, setSelectedSalesGroup] = useState(null)
   const [decisionProcessing, setDecisionProcessing] = useState(null)
   const [confirmDecision, setConfirmDecision] = useState(null)
-  const [sortOrder, setSortOrder] = useState('latest') // 'latest' | 'oldest'
+  const [sortOrder, setSortOrder] = useState('latest') // 'latest' | 'oldest' | 'ref-asc' | 'ref-desc'
   const [dateFilter, setDateFilter] = useState('all') // 'all' | 'today' | 'thisWeek' | 'past30' | 'past3m' | 'past6m' | 'thisYear' | 'custom'
   const [customDateRange, setCustomDateRange] = useState({ start: '', end: '' })
   const [purchasePage, setPurchasePage] = useState(1)
@@ -3422,6 +3490,7 @@ const AuditHistory = () => {
   const [salesQuickOnly, setSalesQuickOnly] = useState(false)
   const [purchaseScoreFilter, setPurchaseScoreFilter] = useState('all') // 'all' | 'high' | 'medium' | 'low'
   const [salesScoreFilter, setSalesScoreFilter] = useState('all') // 'all' | 'high' | 'medium' | 'low'
+  const [salesDecisionFilter, setSalesDecisionFilter] = useState('all') // 'all' | 'approved' | 'rejected' | 'no-so'
 
   // Derived: which groups already have a decision saved
   const salesGroupDecisions = useMemo(() => {
@@ -3614,6 +3683,9 @@ const AuditHistory = () => {
   useEffect(() => {
     setSelectedSalesGroup(null);
     setSalesPage(1);
+    // Quick entries are read newest-first for the SO-vs-PO checks, so the ledger
+    // opens on the descending reference order instead of date order.
+    if (salesQuickOnly) setSortOrder('ref-desc');
     fetchSalesHistory();
   }, [salesQuickOnly]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -3626,7 +3698,7 @@ const AuditHistory = () => {
   // Deep-link: auto-open sales modal from ?so= URL param
   useEffect(() => {
     const soParam = searchParams.get('so');
-    if (!soParam) return;
+    if (!soParam || !canSeeSales) return;
     // Switch to sales tab and load sales data if needed
     if (activeSide !== 'sales') {
       setActiveSide('sales');
@@ -3649,7 +3721,8 @@ const AuditHistory = () => {
           invoiceNumber: invoiceNum,
           records: [],
           partyName: record.so_customer_name || record.so_broker_name || record.inv_bill_to_name || 'Unknown Party',
-          latestDate: record.created_at
+          latestDate: record.created_at,
+          ...getSalesGroupDisplay(record),
         };
       }
       groups[invoiceNum].records.push(record);
@@ -3661,6 +3734,8 @@ const AuditHistory = () => {
   }, [salesHistory, searchParams]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleSideToggle = (side) => {
+    if (side === 'purchase' && !canSeePurchase) return;
+    if (side === 'sales' && !canSeeSales) return;
     setActiveSide(side);
     setSearchTerm('');
     if (side === 'sales' && salesHistory.length === 0 && !isSalesLoading) {
@@ -3711,13 +3786,37 @@ const AuditHistory = () => {
     });
 
     const rows = Array.from(groups.values());
+
+    /* Two cards whose invoice numbers only differ in punctuation or spacing
+       are the same entry recorded twice — every member of such a cluster gets
+       flagged so the ledger can paint them red. Groups that fell back to a row
+       id have no real invoice number at all, so they are never compared. */
+    const refCounts = new Map();
+    rows.forEach(group => {
+      if (String(group.key).startsWith('row-')) return;
+      const refKey = normalizeRefKey(group.invoiceNumber);
+      if (!refKey) return;
+      refCounts.set(refKey, (refCounts.get(refKey) || 0) + 1);
+    });
+    rows.forEach(group => {
+      const refKey = String(group.key).startsWith('row-') ? null : normalizeRefKey(group.invoiceNumber);
+      group.isDuplicate = !!refKey && refCounts.get(refKey) > 1;
+    });
+
+    /* Reference-number order sorts the ledger by invoice number instead of by
+       date; the date modes keep the newest-first order the fetch already set. */
+    if (sortOrder === 'ref-asc' || sortOrder === 'ref-desc') {
+      const direction = sortOrder === 'ref-asc' ? 1 : -1;
+      rows.sort((a, b) => direction * compareRefKeys(a.invoiceNumber, b.invoiceNumber));
+    }
+
     /* Tier filter, same bands as the sales side: High >75, Medium 50-75, Low <50.
        Scored off the group rather than a single row, because an invoice split
        across four documents keeps the score of the record that actually carried
        it. Rows with no score at all have tone 'none' and fall out of every tier. */
     if (purchaseScoreFilter === 'all') return rows;
     return rows.filter(group => getPurchaseGroupScore(group).tone === purchaseScoreFilter);
-  }, [filteredHistory, purchaseScoreFilter])
+  }, [filteredHistory, purchaseScoreFilter, sortOrder])
 
   const filteredSalesHistory = useMemo(() => {
     const term = searchTerm.toLowerCase();
@@ -3747,7 +3846,8 @@ const AuditHistory = () => {
           invoiceNumber: invoiceNum,
           records: [],
           partyName: record.so_customer_name || record.so_broker_name || record.po_customer_name || record.po_supplier_name || record.inv_bill_to_name || record.sheet_bill_to_name || record.bill_to_name || record.inv_broker_name || record.sheet_broker_name || record.broker_name || 'Unknown Party',
-          latestDate: record.created_at
+          latestDate: record.created_at,
+          ...getSalesGroupDisplay(record),
         };
       }
       groups[invoiceNum].records.push(record);
@@ -3756,27 +3856,69 @@ const AuditHistory = () => {
       }
     });
     const groups_arr = Object.values(groups);
+
+    /* Two groups whose SO numbers only differ in punctuation or spacing are
+       the same order audited twice — flag every member of such a cluster so
+       the ledger can paint them red and label them Duplicate Entry. Groups
+       with no SO / order reference at all are never compared. */
+    const refCounts = new Map();
+    groups_arr.forEach(group => {
+      const refKey = normalizeRefKey(group.displayId);
+      if (!refKey) return;
+      refCounts.set(refKey, (refCounts.get(refKey) || 0) + 1);
+    });
+    groups_arr.forEach(group => {
+      const refKey = normalizeRefKey(group.displayId);
+      group.isDuplicate = !!refKey && refCounts.get(refKey) > 1;
+    });
+
     // The ledger on screen is already a single table, so only the score tier
-    // still needs filtering here.
+    // and the decision state still need filtering here.
     const filtered = groups_arr.filter(group => {
       if (salesScoreFilter !== 'all') {
         const tier = getSalesGroupScoreInfo(group).tier;
         if (tier !== salesScoreFilter) return false;
       }
+      if (salesDecisionFilter === 'approved' && salesGroupDecisions[group.invoiceNumber] !== 'Approve') return false;
+      if (salesDecisionFilter === 'rejected' && salesGroupDecisions[group.invoiceNumber] !== 'Reject') return false;
+      if (salesDecisionFilter === 'no-so' && group.hasSO) return false;
       return true;
     });
     filtered.sort((a, b) => {
+      // A rejected audit is a closed outcome, so it always sinks below the
+      // still-open ledger no matter which sort direction is active.
+      const aRejected = salesGroupDecisions[a.invoiceNumber] === 'Reject';
+      const bRejected = salesGroupDecisions[b.invoiceNumber] === 'Reject';
+      if (aRejected !== bRejected) return aRejected ? 1 : -1;
+      if (sortOrder === 'ref-asc' || sortOrder === 'ref-desc') {
+        const direction = sortOrder === 'ref-asc' ? 1 : -1;
+        const aKey = hasSourceValue(a.displayId) ? a.displayId : null;
+        const bKey = hasSourceValue(b.displayId) ? b.displayId : null;
+        if (aKey && bKey) return direction * compareRefKeys(aKey, bKey);
+        if (aKey) return -1;
+        if (bKey) return 1;
+        // A group with no SO and no fallback reference still has to line up in
+        // the sequence it was written, so its row id is used as the sort key.
+        const toSequence = (group) => {
+          const value = Number(group.records?.[0]?.id);
+          return Number.isFinite(value) ? value : null;
+        };
+        const aSeq = toSequence(a);
+        const bSeq = toSequence(b);
+        if (aSeq !== null && bSeq !== null) return direction * (aSeq - bSeq);
+        return 0;
+      }
       const da = new Date(a.latestDate || 0).getTime();
       const db = new Date(b.latestDate || 0).getTime();
       return sortOrder === 'latest' ? db - da : da - db;
     });
     return filtered;
-  }, [filteredSalesHistory, sortOrder, salesScoreFilter])
+  }, [filteredSalesHistory, sortOrder, salesScoreFilter, salesDecisionFilter, salesGroupDecisions])
 
   useEffect(() => {
     setPurchasePage(1)
     setSalesPage(1)
-  }, [activeSide, searchTerm, sortOrder, dateFilter, customDateRange, salesQuickOnly, salesScoreFilter, purchaseScoreFilter])
+  }, [activeSide, searchTerm, sortOrder, dateFilter, customDateRange, salesQuickOnly, salesScoreFilter, purchaseScoreFilter, salesDecisionFilter])
 
   useEffect(() => {
     setPurchasePage(page => Math.max(1, Math.min(page, Math.ceil(groupedPurchaseHistory.length / LEDGERS_PER_PAGE))))
@@ -3849,22 +3991,26 @@ const AuditHistory = () => {
 
         <div className="header-actions-bar ledger-toolbar">
           <div className="side-toggle-group">
-            <button
-              className={`pebble-btn side-toggle-btn ${activeSide === 'purchase' ? 'is-active is-purchase' : ''}`}
-              onClick={() => handleSideToggle('purchase')}
-              aria-pressed={activeSide === 'purchase'}
-            >
-              <ShoppingCart size={15} className="pebble-btn-icon" />
-              <span>Purchase</span>
-            </button>
-            <button
-              className={`pebble-btn side-toggle-btn ${activeSide === 'sales' ? 'is-active is-sales' : ''}`}
-              onClick={() => handleSideToggle('sales')}
-              aria-pressed={activeSide === 'sales'}
-            >
-              <IndianRupee size={15} className="pebble-btn-icon" />
-              <span>Sales</span>
-            </button>
+            {canSeePurchase && (
+              <button
+                className={`pebble-btn side-toggle-btn ${activeSide === 'purchase' ? 'is-active is-purchase' : ''}`}
+                onClick={() => handleSideToggle('purchase')}
+                aria-pressed={activeSide === 'purchase'}
+              >
+                <ShoppingCart size={15} className="pebble-btn-icon" />
+                <span>Purchase</span>
+              </button>
+            )}
+            {canSeeSales && (
+              <button
+                className={`pebble-btn side-toggle-btn ${activeSide === 'sales' ? 'is-active is-sales' : ''}`}
+                onClick={() => handleSideToggle('sales')}
+                aria-pressed={activeSide === 'sales'}
+              >
+                <IndianRupee size={15} className="pebble-btn-icon" />
+                <span>Sales</span>
+              </button>
+            )}
           </div>
           
           <div className="search-bar-container">
@@ -3888,6 +4034,16 @@ const AuditHistory = () => {
               icon={Shield}
               ariaLabel="Filter by audit score"
             />
+            {activeSide === 'sales' && (
+              <PebbleSelect
+                className="date-filter-wrap"
+                value={salesDecisionFilter}
+                options={SALES_DECISION_FILTERS}
+                onChange={setSalesDecisionFilter}
+                icon={CheckCircle}
+                ariaLabel="Filter by decision"
+              />
+            )}
             {dateFilter === 'custom' && (
               <div className="custom-date-range">
                 <input
@@ -3932,14 +4088,14 @@ const AuditHistory = () => {
             </div>
             <button 
               className="pebble-btn ledger-sort-btn"
-              onClick={() => setSortOrder(sortOrder === 'latest' ? 'oldest' : 'latest')}
-              title={`Sort: ${sortOrder === 'latest' ? 'Newest first' : 'Oldest first'}`}
-              aria-label={`Sort: ${sortOrder === 'latest' ? 'Newest first' : 'Oldest first'}`}
+              onClick={() => setSortOrder(SORT_ORDER_NEXT[sortOrder])}
+              title={`Sort: ${SORT_ORDER_LABELS[sortOrder]}`}
+              aria-label={`Sort: ${SORT_ORDER_LABELS[sortOrder]}`}
             >
-              {sortOrder === 'latest'
+              {(sortOrder === 'latest' || sortOrder === 'ref-desc')
                 ? <ArrowDownWideNarrow size={15} className="pebble-btn-icon" />
                 : <ArrowUpNarrowWide size={15} className="pebble-btn-icon" />}
-              <span className="hide-mobile">{sortOrder === 'latest' ? 'Latest' : 'Oldest'}</span>
+              <span className="hide-mobile">{SORT_ORDER_LABELS[sortOrder]}</span>
             </button>
           </div>
         </div>
@@ -4006,7 +4162,7 @@ const AuditHistory = () => {
               return (
                 <article
                   key={group.key}
-                  className={`purchase-record-card tone-${score.tone}`}
+                  className={`purchase-record-card tone-${score.tone}${group.isDuplicate ? ' duplicate-entry' : ''}`}
                   onClick={openAudit}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' || e.key === ' ') {
@@ -4036,6 +4192,9 @@ const AuditHistory = () => {
                         <span className="purchase-ref">REF {group.records[0].id}</span>
                         {group.records.length > 1 && (
                           <span className="item-count-badge">{group.records.length} items</span>
+                        )}
+                        {group.isDuplicate && (
+                          <span className="duplicate-entry-badge"><AlertTriangle size={10} /> Duplicate Entry</span>
                         )}
                       </div>
                     </div>
@@ -4144,7 +4303,11 @@ const AuditHistory = () => {
                   };
                 }, { pending: false, missingLabels: [] });
                 const hasPendingDocs = PENDING_DOCS_UPLOAD_ENABLED && pendingDocStatus.pending;
-                const cardBg = groupDecision === 'Approve' ? 'rgba(16, 185, 129, 0.12)' :
+                // A duplicate flags the card before any other tint: the same SO
+                // audited twice under different spellings is the loudest signal
+                // on the ledger and must not be softened by an approve green.
+                const cardBg = group.isDuplicate ? 'rgba(239, 68, 68, 0.10)' :
+                               groupDecision === 'Approve' ? 'rgba(16, 185, 129, 0.12)' :
                                groupDecision === 'Reject' ? 'rgba(239, 68, 68, 0.12)' :
                                hasPendingDocs ? 'rgba(245,158,11,0.06)' : '';
                 // Score marker on the ledger itself: tier shows the colour before
@@ -4155,10 +4318,10 @@ const AuditHistory = () => {
                 return (
                 <div 
                   key={group.invoiceNumber || idx} 
-                  className={`sales-record-card${showScore ? ` tone-${scoreInfo.tier}` : ''}`}
+                  className={`sales-record-card${showScore ? ` tone-${scoreInfo.tier}` : ''}${group.isDuplicate ? ' duplicate-entry' : ''}`}
                   style={{
                     ...(cardBg ? { backgroundColor: cardBg } : {}),
-                    ...(hasPendingDocs && !groupDecision ? { borderLeft: '3px solid #f59e0b' } : {})
+                    ...(hasPendingDocs && !groupDecision && !group.isDuplicate ? { borderLeft: '3px solid #f59e0b' } : {})
                   }}
                   onClick={() => {
                     const encoded = encodeURIComponent(group.invoiceNumber);
@@ -4171,6 +4334,9 @@ const AuditHistory = () => {
                       <h3 className="sales-party-name" title={group.partyName}>{group.partyName}</h3>
                       {group.records.length > 1 && (
                         <span className="item-count-badge">{group.records.length} items</span>
+                      )}
+                      {group.isDuplicate && (
+                        <span className="duplicate-entry-badge"><AlertTriangle size={10} /> Duplicate Entry</span>
                       )}
                       {isQuickEntry && (
                         <span className="quick-entry-badge">Quick Entry</span>
@@ -4187,7 +4353,16 @@ const AuditHistory = () => {
                         </span>
                       )}                    </div>
                     <div className="sales-meta">
-                      <span className="sales-so-id" title={group.invoiceNumber}>{group.invoiceNumber}</span>
+                      {group.hasSO ? (
+                        <span className="sales-so-id" title={group.displayId}>{group.displayId}</span>
+                      ) : (
+                        <>
+                          {group.orderOrPo && (
+                            <span className="sales-so-id no-so" title={group.orderOrPo}>{group.orderOrPo}</span>
+                          )}
+                          <span className="no-so-badge"><AlertTriangle size={10} /> No SO Found</span>
+                        </>
+                      )}
                       <span className="sales-dot">•</span>
                       <span className="sales-date">
                         {group.latestDate ? new Date(group.latestDate).toLocaleDateString('en-IN', { dateStyle: 'medium' }) : '—'}

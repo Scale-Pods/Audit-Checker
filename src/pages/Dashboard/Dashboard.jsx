@@ -32,6 +32,8 @@ import {
 import { fetchSalesRecords, salesLedgerSource } from '../../api/sales.js'
 import { fetchPurchaseRecords } from '../../api/audits.js'
 import { useSyncRefresh } from '../../context/SyncContext'
+import { useAuth } from '../../context/AuthContext'
+import { canAccess } from '../../lib/access'
 import { SquareWaveLoader } from '@/components/ui/square-wave-loader'
 import './Dashboard.css'
 
@@ -702,7 +704,12 @@ const SalesMetricCard = ({ icon, title, value, detail, tone = 'blue' }) => {
 }
 
 const Dashboard = () => {
-  const [activeSide, setActiveSide] = useState('purchase')
+  const { access } = useAuth()
+  // A single-side role (sales or purchase) is pinned to its own ledger; only
+  // admin / developer / both get the side toggle.
+  const canSeePurchase = canAccess(access, '/purchase')
+  const canSeeSales = canAccess(access, '/sales')
+  const [activeSide, setActiveSide] = useState(() => (canAccess(access, '/purchase') ? 'purchase' : 'sales'))
   const [audits, setAudits] = useState([])
   const [salesAudits, setSalesAudits] = useState([])
   const [isLoading, setIsLoading] = useState(true)
@@ -752,6 +759,8 @@ const Dashboard = () => {
   useSyncRefresh(() => loadData(true))
 
   const handleSideChange = (side) => {
+    if (side === 'purchase' && !canSeePurchase) return
+    if (side === 'sales' && !canSeeSales) return
     if (side === activeSide) return
     requestIdRef.current += 1
     setActiveSide(side)
@@ -825,20 +834,24 @@ const Dashboard = () => {
 
         <div className="header-action-block">
           <div className="audit-segment-control">
-            <button
-              type="button"
-              className={`segment-btn ${!isSales ? 'active' : ''}`}
-              onClick={() => handleSideChange('purchase')}
-            >
-              Purchase Audit
-            </button>
-            <button
-              type="button"
-              className={`segment-btn ${isSales ? 'active' : ''}`}
-              onClick={() => handleSideChange('sales')}
-            >
-              Sales Audit
-            </button>
+            {canSeePurchase && (
+              <button
+                type="button"
+                className={`segment-btn ${!isSales ? 'active' : ''}`}
+                onClick={() => handleSideChange('purchase')}
+              >
+                Purchase Audit
+              </button>
+            )}
+            {canSeeSales && (
+              <button
+                type="button"
+                className={`segment-btn ${isSales ? 'active' : ''}`}
+                onClick={() => handleSideChange('sales')}
+              >
+                Sales Audit
+              </button>
+            )}
           </div>
 
           <button

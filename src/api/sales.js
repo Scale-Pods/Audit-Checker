@@ -32,6 +32,11 @@ export const salesLedgerSource = (quickEntryMode) =>
 const tagRecords = (records, source) =>
   records.map(record => ({ ...record, __source: source, __uid: `${source}-${record.id}` }));
 
+// Placeholder strings a workflow may write for a value it could not extract
+// are treated the same as no value at all — they should never make a document
+// look collected.
+const MISSING_TEXT = new Set(['', 'null', 'undefined', 'nan']);
+
 // A document column only counts as present when it holds a real value — a
 // column that exists but is null is the same as no document at all.
 export const hasDocData = (record, prefix) =>
@@ -39,7 +44,8 @@ export const hasDocData = (record, prefix) =>
     if (!k.startsWith(prefix)) return false;
     const value = record[k];
     if (value === null || value === undefined) return false;
-    if (typeof value === 'string') return value.trim() !== '';
+    if (typeof value === 'string') return !MISSING_TEXT.has(value.trim().toLowerCase());
+    if (typeof value === 'number') return !Number.isNaN(value);
     return true;
   });
 

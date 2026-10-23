@@ -8,6 +8,7 @@ import {
   History, 
   LogOut,
   User,
+  UserCog,
   Menu,
   X,
   RefreshCw,
@@ -15,6 +16,7 @@ import {
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { useSync } from '../context/SyncContext'
+import { canAccess, formatAccess } from '../lib/access'
 import { ThemeToggle } from './ui/theme-toggle'
 /* Pebble first, Layout second: both are unlayered, so the later import wins on
    equal specificity. That lets the topbar keep its own compact sizing for these
@@ -55,6 +57,7 @@ const Layout = () => {
   const navigate = useNavigate()
   const { currentUser, logout } = useAuth()
   const { isSyncing, syncNow } = useSync()
+  const access = currentUser?.access
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
 
   useEffect(() => {
@@ -103,8 +106,12 @@ const Layout = () => {
 
           <div className="nav-group">
             <p className="nav-group-title">Audits</p>
-            <SidebarItem to="/purchase" icon={ShoppingBag} label="Purchase Audit" onClick={closeMobileMenu} />
-            <SidebarItem to="/sales" icon={FileText} label="Sales Audit" onClick={closeMobileMenu} />
+            {canAccess(access, '/purchase') && (
+              <SidebarItem to="/purchase" icon={ShoppingBag} label="Purchase Audit" onClick={closeMobileMenu} />
+            )}
+            {canAccess(access, '/sales') && (
+              <SidebarItem to="/sales" icon={FileText} label="Sales Audit" onClick={closeMobileMenu} />
+            )}
             <SidebarItem 
               to="#" 
               icon={Layers} 
@@ -118,6 +125,13 @@ const Layout = () => {
             <p className="nav-group-title">Records</p>
             <SidebarItem to="/history" icon={History} label="Audit History" onClick={closeMobileMenu} className="sidebar-item-large" />
           </div>
+
+          {canAccess(access, '/users') && (
+            <div className="nav-group">
+              <p className="nav-group-title">Administration</p>
+              <SidebarItem to="/users" icon={UserCog} label="User Management" onClick={closeMobileMenu} />
+            </div>
+          )}
         </nav>
 
         <div className="sidebar-footer">
@@ -169,7 +183,7 @@ const Layout = () => {
                   <span className="user-name">
                     {currentUser?.email?.split('@')[0] || 'Auditor'}
                   </span>
-                  <span className="user-role">Finance Auditor</span>
+                  <span className="user-role">{formatAccess(access)}</span>
                 </span>
                 <span className="sign-out-label">
                   <LogOut size={13} />

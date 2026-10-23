@@ -1,0 +1,477 @@
+/* User Management — overlay menus sit above the app shell, everything else
+   reuses the shared comparison-table + pebble surfaces. */
+
+.users-page {
+  width: 100%;
+  padding: 1.5rem 0 2rem;
+}
+
+/* .flex-between is not defined as a utility anywhere in the app, so the
+   heading row is laid out here instead of silently stacking on wide screens. */
+.users-page .ledger-heading-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.users-page .page-title {
+  margin: 0 0 0.35rem;
+  font-size: clamp(1.4rem, 2.4vw, 1.75rem);
+  line-height: 1.2;
+}
+
+.users-page .page-subtitle {
+  margin: 0;
+  font-size: clamp(0.78rem, 1.4vw, 0.9rem);
+  line-height: 1.5;
+}
+
+.add-user-btn {
+  height: 40px;
+  padding: 0 1.1rem;
+  font-size: 0.76rem;
+}
+
+.add-user-btn.solid {
+  background: linear-gradient(180deg, rgba(37, 99, 235, 0.95) 0%, rgba(29, 78, 216, 0.95) 100%);
+  color: #fff;
+  box-shadow: 0 6px 18px rgba(37, 99, 235, 0.35);
+}
+
+.add-user-btn.solid:hover {
+  background: linear-gradient(180deg, rgba(37, 99, 235, 1) 0%, rgba(37, 99, 235, 0.9) 100%);
+  color: #fff;
+}
+
+.add-user-btn.solid:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.users-notice,
+.users-error {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.7rem 1rem;
+  border-radius: 12px;
+  margin-bottom: 1rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.users-notice {
+  color: var(--success, #10b981);
+  background: rgba(16, 185, 129, 0.1);
+  border: 1px solid rgba(16, 185, 129, 0.25);
+}
+
+.users-error {
+  color: var(--error, #ef4444);
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.25);
+}
+
+.users-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 4rem 0;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+.users-table th {
+  padding: 0.8rem 1rem;
+  font-size: 0.68rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  background: rgba(0, 0, 0, 0.03);
+  white-space: nowrap;
+}
+
+.users-table td {
+  padding: 0.8rem 1rem;
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+}
+
+.users-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.user-email-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+  font-weight: 600;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.user-email-icon {
+  display: inline-flex;
+  width: 26px;
+  height: 26px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  color: var(--primary);
+  background: rgba(59, 130, 246, 0.12);
+  flex-shrink: 0;
+}
+
+.me-tag {
+  font-size: 0.6rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 2px 7px;
+  border-radius: 999px;
+  color: #3b82f6;
+  background: rgba(59, 130, 246, 0.12);
+  border: 1px solid rgba(59, 130, 246, 0.25);
+}
+
+.role-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 4px 10px;
+  border-radius: 999px;
+  text-transform: capitalize;
+}
+
+.row-action-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  margin-left: 0.3rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.row-action-btn:hover {
+  background: rgba(59, 130, 246, 0.12);
+  color: var(--primary);
+}
+
+.row-action-btn.danger:hover {
+  background: rgba(239, 68, 68, 0.12);
+  color: #ef4444;
+}
+
+.row-action-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+/* Keep the four columns readable on tablets: the wrapper pans instead of
+   squeezing the email and date columns into vertical slivers. */
+.users-table {
+  min-width: 620px;
+}
+
+@media (max-width: 768px) {
+  .users-page {
+    padding-top: 0.5rem;
+  }
+
+  .users-table {
+    min-width: 0;
+  }
+
+  .users-table thead {
+    display: none;
+  }
+
+  .users-table tbody,
+  .users-table tr,
+  .users-table td {
+    display: block;
+    width: 100%;
+  }
+
+  .users-table tbody tr {
+    padding: 0.85rem 1rem;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .users-table tbody tr:last-child {
+    border-bottom: none;
+  }
+
+  .users-table td {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.4rem 0 !important;
+    border: none;
+    text-align: right;
+  }
+
+  .users-table td::before {
+    content: attr(data-label);
+    flex-shrink: 0;
+    font-size: 0.65rem;
+    font-weight: 800;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    text-align: left;
+  }
+
+  .users-table td.status-cell {
+    justify-content: flex-end;
+    margin-top: 0.3rem;
+    padding-top: 0.65rem !important;
+    border-top: 1px solid var(--border-subtle) !important;
+  }
+
+  .users-table td.status-cell::before {
+    margin-right: auto;
+  }
+
+  .user-email-cell {
+    justify-content: flex-end;
+    text-align: right;
+    flex-wrap: wrap;
+  }
+
+  .users-empty {
+    padding: 2.5rem 1rem;
+  }
+}
+
+/* ── Modal ── */
+
+/* The overlay itself scrolls. Previously it was a fixed, non-scrolling box
+   with the dialog vertically centred, so on short screens (phone landscape,
+   small laptop, high browser zoom) the top of the form was above the scroll
+   origin and could never be reached. `align-items: flex-start` plus auto
+   margins on the dialog centres it when there is room and lets it start at
+   the top when there is not. */
+.users-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  padding: clamp(0.75rem, 2.5vh, 1.5rem);
+  padding-top: max(clamp(0.75rem, 2.5vh, 1.5rem), env(safe-area-inset-top));
+  padding-bottom: max(clamp(0.75rem, 2.5vh, 1.5rem), env(safe-area-inset-bottom));
+  background: rgba(2, 6, 23, 0.6);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+
+.users-modal {
+  width: 100%;
+  max-width: 460px;
+  max-height: calc(100dvh - clamp(1.5rem, 5vh, 3rem));
+  margin: auto;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
+  overflow: hidden;
+}
+
+.users-modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+  padding: 1.1rem 1.4rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.users-modal-head h3 {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 800;
+  color: var(--text);
+}
+
+.users-modal-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.users-modal-close:hover {
+  background: rgba(239, 68, 68, 0.1);
+  color: #ef4444;
+}
+
+.users-modal form {
+  padding: 1.4rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.form-group label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+}
+
+.user-input {
+  width: 100%;
+  height: 44px;
+  padding: 0 1rem;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: transparent;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 0.85rem;
+  outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.user-input:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.18);
+}
+
+.role-hint {
+  margin: 0;
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
+.role-hint-warn {
+  color: #f59e0b;
+}
+
+.users-modal-actions {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.6rem;
+  margin-top: 0.25rem;
+  padding: 0.85rem 0 1.4rem;
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+}
+
+.users-modal-actions .pebble-btn {
+  height: 40px;
+}
+
+@media (max-width: 640px) {
+  .users-page .ledger-heading-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .add-user-btn {
+    width: 100%;
+  }
+
+  .users-page .page-title {
+    font-size: 1.4rem;
+  }
+
+  .users-modal-head {
+    padding: 0.9rem 1rem;
+  }
+
+  .users-modal form {
+    padding: 1rem;
+  }
+
+  .users-modal-actions {
+    bottom: 0;
+    padding-bottom: calc(1rem + env(safe-area-inset-bottom));
+  }
+
+  .users-modal-actions .pebble-btn {
+    flex: 1;
+    height: 44px;
+  }
+}
+
+@media (max-width: 380px) {
+  .users-modal {
+    border-radius: 14px;
+  }
+
+  .users-modal form {
+    padding: 0.8rem;
+  }
+
+  .users-modal-actions {
+    bottom: 0;
+    padding-bottom: calc(0.8rem + env(safe-area-inset-bottom));
+  }
+
+  .users-modal-actions .pebble-btn {
+    padding: 0 0.6rem;
+    font-size: 0.72rem;
+  }
+}
+
+@media (max-height: 520px) and (orientation: landscape) {
+  .users-modal-overlay {
+    padding-block: 0.5rem;
+  }
+
+  .users-modal {
+    max-height: calc(100dvh - 1rem);
+  }
+
+  .users-modal form {
+    padding: 0.9rem;
+  }
+}
+
+.spin-icon {
+  animation: spin 0.85s linear infinite;
+}

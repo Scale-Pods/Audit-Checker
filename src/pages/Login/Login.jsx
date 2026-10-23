@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
-import { ShieldCheck, Mail, Lock, Loader2, AlertCircle } from 'lucide-react';
+import { Mail, Lock, Loader2, AlertCircle } from 'lucide-react';
 import './Login.css';
+
+const LOGO_URL = 'https://www.zvsteels.com/assets/img/zv_logo.png';
 
 const Login = () => {
   const [email, setEmail] = useState('');
@@ -21,7 +23,7 @@ const Login = () => {
       await login(email, password);
       navigate('/dashboard');
     } catch (err) {
-      setError('Invalid credentials. Please verify your access.');
+      setError(err?.message || 'Invalid credentials. Please verify your access.');
       console.error(err);
     } finally {
       setIsSubmitting(false);
@@ -33,10 +35,9 @@ const Login = () => {
       <div className="login-card animate-slide-up">
         <div className="login-header">
           <div className="login-logo">
-            <ShieldCheck size={48} className="logo-icon" />
+            <img src={LOGO_URL} alt="ZV Steels" />
           </div>
           <h1>Audit Intelligence</h1>
-          <p>Global Surveillance & Compliance Portal</p>
         </div>
 
         <form className="login-form" onSubmit={handleSubmit}>

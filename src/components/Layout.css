@@ -605,7 +605,7 @@
   .topbar {
     height: auto;
     min-height: 52px;
-    padding: 0 0.75rem;
+    padding: 0 max(0.75rem, env(safe-area-inset-right)) 0 max(0.75rem, env(safe-area-inset-left));
     gap: 0.5rem;
   }
 
@@ -686,13 +686,14 @@
 
   .content-inner {
     padding: 0.85rem 0.75rem 1.75rem;
+    padding-bottom: max(1.75rem, env(safe-area-inset-bottom));
   }
 }
 
 /* ── Narrow handsets (iPhone SE and narrower) ── */
 @media (max-width: 380px) {
   .topbar {
-    padding: 0 0.5rem;
+    padding: 0 max(0.5rem, env(safe-area-inset-right)) 0 max(0.5rem, env(safe-area-inset-left));
     gap: 0.35rem;
   }
 
@@ -702,6 +703,7 @@
 
   .content-inner {
     padding: 0.6rem 0.5rem 1.5rem;
+    padding-bottom: max(1.5rem, env(safe-area-inset-bottom));
   }
 }
 

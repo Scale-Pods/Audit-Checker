@@ -1,6 +1,7 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react'
 import { useDropzone } from 'react-dropzone'
 import { UploadCloud, File as FileIcon, CheckCircle, AlertTriangle, ArrowRight, X, Send, Mail, Loader2, XCircle, Info, ChevronRight, Check, Lock, FileText } from 'lucide-react'
+import { useAuth } from '../../context/AuthContext'
 import './PurchaseAudit.css'
 
 const WEBHOOK_URL = import.meta.env.VITE_PURCHASE_WEBHOOK_URL || 'https://n8n.srv1010832.hstgr.cloud/webhook/9108c298-08ac-45c3-abb8-050459156001'
@@ -162,6 +163,7 @@ const MatchResultRow = ({ label, invVal, ewVal, lrVal, grnVal, isMatch }) => (
 )
 
 const PurchaseAudit = () => {
+  const { currentUser } = useAuth()
   const [result, setResult] = useState(null)
   const [activeStep, setActiveStep] = useState(0) // 0: Invoice, 1: E-way, 2: LR, 3: GRN, 4: Processing
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
@@ -295,6 +297,7 @@ const PurchaseAudit = () => {
       // two apart and audit on whatever subset arrived.
       formData.append('uploadedDocuments', uploadedDocs.map(d => d.field).join(','))
       formData.append('missingDocuments', missingDocs.map(d => d.field).join(','))
+      formData.append('submitted_by', currentUser?.email || '')
 
       const res = await fetch(WEBHOOK_URL, {
         method: 'POST',

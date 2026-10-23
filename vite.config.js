@@ -5,6 +5,8 @@ import { fileURLToPath, URL } from 'node:url'
 import { handleSalesRequest } from './api/lib/sales-service.js'
 import { handleSalesQuickCheckRequest } from './api/lib/sales-qc-service.js'
 import { handleAuditsRequest } from './api/lib/audits-service.js'
+import { handleLoginRequest } from './api/lib/login-service.js'
+import { handleUsersRequest } from './api/lib/users-service.js'
 
 // https://vite.dev/config/
 export default defineConfig(({ mode }) => {
@@ -12,7 +14,7 @@ export default defineConfig(({ mode }) => {
 
   process.env.SUPABASE_URL = env.SUPABASE_URL
   process.env.SUPABASE_SERVICE_ROLE_KEY = env.SUPABASE_SERVICE_ROLE_KEY
-  process.env.FIREBASE_PROJECT_ID = env.FIREBASE_PROJECT_ID
+  process.env.AUTH_SECRET = env.AUTH_SECRET
 
   return {
     plugins: [
@@ -28,6 +30,8 @@ export default defineConfig(({ mode }) => {
             { path: '/api/sales-qc', handler: handleSalesQuickCheckRequest },
             { path: '/api/sales', handler: handleSalesRequest },
             { path: '/api/audits', handler: handleAuditsRequest },
+            { path: '/api/login', handler: handleLoginRequest },
+            { path: '/api/users', handler: handleUsersRequest },
           ]
 
           server.middlewares.use(async (req, res, next) => {

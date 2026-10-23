@@ -8,15 +8,25 @@ import PurchaseAudit from './pages/Purchase/PurchaseAudit'
 import SalesAudit from './pages/Sales/SalesAudit'
 import Analytics from './pages/Analytics/Analytics'
 import AuditHistory from './pages/History/AuditHistory'
+import Users from './pages/Users/Users'
 import SidebarDemo from './pages/SidebarDemo/SidebarDemo'
 
 import { AuthProvider, useAuth } from './context/AuthContext'
 import { SyncProvider } from './context/SyncContext'
+import { canAccess } from './lib/access'
 import Login from './pages/Login/Login'
 
 const ProtectedRoute = ({ children }) => {
   const { currentUser } = useAuth();
   if (!currentUser) return <Navigate to="/login" replace />;
+  return children;
+};
+
+// Blocks routes the signed-in user's `access` role does not cover. Everyone
+// can reach /dashboard, so an unauthorised hit always lands there safely.
+const RoleRoute = ({ path, children }) => {
+  const { access } = useAuth();
+  if (!canAccess(access, path)) return <Navigate to="/dashboard" replace />;
   return children;
 };
 
@@ -36,11 +46,12 @@ const App = () => {
               }
             >
               <Route index element={<Navigate to="/dashboard" replace />} />
-              <Route path="dashboard" element={<Dashboard />} />
-              <Route path="purchase" element={<PurchaseAudit />} />
-              <Route path="sales" element={<SalesAudit />} />
-              <Route path="analytics" element={<Analytics />} />
-              <Route path="history" element={<AuditHistory />} />
+              <Route path="dashboard" element={<RoleRoute path="/dashboard"><Dashboard /></RoleRoute>} />
+              <Route path="purchase" element={<RoleRoute path="/purchase"><PurchaseAudit /></RoleRoute>} />
+              <Route path="sales" element={<RoleRoute path="/sales"><SalesAudit /></RoleRoute>} />
+              <Route path="analytics" element={<RoleRoute path="/analytics"><Analytics /></RoleRoute>} />
+              <Route path="history" element={<RoleRoute path="/history"><AuditHistory /></RoleRoute>} />
+              <Route path="users" element={<RoleRoute path="/users"><Users /></RoleRoute>} />
             </Route>
             <Route path="*" element={<Navigate to="/dashboard" replace />} />
             <Route path="/sidebar-demo" element={<SidebarDemo />} />

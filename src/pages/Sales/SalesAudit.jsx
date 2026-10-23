@@ -3,6 +3,7 @@ import { useDropzone } from 'react-dropzone'
 import * as pdfjsLib from 'pdfjs-dist'
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
 import { UploadCloud, File as FileIcon, FileText, CheckCircle, AlertTriangle, ArrowRight, X, Send, Mail, Loader2, XCircle, Info, ChevronRight, Check, ClipboardList, Scale, ShoppingCart, FileSpreadsheet, Lock } from 'lucide-react'
+import { useAuth } from '../../context/AuthContext'
 import '../Purchase/PurchaseAudit.css'
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl
@@ -194,6 +195,7 @@ const SALES_WEBHOOK_URL = import.meta.env.VITE_SALES_WEBHOOK_URL || 'https://n8n
 const QUICK_CHECK_WEBHOOK_URL = 'https://n8n.srv1010832.hstgr.cloud/webhook/e3e27664-0f1a-46ea-8ca8-87db346e2a99'
 
 const SalesAudit = () => {
+  const { currentUser } = useAuth()
   const [result, setResult] = useState(null)
   const [activeStep, setActiveStep] = useState(0)
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
@@ -321,6 +323,7 @@ const SalesAudit = () => {
         formData.append(item.name, renamed, fileName)
         formData.append(`${item.name}Name`, item.file.name)
       })
+      formData.append('submitted_by', currentUser?.email || '')
 
       const res = await fetch(SALES_WEBHOOK_URL, {
         method: 'POST',
@@ -371,6 +374,7 @@ const SalesAudit = () => {
         formData.append('PurchaseOrder', renamed, fileName)
         formData.append('PurchaseOrderName', f.name)
       })
+      formData.append('submitted_by', currentUser?.email || '')
 
       const res = await fetch(QUICK_CHECK_WEBHOOK_URL, {
         method: 'POST',
@@ -493,6 +497,13 @@ const SalesAudit = () => {
       console.warn('[SalesAudit] Discovery error:', e);
     }
 
+    // The invoice upload is optional on a sales audit (a PO-only audit is
+    // valid), so the Invoice Data column only exists when at least one row
+    // actually carries an invoice value - otherwise it is a column of dashes.
+    const hasInvoiceCells =
+      Array.isArray(tableData) &&
+      tableData.some(row => String(row.invoice_value || row.actual || '').trim() !== '');
+
     if (tableData && Array.isArray(tableData) && tableData.length > 0) {
       const isFullMatch = overallStatus?.includes('MATCH') && !overallStatus?.includes('PARTIAL');
       
@@ -596,7 +607,7 @@ const SalesAudit = () => {
                   <tr>
                     <th>Field Identity</th>
                     <th>Master Sheet (SO)</th>
-                    <th>Invoice Data</th>
+                    {hasInvoiceCells && <th>Invoice Data</th>}
                     <th style={{ textAlign: 'right' }}>Status</th>
                   </tr>
                 </thead>
@@ -635,9 +646,11 @@ const SalesAudit = () => {
                         <td data-label="Master Sheet (SO)" className="data-cell" style={{ fontFamily: 'monospace' }}>
                           {row.sheet_value || row.expected || '—'}
                         </td>
-                        <td data-label="Invoice Data" className={`data-cell ${isMatch ? 'val-match' : 'val-mismatch'}`} style={{ fontFamily: 'monospace' }}>
-                          {row.invoice_value || row.actual || '—'}
-                        </td>
+                        {hasInvoiceCells && (
+                          <td data-label="Invoice Data" className={`data-cell ${isMatch ? 'val-match' : 'val-mismatch'}`} style={{ fontFamily: 'monospace' }}>
+                            {row.invoice_value || row.actual || '—'}
+                          </td>
+                        )}
                         <td data-label="Verification" className="status-cell" style={{ textAlign: 'right' }}>
                           <span className={`match-badge ${isMatch ? 'success' : 'danger'}`}>
                              {isMatch ? <CheckCircle size={14}/> : <AlertTriangle size={14}/>}

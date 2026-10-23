@@ -296,14 +296,46 @@
   }
 }
 
+@media (max-width: 640px) {
+  /* The page ships desktop padding through utility classes (px-8 / p-10),
+     including an inline 1.75rem on every metric card. Left alone, a 360px
+     handset spends ~100px of its width on gutters. */
+  .analytics-page {
+    padding-left: 0.65rem !important;
+    padding-right: 0.65rem !important;
+  }
+
+  .analytics-page .page-header {
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+    padding-top: 0.5rem !important;
+  }
+
+  .analytics-page .p-10 {
+    padding: 1.1rem !important;
+  }
+
+  .analytics-page .rounded-\[32px\] {
+    border-radius: 20px !important;
+  }
+
+  .analytics-page .analytics-metric {
+    padding: 1.15rem !important;
+  }
+}
+
 @media (max-width: 480px) {
   .analytics-page {
-    padding-left: 0;
-    padding-right: 0;
+    padding-left: 0.5rem !important;
+    padding-right: 0.5rem !important;
   }
 
   .analytics-metric h3 {
     font-size: 1.5rem !important;
+  }
+
+  .analytics-page .card {
+    min-width: 0;
   }
 }
 

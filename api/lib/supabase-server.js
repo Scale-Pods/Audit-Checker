@@ -1,9 +1,9 @@
 import { createClient } from '@supabase/supabase-js'
-import { verifyFirebaseToken } from './verify-firebase.js'
+import { verifySessionToken } from './verify-session.js'
 
 let supabase = null
 
-function getSupabase(configError) {
+export function getSupabase(configError) {
   if (!supabase) {
     const url = process.env.SUPABASE_URL
     const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -38,12 +38,9 @@ export async function readLedgerTable(req, { table, configError, logPrefix, erro
 
   const token = getBearerToken(req)
   if (!token) return { status: 401, json: { error: 'Authentication required' } }
-  if (!process.env.FIREBASE_PROJECT_ID) {
-    return { status: 500, json: { error: 'Missing server environment variable on the host: FIREBASE_PROJECT_ID' } }
-  }
 
   try {
-    await verifyFirebaseToken(token)
+    await verifySessionToken(token)
   } catch (error) {
     console.error(`${logPrefix}: auth failed`, error.message)
     return { status: 401, json: { error: 'Invalid or expired token' } }
