@@ -3731,3 +3731,23 @@
     padding-inline: 1rem;
   }
 }
+
+/* Shared ?so= links open as a single ledger, so the page behind the record
+   stays empty instead of flashing the full history while the data loads. */
+.shared-ledger-page {
+  min-height: calc(100vh - 160px);
+  display: grid;
+  place-items: center;
+}
+
+.shared-ledger-page > .empty-state,
+.shared-ledger-page > .card.empty-state {
+  max-width: 32rem;
+  text-align: center;
+  gap: 1rem;
+}
+
+.shared-ledger-page > .empty-state p,
+.shared-ledger-page > .card.empty-state p {
+  margin: 0;
+}

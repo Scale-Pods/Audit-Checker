@@ -30,20 +30,28 @@ function getBearerToken(req) {
     : null
 }
 
-// Every audit ledger is read the same way: check the caller, then select the
-// whole table newest-first. The caller supplies the names used in errors so a
-// failure always points at the right table.
-export async function readLedgerTable(req, { table, configError, logPrefix, errorMessage }) {
+const normalizeAccess = (access) => String(access || '').trim().toLowerCase()
+
+// Every audit ledger is read the same way: check the caller, check that the
+// caller's role owns this ledger, then select the whole table newest-first.
+// Checking a token alone was not enough - a sales-only account could call the
+// purchase endpoint directly and read a ledger its UI never showed.
+export async function readLedgerTable(req, { table, configError, logPrefix, errorMessage, allowedAccess }) {
   if (req.method !== 'GET') return { status: 405, json: { error: 'Method not allowed' } }
 
   const token = getBearerToken(req)
   if (!token) return { status: 401, json: { error: 'Authentication required' } }
 
+  let payload
   try {
-    await verifySessionToken(token)
+    payload = await verifySessionToken(token)
   } catch (error) {
     console.error(`${logPrefix}: auth failed`, error.message)
     return { status: 401, json: { error: 'Invalid or expired token' } }
+  }
+
+  if (Array.isArray(allowedAccess) && !allowedAccess.includes(normalizeAccess(payload?.access))) {
+    return { status: 403, json: { error: 'Your account does not have access to this ledger' } }
   }
 
   try {

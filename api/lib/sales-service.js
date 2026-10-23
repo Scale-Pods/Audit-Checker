@@ -5,6 +5,7 @@ export async function handleSalesRequest(req) {
     table: 'Audit Checker Sales',
     configError: 'SALES_CONFIG',
     logPrefix: 'sales',
-    errorMessage: 'Unable to load sales audit data'
+    errorMessage: 'Unable to load sales audit data',
+    allowedAccess: ['admin', 'developer', 'both', 'sales']
   })
 }

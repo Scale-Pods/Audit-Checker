@@ -1222,6 +1222,14 @@ const SALES_COMPARE_FIELDS = [
    colliding when they happen to share a number. */
 const normalizeSalesKey = (value) => (hasSourceValue(value) ? String(value).trim().toUpperCase() : null);
 
+const safeDecode = (value) => {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+};
+
 const getSalesReferenceKey = (record) =>
   [record.inv_order_number, record.sheet_order_number, record.inv_party_order_number,
    record.sheet_party_order_number, record.po_number, record.so_po_number]
@@ -3672,8 +3680,9 @@ const AuditHistory = () => {
   }
 
   useEffect(() => {
-    fetchHistory()
-  }, [])
+    if (canSeePurchase) fetchHistory();
+    else setIsLoading(false);
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // The two sales ledgers are separate tables, so flipping the toggle is a
   // ledger change, not a client-side filter — the previously loaded rows are
@@ -3681,6 +3690,10 @@ const AuditHistory = () => {
   // request crosses to the server, and without it the stale rows from the other
   // ledger sat there looking like the new ledger had simply not changed.
   useEffect(() => {
+    if (!canSeeSales) {
+      setIsSalesLoading(false);
+      return;
+    }
     setSelectedSalesGroup(null);
     setSalesPage(1);
     // Quick entries are read newest-first for the SO-vs-PO checks, so the ledger
@@ -3690,8 +3703,9 @@ const AuditHistory = () => {
   }, [salesQuickOnly]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useSyncRefresh(() => {
-    const jobs = [fetchHistory(false)]
-    if (activeSide === 'sales' || salesHistory.length > 0) jobs.push(fetchSalesHistory(false))
+    const jobs = []
+    if (canSeePurchase) jobs.push(fetchHistory(false))
+    if (canSeeSales && (activeSide === 'sales' || salesHistory.length > 0)) jobs.push(fetchSalesHistory(false))
     return Promise.all(jobs)
   })
 
@@ -3712,7 +3726,7 @@ const AuditHistory = () => {
   useEffect(() => {
     const soParam = searchParams.get('so');
     if (!soParam || salesHistory.length === 0) return;
-    const decoded = decodeURIComponent(soParam);
+    const decoded = safeDecode(soParam);
     const groups = {};
     salesHistory.forEach(record => {
       const invoiceNum = getSalesGroupKey(record);
@@ -3960,13 +3974,84 @@ const AuditHistory = () => {
   const paginatedHistory = groupedPurchaseHistory.slice((currentPurchasePage - 1) * LEDGERS_PER_PAGE, currentPurchasePage * LEDGERS_PER_PAGE)
   const paginatedSalesHistory = groupedSalesHistory.slice((currentSalesPage - 1) * LEDGERS_PER_PAGE, currentSalesPage * LEDGERS_PER_PAGE)
 
-  // Derive sales table columns dynamically (must be before any early return)
-  const salesColumns = useMemo(() => {
-    if (salesHistory.length === 0) return [];
-    const allKeys = new Set();
-    salesHistory.forEach(row => Object.keys(row).forEach(k => allKeys.add(k)));
-    return Array.from(allKeys);
-  }, [salesHistory]);
+  /* A shared sales link (?so=...) is a focused view, not a shortcut that lands
+     on top of the whole ledger. Only the matching record is rendered; the
+     toolbar, filters and every other ledger stay hidden until the recipient
+     deliberately leaves the shared view. */
+  const sharedInvoiceParam = searchParams.get('so');
+  const sharedInvoice = sharedInvoiceParam ? safeDecode(sharedInvoiceParam) : '';
+  const sharedSalesGroup = useMemo(() => {
+    if (!sharedInvoice || !canSeeSales) return null;
+    const records = salesHistory.filter(record => getSalesGroupKey(record) === sharedInvoice);
+    if (records.length === 0) return null;
+    const latestDate = records.reduce(
+      (latest, record) => (!latest || new Date(record.created_at || 0) > new Date(latest) ? record.created_at : latest),
+      null
+    );
+    const first = records[0];
+    return {
+      invoiceNumber: sharedInvoice,
+      records,
+      partyName: first.so_customer_name || first.so_broker_name || first.po_customer_name || first.po_supplier_name || first.inv_bill_to_name || first.sheet_bill_to_name || first.bill_to_name || first.inv_broker_name || first.sheet_broker_name || first.broker_name || 'Unknown Party',
+      latestDate,
+      ...getSalesGroupDisplay(first),
+    };
+  }, [sharedInvoice, salesHistory, canSeeSales]);
+
+  const leaveSharedView = () => {
+    setSelectedSalesGroup(null);
+    setSearchParams({});
+  };
+
+  if (sharedInvoiceParam) {
+    if (!canSeeSales) {
+      return (
+        <div className="history-page shared-ledger-page">
+          <div className="card empty-state">
+            <AlertTriangle size={40} className="empty-icon" />
+            <p>This shared ledger is not available for your account.</p>
+            <button className="btn btn-outline" onClick={leaveSharedView}>Open my ledger</button>
+          </div>
+        </div>
+      );
+    }
+
+    const sharedPending = !sharedSalesGroup && !salesError && (isSalesLoading || salesHistory.length === 0);
+    if (sharedPending) {
+      return (
+        <div className="flex-center" style={{ height: '70vh', flexDirection: 'column', gap: '1.5rem' }}>
+          <SquareWaveLoader count={5} size={14} squareClassName="bg-primary" />
+          <p className="text-muted font-bold tracking-widest uppercase text-xs">Opening shared ledger...</p>
+        </div>
+      );
+    }
+
+    if (!sharedSalesGroup) {
+      return (
+        <div className="history-page shared-ledger-page">
+          <div className="card empty-state">
+            <AlertTriangle size={40} className="empty-icon" />
+            <p>{salesError || `Shared ledger "${sharedInvoice}" could not be found.`}</p>
+            <button className="btn btn-outline" onClick={leaveSharedView}>Open ledger history</button>
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <div className="history-page shared-ledger-page animate-fade-in">
+        <SalesRecordModal
+          records={sharedSalesGroup.records}
+          invoiceNumber={sharedSalesGroup.invoiceNumber}
+          onClose={leaveSharedView}
+          onDecision={handleDecisionClick}
+          isProcessing={!!decisionProcessing}
+          hasDecision={!!salesGroupDecisions[sharedSalesGroup.invoiceNumber]}
+          decisionStatus={salesGroupDecisions[sharedSalesGroup.invoiceNumber]}
+        />
+      </div>
+    );
+  }
 
   if (isLoading) {
     return (

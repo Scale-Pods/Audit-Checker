@@ -8,6 +8,7 @@ export async function handleSalesQuickCheckRequest(req) {
     table: 'Audit Checker Sales_QC',
     configError: 'SALES_QC_CONFIG',
     logPrefix: 'sales-qc',
-    errorMessage: 'Unable to load sales quick check data'
+    errorMessage: 'Unable to load sales quick check data',
+    allowedAccess: ['admin', 'developer', 'both', 'sales']
   })
 }

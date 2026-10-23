@@ -5,6 +5,7 @@ export async function handleAuditsRequest(req) {
     table: 'Audit Checker',
     configError: 'AUDITS_CONFIG',
     logPrefix: 'audits',
-    errorMessage: 'Unable to load purchase audit data'
+    errorMessage: 'Unable to load purchase audit data',
+    allowedAccess: ['admin', 'developer', 'both', 'purchase']
   })
 }

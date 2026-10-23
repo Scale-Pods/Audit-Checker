@@ -1,7 +1,7 @@
 import { SignJWT } from 'jose'
 import { getSupabase } from './supabase-server.js'
 
-const TOKEN_TTL_SECONDS = 4 * 60 * 60 // 4 hours
+const TOKEN_TTL_SECONDS = 12 * 60 * 60 // 12 hours
 const USERS_TABLE = 'Users_AC'
 
 function getSecret() {

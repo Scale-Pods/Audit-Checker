@@ -47,7 +47,7 @@ export const AuthProvider = ({ children }) => {
     const next = {
       token: data.token,
       user: data.user,
-      exp: Date.now() + (data.expiresIn || 4 * 60 * 60) * 1000,
+      exp: Date.now() + (data.expiresIn || 12 * 60 * 60) * 1000,
     };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
     setSession(next);
@@ -59,7 +59,7 @@ export const AuthProvider = ({ children }) => {
     setSession(null);
   };
 
-  // Sessions expire after 4 hours - drop the moment the clock runs out.
+  // Sessions expire after 12 hours - drop the moment the clock runs out.
   useEffect(() => {
     if (!session) return undefined;
     const remaining = session.exp - Date.now();

@@ -1,5 +1,5 @@
 import React from 'react'
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom'
+import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import MainLayout from './components/Layout'
 import LoginPage from './pages/Auth/LoginPage'
 import SignupPage from './pages/Auth/SignupPage'
@@ -18,7 +18,18 @@ import Login from './pages/Login/Login'
 
 const ProtectedRoute = ({ children }) => {
   const { currentUser } = useAuth();
-  if (!currentUser) return <Navigate to="/login" replace />;
+  const location = useLocation();
+
+  if (!currentUser) {
+    // Carry the full direct link (including ?so=... share params) through the
+    // login round-trip instead of dropping everyone on the dashboard.
+    const next = `${location.pathname}${location.search}${location.hash}`;
+    const loginPath = next && next !== '/login'
+      ? `/login?next=${encodeURIComponent(next)}`
+      : '/login';
+    return <Navigate to={loginPath} replace />;
+  }
+
   return children;
 };
 
@@ -45,7 +56,7 @@ const App = () => {
                 </ProtectedRoute>
               }
             >
-              <Route index element={<Navigate to="/dashboard" replace />} />
+              <Route index element={<Navigate to="/history" replace />} />
               <Route path="dashboard" element={<RoleRoute path="/dashboard"><Dashboard /></RoleRoute>} />
               <Route path="purchase" element={<RoleRoute path="/purchase"><PurchaseAudit /></RoleRoute>} />
               <Route path="sales" element={<RoleRoute path="/sales"><SalesAudit /></RoleRoute>} />
@@ -53,8 +64,15 @@ const App = () => {
               <Route path="history" element={<RoleRoute path="/history"><AuditHistory /></RoleRoute>} />
               <Route path="users" element={<RoleRoute path="/users"><Users /></RoleRoute>} />
             </Route>
-            <Route path="*" element={<Navigate to="/dashboard" replace />} />
-            <Route path="/sidebar-demo" element={<SidebarDemo />} />
+            <Route path="*" element={<Navigate to="/history" replace />} />
+            <Route
+              path="/sidebar-demo"
+              element={
+                <ProtectedRoute>
+                  <SidebarDemo />
+                </ProtectedRoute>
+              }
+            />
           </Routes>
         </Router>
       </SyncProvider>
