@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react'
+import React, { useState, useCallback, useEffect, useRef } from 'react'
 import { useDropzone } from 'react-dropzone'
 import * as pdfjsLib from 'pdfjs-dist'
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
@@ -212,6 +212,7 @@ const SalesAudit = () => {
   const [webhookResponse, setWebhookResponse] = useState(null)
   const [quickCheckResult, setQuickCheckResult] = useState(null)
   const [quickCheckLoading, setQuickCheckLoading] = useState(false)
+  const quickCheckInFlightRef = useRef(false)
 
   const [docType, setDocType] = useState('PO')
   const [docNumber, setDocNumber] = useState('')
@@ -356,7 +357,10 @@ const SalesAudit = () => {
   }
 
   const handleQuickCheck = async () => {
+    console.log('[QuickCheck] called', Date.now())
+    if (quickCheckInFlightRef.current) return
     if (purchaseOrderFiles.length === 0) return
+    quickCheckInFlightRef.current = true
     setQuickCheckLoading(true)
     setSubmitError(null)
     try {
@@ -398,6 +402,7 @@ const SalesAudit = () => {
       console.error('[QuickCheck] Error:', err)
       setSubmitError(err.message || 'Quick check failed.')
     } finally {
+      quickCheckInFlightRef.current = false
       setQuickCheckLoading(false)
     }
   }
