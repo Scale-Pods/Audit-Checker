@@ -1,12 +1,9 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react'
 import { useDropzone } from 'react-dropzone'
-import * as pdfjsLib from 'pdfjs-dist'
-import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
 import { UploadCloud, File as FileIcon, FileText, CheckCircle, AlertTriangle, ArrowRight, X, Send, Mail, Loader2, XCircle, Info, ChevronRight, Check, ClipboardList, Scale, ShoppingCart, FileSpreadsheet, Lock } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
+import { convertPdfToImage } from '../../lib/pdf'
 import '../Purchase/PurchaseAudit.css'
-
-pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl
 
 /* Tips that cycle through the row under the dropzone. Module-level so the array
    identity never changes - the rotation effect keys off it, and a list rebuilt
@@ -66,25 +63,6 @@ const RotatingHint = ({ hints = UPLOAD_HINTS, intervalMs = 3000 }) => {
   )
 }
 
-const convertPdfToImage = async (file) => {
-  const arrayBuffer = await file.arrayBuffer()
-  const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise
-  const page = await pdf.getPage(1)
-  const viewport = page.getViewport({ scale: 2 })
-  const canvas = document.createElement('canvas')
-  canvas.width = viewport.width
-  canvas.height = viewport.height
-  const ctx = canvas.getContext('2d')
-  await page.render({ canvasContext: ctx, viewport }).promise
-  page.cleanup()
-  const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'))
-  const converted = new File([blob], file.name.replace(/\.pdf$/i, '.png'), { type: 'image/png' })
-  // Flagged on the file itself so the preview can badge a genuine PDF
-  // conversion — a plain PNG upload keeps its own name and must not claim one.
-  converted.convertedFromPdf = true
-  return converted
-}
-
 const DocumentUpload = ({ title, accepted, onUpload, files, isSubmitted, required }) => {
   const [converting, setConverting] = useState(false)
 
@@ -99,6 +77,10 @@ const DocumentUpload = ({ title, accepted, onUpload, files, isSubmitted, require
         }).catch(err => {
           console.error('PDF conversion failed:', err)
           setConverting(false)
+          // Never drop the document from the form because rendering failed:
+          // the original PDF is still a valid upload and can go to the webhook
+          // untouched rather than leaving the user staring at an empty slot.
+          onUpload([file])
         })
       } else {
         onUpload([file])
@@ -126,7 +108,9 @@ const DocumentUpload = ({ title, accepted, onUpload, files, isSubmitted, require
             <span className="file-size">{(f.size / 1024).toFixed(2)} KB</span>
             {ext && <span className="file-ext">{ext}</span>}
             {f.convertedFromPdf && (
-              <span className="file-badge" title="Uploaded as a PDF and converted to an image for the audit">PDF → PNG</span>
+              <span className="file-badge" title="Uploaded as a PDF and converted to an image for the audit">
+                PDF → PNG{f.pageCount > 1 ? ` · ${f.pageCount} pages` : ''}
+              </span>
             )}
           </span>
         </div>
@@ -164,8 +148,8 @@ const DocumentUpload = ({ title, accepted, onUpload, files, isSubmitted, require
           {converting ? (
             <>
               <Loader2 size={48} className="spin-icon" style={{ opacity: 0.7, marginBottom: '1.5rem', color: 'var(--primary)' }} />
-              <p className="drop-text" style={{ fontSize: '1.25rem', fontWeight: '700' }}>Converting PDF to image...</p>
-              <span className="drop-subtext" style={{ fontSize: '0.9rem' }}>Please wait while we process your document</span>
+              <p className="drop-text" style={{ fontSize: '1.25rem', fontWeight: '700' }}>Joining PDF pages...</p>
+              <span className="drop-subtext" style={{ fontSize: '0.9rem' }}>All pages are kept and sent as one image</span>
             </>
           ) : (
             <>

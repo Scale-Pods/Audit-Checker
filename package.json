@@ -4,7 +4,10 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
+    "sync:pdfjs": "node scripts/sync-pdfjs-assets.mjs",
+    "predev": "node scripts/sync-pdfjs-assets.mjs",
     "dev": "vite",
+    "prebuild": "node scripts/sync-pdfjs-assets.mjs",
     "build": "vite build",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",

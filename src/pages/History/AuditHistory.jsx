@@ -6,6 +6,7 @@ import { fetchPurchaseRecords } from '../../api/audits.js'
 import { useSyncRefresh } from '../../context/SyncContext'
 import { useAuth } from '../../context/AuthContext'
 import { canAccess } from '../../lib/access'
+import { convertPdfToImage } from '../../lib/pdf'
 import { SquareWaveLoader } from '@/components/ui/square-wave-loader'
 import { PebbleSelect } from '@/components/ui/pebble-select'
 import { PlaceholdersAndVanishInput } from '@/components/ui/placeholders-and-vanish-input'
@@ -1210,6 +1211,7 @@ const SALES_COMPARE_FIELDS = [
   { label: 'Length',             invoice: 'inv_length',              so: 'so_length',             po: 'po_length',             gp: 'gp_length',              ws: null,                       type: 'numeric' },
   { label: 'Vehicle Number',     invoice: 'inv_vehicle_number',      so: null,                   po: null,                    gp: 'gp_vehicle_number',    ws: 'ws_vehicle_number',        type: 'text', nowrap: true },
   { label: 'Material',           invoice: 'inv_notes',                so: 'so_product',           po: 'po_material_grade',     gp: 'gp_product',            ws: 'ws_material_description',  type: 'text', invoiceFallback: 'inv_product', poFallback: 'po_material_description' },
+  { label: 'Grade',              invoice: null,                      so: 'so_grade',             po: 'po_material_grade',     gp: 'gp_grade',              ws: null,                       type: 'text' },
   { label: 'Coil Number',        invoice: null,                      so: 'so_coil_number',       po: null,                    gp: 'gp_coil_number',        ws: null,                       type: 'text', nowrap: true },
   { label: 'GSTIN',              invoice: 'inv_gstin',               so: null,                   po: 'po_gstin',              gp: null,                    ws: null,                       type: 'text' },
 ];
@@ -2148,29 +2150,21 @@ const PendingDocsUploadModal = ({ group, onClose, onUploadSuccess }) => {
 
   const setDocFile = (key, file) => setFiles(prev => ({ ...prev, [key]: file }));
 
-  const convertPdfToImg = async (file) => {
-    const pdfjsLib = await import('pdfjs-dist');
-    const workerUrl = (await import('pdfjs-dist/build/pdf.worker.min.mjs?url')).default;
-    pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
-    const arrayBuffer = await file.arrayBuffer();
-    const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-    const page = await pdf.getPage(1);
-    const viewport = page.getViewport({ scale: 2 });
-    const canvas = document.createElement('canvas');
-    canvas.width = viewport.width;
-    canvas.height = viewport.height;
-    await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
-    page.cleanup();
-    const blob = await new Promise(r => canvas.toBlob(r, 'image/png'));
-    return new File([blob], file.name.replace(/\.pdf$/i, '.png'), { type: 'image/png' });
-  };
-
   const handleFile = async (e, key) => {
-    const file = e.target.files[0];
-    if (!file) return;
+    const file = e.target.files?.[0];
+    // The picker's Clear button emits an empty list; remove that document
+    // instead of leaving the previous selection behind.
+    if (!file) {
+      setFiles(prev => {
+        const next = { ...prev };
+        delete next[key];
+        return next;
+      });
+      return;
+    }
     if (file.type === 'application/pdf') {
       try {
-        setDocFile(key, await convertPdfToImg(file));
+        setDocFile(key, await convertPdfToImage(file));
       } catch { setDocFile(key, file); }
     } else {
       setDocFile(key, file);
@@ -2188,15 +2182,34 @@ const PendingDocsUploadModal = ({ group, onClose, onUploadSuccess }) => {
     try {
       const formData = new FormData();
       // The ledger identity travels with every upload so the audit can be re-linked.
-      const soNum = record.so_number || record.so_po_number || record.inv_order_number
+      // The S.O. number is the real order reference only — so_po_number is the
+      // customer's PO and must not be sent as the S.O. or the re-audit links to
+      // the wrong ledger.
+      const soNum = record.so_number || record.sheet_order_number || record.inv_order_number
         || record.order_number || record['Invoice Number'] || group.orderOrPo || '';
       formData.append('so_number', soNum);
       formData.append('so_no', soNum);
       formData.append('SO Number', soNum);
+      formData.append('so_po_number', record.so_po_number || '');
       formData.append('po_number', record.po_number || record.so_po_number || '');
       formData.append('gp_number', record.gp_number || '');
       formData.append('record_id', record.id?.toString() || '');
       formData.append('record_source', record.__source || 'sales');
+
+      // The row already carries the S.O. sheet extracted by the original audit.
+      // The re-audit only receives the newly uploaded documents, so without this
+      // snapshot it rebuilds the ledger from those alone and the S.O. side of
+      // the comparison is wiped. The workflow can merge these back into the row.
+      const existingRecord = Object.fromEntries(
+        Object.entries(record).filter(([key]) => !key.startsWith('__'))
+      );
+      const soData = Object.fromEntries(
+        Object.entries(record).filter(([key]) => key.startsWith('so_') || key.startsWith('sheet_'))
+      );
+      formData.append('existing_record', JSON.stringify(existingRecord));
+      formData.append('existing_so_data', JSON.stringify(soData));
+      formData.append('preserve_fields', Object.keys(soData).join(','));
+
       chosen.forEach(d => {
         const file = files[d.key];
         const ext = file.name.includes('.') ? file.name.split('.').pop() : 'png';
