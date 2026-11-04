@@ -2975,6 +2975,7 @@ const QUICK_ENTRY_CHECKS = [
                 title="Sales Order"
                 rows={[
                   { label: 'Product', value: showText(record.so_product) },
+                  { label: 'Grade', value: showText(record.so_grade) },
                   { label: 'Production Type', value: showText(record.so_production_type) },
                   { label: 'Dimensions (T × W × L)', value: showDimensions(record.so_thickness, record.so_width, record.so_length) },
                   { label: 'Quantity', value: showQuantity(record.so_quantity, record.so_unit) },
