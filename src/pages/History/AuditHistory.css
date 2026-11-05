@@ -667,8 +667,35 @@
 .purchase-card-head {
   display: flex;
   align-items: baseline;
+  flex-wrap: wrap;
   gap: 0.5rem;
   min-width: 0;
+}
+
+/* Upload time sits on the top-right of every ledger card, in IST regardless of
+   the viewer's local timezone. Drawn as a tinted pill so it cannot be mistaken
+   for another muted metadata line. */
+.ledger-upload-time {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-left: auto;
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+  color: var(--text-secondary);
+  background: rgba(99, 102, 241, 0.09);
+  border: 1px solid rgba(99, 102, 241, 0.24);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.ledger-upload-time svg {
+  flex-shrink: 0;
+  color: var(--primary);
+  opacity: 1;
 }
 
 .purchase-identity {

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { FileText, CheckCircle, AlertTriangle, Eye, Download, Loader2, Truck, Hash, X, Info, IndianRupee, Activity, ChevronLeft, ChevronRight, ChevronDown, Check, Shield, TrendingUp, UploadCloud, FileUp, Mail, FileSpreadsheet, ShoppingCart, ClipboardList, Scale, Filter, ArrowDownWideNarrow, ArrowUpNarrowWide } from 'lucide-react'
+import { FileText, CheckCircle, AlertTriangle, Eye, Download, Loader2, Truck, Hash, X, Info, IndianRupee, Activity, ChevronLeft, ChevronRight, ChevronDown, Check, Shield, TrendingUp, UploadCloud, FileUp, Mail, FileSpreadsheet, ShoppingCart, ClipboardList, Scale, Filter, ArrowDownWideNarrow, ArrowUpNarrowWide, Clock } from 'lucide-react'
 import { fetchSalesRecords, hasDocData as hasDocPrefixData, isRecordQuickEntry, salesLedgerSource } from '../../api/sales.js'
 import { fetchPurchaseRecords } from '../../api/audits.js'
 import { useSyncRefresh } from '../../context/SyncContext'
@@ -907,6 +907,13 @@ const UnifiedAuditModal = ({ audit: initialAudit, records, onClose, onDecision, 
                 letterSpacing: '0.05em', background: 'rgba(0,0,0,0.03)',
                 color: 'var(--text-muted)', border: '1px solid var(--border)'
               }}>{activeDocColumns.length + 1} Documents</span>
+              <span
+                className="ledger-upload-time"
+                style={{ marginLeft: 0 }}
+                title={`Uploaded ${formatLedgerUploadTime(audit.created_at)}`}
+              >
+                <Clock size={12} /> Uploaded {formatLedgerUploadTime(audit.created_at)}
+              </span>
               {decision && (
                 <span style={{
                   display: 'inline-flex', alignItems: 'center', gap: '0.3rem',
@@ -1256,6 +1263,42 @@ const normalizeRefKey = (value) =>
 /* Natural ordering so SO2 sorts before SO10 rather than after it. */
 const compareRefKeys = (a, b) =>
   String(a || '').localeCompare(String(b || ''), undefined, { numeric: true, sensitivity: 'base' });
+
+/* A quick check writes the SO and PO rows its workflow extracted. Uploading the
+   same documents again produces the same source rows even when the audit
+   verdict differs, so duplicate detection for quick entries is based on that
+   source data rather than on the result columns. Only so_/po_ values are used:
+   they are what the quick check compares, and result fields (score, status,
+   warnings) legitimately change between runs of the same data. */
+const QUICK_DUPLICATE_IGNORED_KEYS = new Set([
+  'id', 'created_at', 'Status', 'Result', '__source', '__uid', '__duplicate', 'intelligence'
+]);
+
+const normalizeQuickDuplicateValue = (value) => {
+  if (!hasSourceValue(value)) return '';
+  if (typeof value === 'number') return String(value);
+  if (typeof value !== 'string') return JSON.stringify(value);
+  const text = value.trim();
+  const numeric = text.replace(/,/g, '');
+  // "3", "3.0" and "3,000" are the same extracted value.
+  if (/^[-+]?\d+(\.\d+)?$/.test(numeric)) return String(Number(numeric));
+  // OCR often adds or drops a space inside a description ("0.8 X 121" vs
+  // "0.8 X121"), so whitespace is ignored before comparing text values.
+  return text.toUpperCase().replace(/\s+/g, '');
+};
+
+const getQuickEntrySignature = (record) => {
+  if (!isRecordQuickEntry(record)) return null;
+  const parts = Object.keys(record)
+    .filter(key => !QUICK_DUPLICATE_IGNORED_KEYS.has(key))
+    .filter(key => key.startsWith('so_') || key.startsWith('po_'))
+    .sort()
+    .map(key => [key, normalizeQuickDuplicateValue(record[key])])
+    .filter(([, value]) => value !== '');
+  return parts.length > 0
+    ? parts.map(([key, value]) => `${key}:${value}`).join('|')
+    : null;
+};
 
 /* Display identity for a sales group: whether its SO is present and what to
    show in the ledger header when it is not. */
@@ -2641,7 +2684,7 @@ const QUICK_ENTRY_CHECKS = [
         <div className="sales-modal-head">
           <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: '1rem' }}>
             <div>
-              <h2 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <h2 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
                 <FileText size={20} style={{ color: 'var(--primary)' }} />
                 {isQuickEntry ? 'Quick Check Ledger' : 'Sales Comparison Ledger'}
                 {isQuickEntry && (
@@ -2652,6 +2695,14 @@ const QUICK_ENTRY_CHECKS = [
                     border: '1px solid rgba(245,158,11,0.25)', verticalAlign: 'middle'
                   }}>
                     Quick Entry
+                  </span>
+                )}
+                {record.__duplicate && (
+                  <span
+                    className="duplicate-entry-badge"
+                    title="This upload has the same SO and PO data as another quick check entry."
+                  >
+                    <AlertTriangle size={10} /> Duplicate Entry
                   </span>
                 )}
               </h2>
@@ -2669,6 +2720,13 @@ const QUICK_ENTRY_CHECKS = [
                 <div style={{ fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-muted)', marginBottom: '0.15rem' }}>Audit Score</div>
                 <Badge value={score} green={90} yellow={75} red={0} />
               </div>
+              <span
+                className="ledger-upload-time"
+                style={{ marginLeft: 0 }}
+                title={`Uploaded ${formatLedgerUploadTime(record.created_at)}`}
+              >
+                <Clock size={12} /> Uploaded {formatLedgerUploadTime(record.created_at)}
+              </span>
               <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '0.25rem', color: 'var(--text-muted)', display: 'flex' }}>
                 <X size={20} />
               </button>
@@ -3402,6 +3460,37 @@ const formatLedgerTimestamp = (value) => {
   });
 };
 
+/* Ledger times are shown in the office's timezone regardless of where the
+   viewer is, so a card can never appear to have been uploaded before it was
+   sent from India. */
+const formatLedgerUploadTime = (value) => {
+  const date = new Date(value);
+  if (!value || Number.isNaN(date.getTime())) return '—';
+  const formatted = date.toLocaleString('en-IN', {
+    timeZone: 'Asia/Kolkata',
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true,
+  });
+  return `${formatted} IST`;
+};
+
+/* Items inside one ledger are paged in the order they were uploaded, so the
+   first upload is Item 1. The API returns newest-first for the flat list; each
+   group is re-sorted here rather than relying on that order. */
+const sortRecordsOldestFirst = (records) => [...records].sort((a, b) => {
+  const da = new Date(a.created_at || 0).getTime();
+  const db = new Date(b.created_at || 0).getTime();
+  if (da !== db) return da - db;
+  const ia = Number(a.id);
+  const ib = Number(b.id);
+  if (Number.isFinite(ia) && Number.isFinite(ib)) return ia - ib;
+  return 0;
+});
+
 /* The dial on a grouped card. A purchase audit is split across several rows and
    only some of them carry a score, so the card shows the highest one recorded —
    the audit is not weaker than its best-measured row, and showing a blank dial
@@ -3755,6 +3844,9 @@ const AuditHistory = () => {
       }
       groups[invoiceNum].records.push(record);
     });
+    Object.values(groups).forEach(group => {
+      group.records = sortRecordsOldestFirst(group.records);
+    });
     const match = groups[decoded];
     if (match && !selectedSalesGroup) {
       setSelectedSalesGroup(match);
@@ -3814,6 +3906,9 @@ const AuditHistory = () => {
     });
 
     const rows = Array.from(groups.values());
+    rows.forEach(group => {
+      group.records = sortRecordsOldestFirst(group.records);
+    });
 
     /* Two cards whose invoice numbers only differ in punctuation or spacing
        are the same entry recorded twice — every member of such a cluster gets
@@ -3884,6 +3979,25 @@ const AuditHistory = () => {
       }
     });
     const groups_arr = Object.values(groups);
+    groups_arr.forEach(group => {
+      group.records = sortRecordsOldestFirst(group.records);
+    });
+
+    /* Quick entries can repeat inside a single SO group — the same PO uploaded
+       twice lands as two records under the same SO, so the reference-number
+       check below never sees it as a second group. Match those records on the
+       source rows they carry instead: identical SO/PO data means the same data
+       was uploaded again, whatever audit score each run produced. */
+    const quickSignatureCounts = new Map();
+    filteredSalesHistory.forEach(record => {
+      const signature = getQuickEntrySignature(record);
+      if (!signature) return;
+      quickSignatureCounts.set(signature, (quickSignatureCounts.get(signature) || 0) + 1);
+    });
+    filteredSalesHistory.forEach(record => {
+      const signature = getQuickEntrySignature(record);
+      record.__duplicate = !!signature && quickSignatureCounts.get(signature) > 1;
+    });
 
     /* Two groups whose SO numbers only differ in punctuation or spacing are
        the same order audited twice — flag every member of such a cluster so
@@ -3897,7 +4011,8 @@ const AuditHistory = () => {
     });
     groups_arr.forEach(group => {
       const refKey = normalizeRefKey(group.displayId);
-      group.isDuplicate = !!refKey && refCounts.get(refKey) > 1;
+      group.duplicateCount = group.records.filter(record => record.__duplicate).length;
+      group.isDuplicate = (!!refKey && refCounts.get(refKey) > 1) || group.duplicateCount > 0;
     });
 
     // The ledger on screen is already a single table, so only the score tier
@@ -3996,7 +4111,7 @@ const AuditHistory = () => {
   const sharedInvoice = sharedInvoiceParam ? safeDecode(sharedInvoiceParam) : '';
   const sharedSalesGroup = useMemo(() => {
     if (!sharedInvoice || !canSeeSales) return null;
-    const records = salesHistory.filter(record => getSalesGroupKey(record) === sharedInvoice);
+    const records = sortRecordsOldestFirst(salesHistory.filter(record => getSalesGroupKey(record) === sharedInvoice));
     if (records.length === 0) return null;
     const latestDate = records.reduce(
       (latest, record) => (!latest || new Date(record.created_at || 0) > new Date(latest) ? record.created_at : latest),
@@ -4296,6 +4411,12 @@ const AuditHistory = () => {
                           <span className="duplicate-entry-badge"><AlertTriangle size={10} /> Duplicate Entry</span>
                         )}
                       </div>
+                      <span
+                        className="ledger-upload-time"
+                        title={`Uploaded ${formatLedgerUploadTime(group.latestDate)}`}
+                      >
+                        <Clock size={11} /> Uploaded {formatLedgerUploadTime(group.latestDate)}
+                      </span>
                     </div>
 
                     <p className="purchase-supplier" title={supplier}>{supplier}</p>
@@ -4435,7 +4556,14 @@ const AuditHistory = () => {
                         <span className="item-count-badge">{group.records.length} items</span>
                       )}
                       {group.isDuplicate && (
-                        <span className="duplicate-entry-badge"><AlertTriangle size={10} /> Duplicate Entry</span>
+                        <span
+                          className="duplicate-entry-badge"
+                          title={group.duplicateCount > 0
+                            ? `${group.duplicateCount} upload${group.duplicateCount === 1 ? '' : 's'} repeat the same SO/PO data.`
+                            : 'The same reference was recorded more than once.'}
+                        >
+                          <AlertTriangle size={10} /> Duplicate Entry
+                        </span>
                       )}
                       {isQuickEntry && (
                         <span className="quick-entry-badge">Quick Entry</span>
@@ -4450,7 +4578,14 @@ const AuditHistory = () => {
                           <AlertTriangle size={10} />
                           {pendingDocStatus.missingLabels.join(' & ')} Pending
                         </span>
-                      )}                    </div>
+                      )}
+                      <span
+                        className="ledger-upload-time"
+                        title={`Uploaded ${formatLedgerUploadTime(group.latestDate)}`}
+                      >
+                        <Clock size={11} /> Uploaded {formatLedgerUploadTime(group.latestDate)}
+                      </span>
+                    </div>
                     <div className="sales-meta">
                       {group.hasSO ? (
                         <span className="sales-so-id" title={group.displayId}>{group.displayId}</span>
